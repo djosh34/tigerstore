@@ -72,7 +72,10 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 		// The driver's double runs keep both runs' files, for when they
 		// differ, once the seed's last simulation is over.
 		if os.Getenv("SIM_KEEP") != "" {
-			cmd := replayCommand(t.Name(), cfg.Seed)
+			cmd := cfg.replay
+			if cmd == "" {
+				cmd = replayCommand(t.Name(), cfg.Seed)
+			}
 			// A long run's history takes gigabytes, which a run kept
 			// only to compare with its second run leaves out.
 			simrun.AfterSeed(func() { save(t, cmd, res, !res.long) })
@@ -207,7 +210,10 @@ func explainSim(t *testing.T, cfg Config, s *Sim) {
 // explain logs what a failed run did, how it left each node, its hashes
 // and the command that runs its seed again, and saves the run (save).
 func explain(t *testing.T, cfg Config, res *Result) {
-	cmd := replayCommand(t.Name(), cfg.Seed)
+	cmd := cfg.replay
+	if cmd == "" {
+		cmd = replayCommand(t.Name(), cfg.Seed)
+	}
 	if res == nil {
 		t.Logf("replay: %s", cmd)
 		return

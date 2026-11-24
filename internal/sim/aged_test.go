@@ -154,10 +154,15 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			continue
 		}
 		t.Run(fmt.Sprintf("fork%d", i), func(t *testing.T) {
+			// Logged first, so that a fork that fails says how to run it
+			// again as it ran: its image's command, which runs the image
+			// and its forks in sequence; the failure's own replay line is
+			// that one too (Config.replay). SIM_FORK=k runs the fork alone,
+			// faster, but may not run it as it ran after the others (#794).
+			image := replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed)
+			t.Logf("fork %d runs again as it ran with: %s", i, image)
 			if forks > 1 {
-				// Logged first, so that a fork that fails says how to run it
-				// alone.
-				t.Logf("fork %d alone: SIM_FORK=%d %s", i, i, replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed))
+				t.Logf("fork %d alone, faster, though it may not run as it did after the others until #794 is fixed: SIM_FORK=%d %s", i, i, image)
 			}
 			wait := time.Until(start.Add(forkStart(seed, i)))
 			if wait < 0 {
@@ -166,7 +171,7 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			// gosim's limit of virtual time must outlast the wait.
 			simrun.BubbleFor(t, wait+time.Hour, func(*testing.T) { time.Sleep(wait) })
 			cfg := fork(aging, seed*1000+uint64(i))
-			cfg.from = img
+			cfg.from, cfg.replay = img, image
 			simrun.Reseed(cfg.Seed)
 			res := run(t, cfg)
 			checkers(t, res)

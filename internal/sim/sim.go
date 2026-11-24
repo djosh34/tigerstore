@@ -212,6 +212,10 @@ type Config struct {
 	// aging run ends with every node up for its image.
 	from    *image
 	noFence bool
+	// replay, if set, is the command that runs the run again as it ran,
+	// which a failure prints and saves (explain): an aged fork's is its
+	// image's, which runs the image and its forks in sequence.
+	replay string
 	// longCerts makes the run's certificates valid for certValid, as an
 	// aged image's forks, years later, share them; other runs' are valid
 	// for a day.
