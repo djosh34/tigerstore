@@ -544,7 +544,8 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 	}
 	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
 	for _, rev := range r.countRevs[first:] {
-		if rev > s.rev+countHorizon {
+		// rev is at least s.rev: the difference doesn't overflow (#768).
+		if rev-s.rev > countHorizon {
 			break
 		}
 		for _, c := range r.counts[rev] {

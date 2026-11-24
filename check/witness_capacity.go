@@ -282,7 +282,8 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 	now := s.rev
 	first := sort.Search(len(x.ends), func(j int) bool { return x.ends[j] > now })
 	for _, end := range x.ends[first:] {
-		if end > now+countHorizon {
+		// end is past now: the difference doesn't overflow (#768).
+		if end-now > countHorizon {
 			break
 		}
 		need := r.roomNeed(s, end)

@@ -98,3 +98,65 @@ func TestStartNearTheRevisionLimit(t *testing.T) {
 	}
 	checkAll(t, h)
 }
+
+// TestRevisionLimitConvicts breaks histories at the revision limit where
+// only the limit tells them wrong (#768): a write past it cannot have
+// happened, and a watch owes nothing past it.
+func TestRevisionLimitConvicts(t *testing.T) {
+	const top = math.MaxInt64
+	witnessFails := func(h *history.History) {
+		t.Helper()
+		mustFail(t, "Linearizable", Linearizable(h, time.Minute), "")
+		for _, mode := range []WitnessMode{FromLog, FromRevisions} {
+			mustFail(t, "Witnessed", Witnessed(h, mode, time.Minute), "")
+		}
+	}
+	// An unanswered revoke of a's lease, then the lease is not found: the
+	// revoke took effect, and deleted a, past the limit.
+	b := newBuilderFrom(t, startNearLimit(top))
+	b.get(1, "a")
+	b.now += 10
+	b.h.Ops = append(b.h.Ops,
+		history.Op{
+			Client: 2, Call: b.now, Return: b.now + 5, Req: history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 5}},
+			Err: &history.Error{Code: "Unavailable", Message: "no answer", Ambiguous: true},
+		},
+		history.Op{
+			Client: 3, Call: b.now + 10, Return: b.now + 15, Req: history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 5}},
+			Err: errLeaseNotFound,
+		})
+	witnessFails(b.done())
+
+	// A put at the limit answered at the revision past it, wrapped.
+	b = newBuilderFrom(t, startNearLimit(top))
+	b.get(1, "a")
+	b.now += 10
+	put := history.Request{Put: &history.PutRequest{Key: "b", Value: "b2"}}
+	b.h.Ops = append(b.h.Ops, history.Op{
+		Client: 2, Call: b.now, Return: b.now + 5, Req: put,
+		Resp: &history.Response{Revision: math.MinInt64, Put: &history.PutResponse{}},
+	})
+	b.h.Log = append(b.h.Log, put)
+	witnessFails(b.done())
+
+	// A watch of b created at the limit, after b's delete there, owes no
+	// event, and passes with its progress at the limit.
+	b = newBuilderFrom(t, startNearLimit(top-1))
+	b.del(1, "b")
+	b.watch(9, "b", "", false)
+	b.progress()
+	h := b.done()
+	mustPass(t, "Watches", Watches(h))
+	mustPass(t, "Revisions", Revisions(h))
+
+	// A watch with previous values that got b's delete at the limit was
+	// not canceled as compacted there: it needed nothing past it.
+	b = newBuilderFrom(t, startNearLimit(top-1))
+	b.watch(9, "b", "", true)
+	b.del(1, "b")
+	b.do(2, history.Request{Compact: &history.CompactRequest{Revision: top}})
+	h = b.done()
+	w := &h.Watches[0]
+	w.Responses = append(w.Responses, history.WatchResponse{Time: b.now, Revision: top, Canceled: true, CompactRevision: top})
+	mustFail(t, "Watches", Watches(h), "only needed revision")
+}

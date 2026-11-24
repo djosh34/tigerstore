@@ -73,14 +73,16 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 	seen := map[id]bool{}
 	var got []history.Event
 	var lastEvent, lastProgress, delivered int64
-	first := w.Req.StartRevision
+	// first is the first revision the watch owes, as a uint64: one created
+	// at the int64 limit owes from one past it (#768).
+	first := owedFrom(w.Req.StartRevision)
 	canceled, compacted := false, false
 	for i, resp := range w.Responses {
 		if canceled {
 			fail("response %d arrives after the watch was canceled", i)
 		}
 		if resp.Created && first == 0 {
-			first = resp.Revision + 1
+			first = uint64(resp.Revision) + 1
 		}
 		for j, e := range resp.Events {
 			rev := e.Revision()
@@ -140,8 +142,8 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 			// The watch may also be canceled at the revision it needs
 			// next when it asked for previous values, because the
 			// value before that revision is compacted.
-			next := max(first, delivered+1)
-			if next > resp.CompactRevision || next == resp.CompactRevision && !w.Req.PrevKV {
+			next := max(first, uint64(delivered)+1)
+			if c := uint64(resp.CompactRevision); next > c || next == c && !w.Req.PrevKV {
 				fail("canceled as compacted at %d, but it only needed revision %d on", resp.CompactRevision, next)
 			}
 			if !slices.Contains(r.compactions, resp.CompactRevision) {
@@ -161,7 +163,7 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 	// from, which is compacted: a watch from there must be canceled as
 	// compacted before it delivers anything, which the checks above hold
 	// to the compaction's rules; one that is not cannot be checked.
-	if r.start > 0 && first <= r.start {
+	if r.start > 0 && first <= uint64(r.start) {
 		switch {
 		case !compacted:
 			fail("starts at revision %d, at or below the start's revision %d, whose events the history does not hold, and was not canceled as compacted", first, r.start)
@@ -178,7 +180,7 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 	var want []history.Event
 	for _, e := range r.events {
 		rev := e.Revision()
-		if rev < first || rev > last || !history.InRange(e.KV.Key, w.Req.Key, w.Req.End) {
+		if uint64(rev) < first || rev > last || !history.InRange(e.KV.Key, w.Req.Key, w.Req.End) {
 			continue
 		}
 		if !w.Req.PrevKV {
@@ -235,4 +237,14 @@ func typeName(t history.EventType) string {
 		return "delete"
 	}
 	return "put"
+}
+
+// owedFrom is a watch's start revision as the first revision it owes, a
+// uint64 (#768): 0 for none, and a negative one owes every revision, as
+// before.
+func owedFrom(start int64) uint64 {
+	if start < 0 {
+		return 1
+	}
+	return uint64(start)
 }

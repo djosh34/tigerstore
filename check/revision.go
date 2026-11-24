@@ -226,12 +226,14 @@ func (c *revisionChecker) deleteEvents() {
 		rev int64
 	}
 	for i, w := range c.h.Watches {
-		start := w.Req.StartRevision
+		// start is the first revision the watch owes, as a uint64: one
+		// created at the int64 limit owes from one past it (#768).
+		start := owedFrom(w.Req.StartRevision)
 		if start == 0 {
 			if len(w.Responses) == 0 || !w.Responses[0].Created {
 				continue
 			}
-			start = w.Responses[0].Revision + 1
+			start = uint64(w.Responses[0].Revision) + 1
 		}
 		// Every event up to reached was delivered: progress at P covers
 		// P, and the events of one revision come in one response.
@@ -249,7 +251,7 @@ func (c *revisionChecker) deleteEvents() {
 			}
 		}
 		for _, rev := range revs {
-			if rev < start || rev > reached {
+			if uint64(rev) < start || rev > reached {
 				continue
 			}
 			j := c.byRev[rev]
