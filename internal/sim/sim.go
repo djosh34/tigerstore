@@ -182,6 +182,10 @@ type Config struct {
 	// does; a compaction still writes one, and the scenario sends none.
 	// For the tests.
 	scenario func(*Sim) error
+	// snapshotWait, if set, holds every chunk of a snapshot stream this
+	// long before it is served, the cold restarts' too: a slow snapshot
+	// (TestColdRestartWaitsOnASlowSnapshot).
+	snapshotWait int64
 	// ckptCreateFaults makes every disk fault EIO on the next creation of
 	// a checkpoint file, and every such creation take 50 ms; killLosses
 	// makes every crash a kill followed by a power loss; syncFaultExits
@@ -731,9 +735,15 @@ type Sim struct {
 	pages, chunks *keptPages
 	stats         Stats
 	uncached      atomic.Int64 // the reads Faults.Uncached sent off the loop
-	// snapServed counts the bytes of snapshot streams the nodes served
+	// snaps is how far the snapshot streams the nodes served got
 	// (progress).
-	snapServed atomic.Int64
+	snaps snapProgress
+	// inColdRestart is set on a cold restart's Sim: it traces its snapshot
+	// streams (SnapshotChunk).
+	inColdRestart bool
+	// coldWaited is how long the run's cold restarts waited for a node
+	// to catch up past their first seconds (coldWaitMax). The lock.
+	coldWaited int64
 	membership membershipWork
 	err        error
 	// loadFrom is the process's CPU time when the clients started, and

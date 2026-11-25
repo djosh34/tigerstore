@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"sync"
 	"time"
 
 	raftpb "go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
 
@@ -676,17 +678,75 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 	return nil
 }
 
-// progress is what a cold restart's nodes have done so far: the bytes of
-// snapshot streams served and the entries the running nodes applied. The
-// nodes are frozen.
+// coldWaitMax is the most a run's cold restarts wait in all for a node
+// to catch up past their first seconds (coldRestart): the run's clock
+// gives its checks an hour past its length (runWith).
+const coldWaitMax = 20 * 60 * Second
+
+// caughtUp reports whether a cold restart's running nodes agree and each
+// applied at least applied. The nodes are frozen.
+func (s *Sim) caughtUp(applied uint64) bool {
+	if a, _ := disagree(s.nodes); a != nil {
+		return false
+	}
+	for _, n := range s.nodes {
+		if !n.out() && n.proc != nil && n.proc.applied() < applied {
+			return false
+		}
+	}
+	return true
+}
+
+// progress is what a cold restart's nodes have done so far: how far the
+// snapshot streams they served got, and the entries the running nodes
+// applied. The nodes are frozen.
 func (s *Sim) progress() int64 {
-	n := s.snapServed.Load()
+	n := s.snaps.served()
 	for _, m := range s.nodes {
 		if !m.out() && m.proc != nil {
 			n += int64(m.proc.applied())
 		}
 	}
 	return n
+}
+
+// snapProgress is how far the snapshot streams to each node got: a stream
+// sent again from its start adds nothing until it passes where the last
+// one to that node reached, so a snapshot refused and sent again and
+// again is no progress (the review of #810). Streams go off the nodes'
+// loops, so it takes its own lock.
+type snapProgress struct {
+	mu      sync.Mutex
+	at, top map[uint64]int64
+	total   int64
+}
+
+// chunk notes a chunk of n bytes of a stream to node to, the stream's
+// first if first. It reports whether the stream passed another 16 MiB,
+// and how far it is.
+func (p *snapProgress) chunk(to uint64, first bool, n int) (bool, int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.at == nil {
+		p.at, p.top = map[uint64]int64{}, map[uint64]int64{}
+	}
+	if first {
+		p.at[to] = 0
+	}
+	before := p.at[to]
+	p.at[to] += int64(n)
+	if p.at[to] > p.top[to] {
+		p.total += p.at[to] - p.top[to]
+		p.top[to] = p.at[to]
+	}
+	return before>>24 != p.at[to]>>24, p.at[to]
+}
+
+// served is how far the streams got, summed over the nodes they went to.
+func (p *snapProgress) served() int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.total
 }
 
 // erasing names the disk a cold restart erased, -1 for none.
@@ -840,10 +900,11 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
-	r, err := newSimFrom(Config{Seed: seed, Nodes: s.cfg.Nodes, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes}, s)
+	r, err := newSimFrom(Config{Seed: seed, Nodes: s.cfg.Nodes, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes, snapshotWait: s.cfg.snapshotWait}, s)
 	if err != nil {
 		return err
 	}
+	r.inColdRestart = true
 	defer r.shutdown()
 	defer func() {
 		if err != nil {
@@ -951,22 +1012,45 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	// A node behind may be taking a snapshot of the whole store, which
 	// with a large one takes far longer than that: 160 MB under a 137 MiB
 	// budget takes minutes (#809). The restart waits on, a second at a
-	// time, while a snapshot stream is served or a node applies more, and
-	// gives up after 10 s with neither, or after 20 minutes.
-	for idle, waited := 0, int64(0); idle < 10 && waited < 20*60*Second; waited += Second {
-		if a, _ := disagree(r.nodes); a == nil {
+	// time, until the nodes agree and each applied what was applied before,
+	// while a snapshot stream is served or a node applies more: it gives up
+	// after 10 s with neither, past the run's limit of real time, or once
+	// the run's cold restarts waited coldWaitMax in all.
+	waited, idle, why := int64(0), 0, ""
+	for !r.caughtUp(c.applied) {
+		if idle >= 10 {
+			why = "nothing moved for 10 s"
 			break
+		}
+		s.mu.Lock()
+		over := s.coldWaited >= coldWaitMax
+		if !over {
+			s.coldWaited += Second
+		}
+		s.mu.Unlock()
+		if over {
+			why = fmt.Sprintf("the run's cold restarts waited %s in all", seconds(coldWaitMax))
+			break
+		}
+		if simrun.WallLimitPassed() {
+			return errors.New("cold restart: the run passed its limit of real time ($SIM_WALL) while the nodes caught up")
 		}
 		before := r.progress()
 		r.thaw()
 		if err := r.runFor(Second); err != nil {
 			return err
 		}
+		waited += Second
 		if r.progress() == before {
 			idle++
 		} else {
 			idle = 0
 		}
+	}
+	if why != "" {
+		s.mu.Lock()
+		s.tracef("cold restart at %d ms %s: waited %s for the nodes to catch up, %d MiB of snapshots served, until %s", c.at/Millisecond, erasing(erased), seconds(waited), r.snaps.served()>>20, why)
+		s.mu.Unlock()
 	}
 	if a, b := disagree(r.nodes); a != nil {
 		ma, ra := a.members()
