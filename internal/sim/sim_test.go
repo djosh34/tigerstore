@@ -72,7 +72,10 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 		// The driver's double runs keep both runs' files, for when they
 		// differ, once the seed's last simulation is over.
 		if os.Getenv("SIM_KEEP") != "" {
-			cmd := replayCommand(t.Name(), cfg.Seed)
+			cmd := cfg.replay
+			if cmd == "" {
+				cmd = replayCommand(t.Name(), cfg.Seed)
+			}
 			// A long run's history takes gigabytes, which a run kept
 			// only to compare with its second run leaves out.
 			simrun.AfterSeed(func() { save(t, cmd, res, !res.long) })
@@ -207,7 +210,10 @@ func explainSim(t *testing.T, cfg Config, s *Sim) {
 // explain logs what a failed run did, how it left each node, its hashes
 // and the command that runs its seed again, and saves the run (save).
 func explain(t *testing.T, cfg Config, res *Result) {
-	cmd := replayCommand(t.Name(), cfg.Seed)
+	cmd := cfg.replay
+	if cmd == "" {
+		cmd = replayCommand(t.Name(), cfg.Seed)
+	}
 	if res == nil {
 		t.Logf("replay: %s", cmd)
 		return
@@ -923,7 +929,10 @@ func faultCases() []faultCase {
 		{"file system down", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return min(st.FSDowns, st.DiskFaults) }},
 		{"read-only file system", Faults{FSDownEvery: Second}, nil, func(st Stats) int { return st.ReadOnlyStops }},
 		{"client link down", Faults{LinkEvery: Second}, nil, func(st Stats) int { return st.ClientLinksDown }},
-		{"full disk", Faults{DiskFullEvery: Second}, nil, func(st Stats) int { return st.OutOfSpace }},
+		// A small budget checkpoints often (Config.CheckpointLog): a
+		// node then needs room while its disk is full, which its log's
+		// ring, made once, does not.
+		{"full disk", Faults{DiskFullEvery: Second, DiskBudget: 32 << 10}, nil, func(st Stats) int { return st.OutOfSpace }},
 		{"the log cut within the budget", Faults{DiskBudget: 32 << 10, DiskCapacity: 128 << 10}, nil, func(st Stats) int { return st.LogCuts }},
 		damage(flippedRoot, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) }),
 		damage(misdirected, func(st Stats) int { return min(st.Damage[misdirected], st.Fenced) }),

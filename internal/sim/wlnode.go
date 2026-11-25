@@ -604,13 +604,20 @@ func (s *Sim) holdTurn(p *proc) {
 // end of a connection does, and returns its answer.
 func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Message, error) {
 	conn := p.wl.conn
+	// A fork's reads of every key, and its deletes of an image's prefix
+	// with their previous values (agedRequest), may pass gRPC's 4 MiB a
+	// client takes by default, as the final reads may (finalReads).
+	var opts []grpc.CallOption
+	if s.startRev > 0 {
+		opts = append(opts, grpc.MaxCallRecvMsgSize(math.MaxInt32))
+	}
 	switch r := req.(type) {
 	case *pb.PutRequest:
 		return pb.NewKVClient(conn).Put(ctx, r)
 	case *pb.RangeRequest:
-		return pb.NewKVClient(conn).Range(ctx, r)
+		return pb.NewKVClient(conn).Range(ctx, r, opts...)
 	case *pb.DeleteRangeRequest:
-		return pb.NewKVClient(conn).DeleteRange(ctx, r)
+		return pb.NewKVClient(conn).DeleteRange(ctx, r, opts...)
 	case *pb.TxnRequest:
 		return pb.NewKVClient(conn).Txn(ctx, r)
 	case *pb.CompactionRequest:

@@ -20,14 +20,20 @@ import (
 type CA struct {
 	cert *x509.Certificate
 	key  *ecdsa.PrivateKey
+	// notAfter is when the CA and the certificates it issues expire.
+	notAfter time.Time
 	// Pool holds the CA certificate.
 	Pool *x509.CertPool
 	// PEM is the CA certificate in PEM form.
 	PEM []byte
 }
 
-// NewCA makes a CA.
-func NewCA() (*CA, error) {
+// NewCA makes a CA whose certificates are valid for a day.
+func NewCA() (*CA, error) { return NewCAValid(24 * time.Hour) }
+
+// NewCAValid makes a CA whose certificates are valid for d from now, as
+// a simulation of years needs.
+func NewCAValid(d time.Duration) (*CA, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -36,7 +42,7 @@ func NewCA() (*CA, error) {
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "tigerstore test CA"},
 		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
+		NotAfter:              time.Now().Add(d),
 		IsCA:                  true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
@@ -51,7 +57,7 @@ func NewCA() (*CA, error) {
 	}
 	pool := x509.NewCertPool()
 	pool.AddCert(cert)
-	return &CA{cert: cert, key: key, Pool: pool, PEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})}, nil
+	return &CA{cert: cert, key: key, notAfter: tmpl.NotAfter, Pool: pool, PEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})}, nil
 }
 
 // Issue makes a certificate for name, valid as server and client for
@@ -63,6 +69,11 @@ func (ca *CA) Issue(name string, serial int64) (tls.Certificate, []byte, []byte,
 
 // IssueFor is Issue with the SANs ips and dns.
 func (ca *CA) IssueFor(name string, serial int64, ips []net.IP, dns []string) (tls.Certificate, []byte, []byte, error) {
+	return ca.IssueUntil(name, serial, ips, dns, ca.notAfter)
+}
+
+// IssueUntil is IssueFor with a certificate that expires at notAfter.
+func (ca *CA) IssueUntil(name string, serial int64, ips []net.IP, dns []string, notAfter time.Time) (tls.Certificate, []byte, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, nil, nil, err
@@ -71,7 +82,7 @@ func (ca *CA) IssueFor(name string, serial int64, ips []net.IP, dns []string) (t
 		SerialNumber: big.NewInt(serial),
 		Subject:      pkix.Name{CommonName: name},
 		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(24 * time.Hour),
+		NotAfter:     notAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		IPAddresses:  ips,
