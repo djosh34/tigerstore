@@ -526,19 +526,6 @@ var ckptHold atomic.Bool
 // (nudgeRing). A write that fits but takes the reserve goes on, as before:
 // then the ring is short.
 func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
-	if n.noSpace || n.corrupt {
-		// An alarm is up: the apply refuses what it forbids (alarmGate),
-		// and so does this node, before the log takes it, with the same
-		// error, CORRUPT first; deletes and compactions go on. A put
-		// through a follower whose leader's ring is short never comes to
-		// the apply: the leader drops it (leaderDrops), and its client was
-		// refused as busy for good (#818's review). A node with no ring of
-		// its own checks it too.
-		if err := n.alarmGate(s.kind, msg); err != nil {
-			n.reject(c, s, err)
-			return true
-		}
-	}
 	w := n.wal
 	if w.ring == nil {
 		return false
@@ -551,6 +538,10 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 		puts = txnCost(msg) != 0
 	}
 	if puts && w.ringShort() {
+		if err := n.alarmRefusal(s.kind, msg); err != nil {
+			n.reject(c, s, err)
+			return true
+		}
 		if (n.ckpt != nil || n.ringDue()) && !n.noSpaceRaised() {
 			n.reject(c, s, errTooManyRequests)
 			return true
@@ -570,8 +561,27 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 	// can be due (ringDue).
 	w.wanted = max(w.wanted, need+n.ringTaken())
 	n.nudgeRing()
+	if err := n.alarmRefusal(s.kind, msg); err != nil {
+		n.reject(c, s, err)
+		return true
+	}
 	n.reject(c, s, errTooManyRequests)
 	return true
+}
+
+// alarmRefusal is the error a write of kind that this node refuses anyway,
+// before the log takes it, gets in place of too many requests while an
+// alarm forbids it (alarmGate): NOSPACE or CORRUPT, as etcd answers it,
+// and not as busy for good (#818's review). A write that goes to the log
+// is never refused by the node's own view of the alarms, which is only
+// what it applied: a put sent once AlarmDisarm answered comes after the
+// disarm in the log, and the apply takes it, as etcd's capped applier
+// does, on a node that had not applied the disarm yet too (#825).
+func (n *node) alarmRefusal(kind uint8, msg []byte) error {
+	if !n.noSpace && !n.corrupt {
+		return nil
+	}
+	return n.alarmGate(kind, msg)
 }
 
 // callerBytes is what the caller op addCaller adds to the batch for the
