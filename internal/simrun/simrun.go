@@ -34,6 +34,10 @@ type Run struct {
 	// names: an image's file, for its forks (ImageSeeds). They leave the
 	// run's environment, and so every value it draws, as it is.
 	Inputs map[string]string
+	// Outputs are files on this machine the run writes (CreateOutput), by
+	// their names, for the driver to read once the run ended: an image's
+	// file, too large to come back as an artifact.
+	Outputs map[string]string
 	// ReplayEnv are variables that only the run's replay line names, for
 	// the driver that runs it again, as KEY=VALUE: a fork's image's
 	// SHA-256 (SIM_IMAGE_SHA256). The run never gets them.

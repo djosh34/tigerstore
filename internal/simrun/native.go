@@ -131,7 +131,7 @@ func Do(t *testing.T, r Run) *Result {
 	}
 	limit := wallLimit(t)
 	start := time.Now()
-	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace, Inputs: r.Inputs})
+	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace, Inputs: r.Inputs, Outputs: r.Outputs})
 	if err != nil {
 		t.Fatalf("running %s in gosim with seed %d: %v\nreplay: %s", r.Test, r.Seed, err, Replay(dir(t), Pattern(t.Name()), append(slices.Clone(r.Env), r.ReplayEnv...)))
 	}
@@ -359,11 +359,15 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 
 // errNoInput is OpenInput's error outside gosim, which gives a run no
 // inputs.
-var errNoInput = errors.New("simrun: a run has inputs only under gosim")
+var errNoInput = errors.New("simrun: a run has inputs and outputs only under gosim")
 
 // OpenInput opens the run's input name (Run.Inputs). Only a gosim run has
 // any.
 func OpenInput(string) (io.ReaderAt, int64, func() error, error) { return nil, 0, nil, errNoInput }
+
+// CreateOutput makes the run's output name (Run.Outputs). Only a gosim run
+// has any.
+func CreateOutput(string) (io.Writer, func() error, error) { return nil, nil, errNoInput }
 
 // part runs r once, keeping its files, or twice if double (twoRuns).
 func part(t *testing.T, r Run, double bool) *Result {
@@ -437,27 +441,34 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 // caller keeps no copy of the image's bytes in memory.
 func runImage(t *testing.T, r Run, double bool) (path, hash string, ok bool) {
 	t.Helper()
+	// The run writes its image straight to a file of t's (CreateOutput),
+	// which holds it whole only on disk: as an artifact a large image
+	// came back in memory several times over (#794's TestAgedBulk).
+	path = filepath.Join(t.TempDir(), "image")
+	r.Outputs = map[string]string{"image": path}
 	img := Do(t, r)
 	keep(t, img.Artifacts, "")
 	if img.Failed {
 		return "", "", false
 	}
-	b := img.Artifacts["image"]
-	if len(b) == 0 {
+	hash, size := fileHash(t, path)
+	if size == 0 {
 		t.Fatalf("seed %d saved no image", r.Seed)
 	}
-	sum := sha256.Sum256(b)
-	hash = hex.EncodeToString(sum[:])
-	t.Logf("image of seed %d: %d bytes, SHA-256 %s", r.Seed, len(b), hash)
+	t.Logf("image of seed %d: %d bytes, SHA-256 %s", r.Seed, size, hash)
 	if double {
 		hashes := img.Artifacts["hashes"]
+		r.Outputs = map[string]string{"image": path + "-again"}
 		again := Do(t, r)
 		if again.Failed {
 			keep(t, again.Artifacts, "")
 			return "", "", false
 		}
-		sum2 := sha256.Sum256(again.Artifacts["image"])
-		if hash2 := hex.EncodeToString(sum2[:]); hash2 != hash || !bytes.Equal(again.Artifacts["hashes"], hashes) {
+		hash2, _ := fileHash(t, path+"-again")
+		if err := os.Remove(path + "-again"); err != nil {
+			t.Error(err)
+		}
+		if hash2 != hash || !bytes.Equal(again.Artifacts["hashes"], hashes) {
 			t.Errorf("the image of seed %d played out differently the second time: SHA-256 %s, then %s\n%s\n%s\nreplay: %s",
 				r.Seed, hash, hash2, hashes, again.Artifacts["hashes"], Replay(dir(t), Pattern(t.Name()), append(slices.Clone(r.Env), "SIM_TWICE=1")))
 			return "", "", false
@@ -466,11 +477,27 @@ func runImage(t *testing.T, r Run, double bool) (path, hash string, ok bool) {
 	if want := os.Getenv("SIM_IMAGE_SHA256"); want != "" && want != hash {
 		t.Fatalf("the image of seed %d has SHA-256 %s, not %s: it is not the image the fork ran from", r.Seed, hash, want)
 	}
-	path = filepath.Join(t.TempDir(), "image")
-	if err := os.WriteFile(path, b, 0o600); err != nil {
+	return path, hash, true
+}
+
+// fileHash is the SHA-256 and size of the file at path, read a piece at a
+// time; a missing file has size 0.
+func fileHash(t *testing.T, path string) (string, int64) {
+	t.Helper()
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return "", 0
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
-	return path, hash, true
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), n
 }
 
 // twoRuns runs r twice, and fails t unless both give the same hashes.

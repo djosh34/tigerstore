@@ -23,17 +23,17 @@ func TestAForkReplaysAlone(t *testing.T) {
 	env := []string{"SIM_SEED=1", "SIM_SEEDS=1"}
 	var images, hashes []string
 	for i := range 2 {
-		img := simrun.Do(t, simrun.Run{Test: "TestSyntheticFork", Seed: 1, Env: append(env, "SIM_FORK=image")})
+		path := filepath.Join(t.TempDir(), "image")
+		img := simrun.Do(t, simrun.Run{Test: "TestSyntheticFork", Seed: 1, Env: append(env, "SIM_FORK=image"), Outputs: map[string]string{"image": path}})
 		if img.Failed {
 			t.FailNow()
 		}
-		b := img.Artifacts["image"]
+		b, err := os.ReadFile(path)
+		if err != nil || len(b) == 0 {
+			t.Fatalf("the image's file holds %d bytes: %v", len(b), err)
+		}
 		sum := sha256.Sum256(b)
 		images = append(images, hex.EncodeToString(sum[:]))
-		path := filepath.Join(t.TempDir(), "image")
-		if err := os.WriteFile(path, b, 0o600); err != nil {
-			t.Fatal(err)
-		}
 		fork := simrun.Do(t, simrun.Run{Test: "TestSyntheticFork", Seed: 1, Env: append(env, "SIM_FORK=0"), Inputs: map[string]string{"image": path}})
 		if fork.Failed {
 			t.FailNow()

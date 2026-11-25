@@ -2,7 +2,6 @@ package sim
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -71,12 +70,17 @@ func (img *image) save(w io.Writer) error {
 	e.int(int64(net.valid))
 	e.uint(uint64(len(img.disks)))
 	for i, d := range img.disks {
-		var b bytes.Buffer
-		if err := d.Save(&b); err != nil {
+		// A disk's length comes before it: a first pass counts it, so that
+		// no disk is held whole in memory on the way to the file.
+		var n countWriter
+		if err := d.Save(&n); err != nil {
 			return err
 		}
 		e.uint(img.ids[i])
-		e.bytes(b.Bytes())
+		e.uint(uint64(n))
+		if e.err == nil {
+			e.err = d.Save(e.w)
+		}
 	}
 	e.uint(img.maxLogged)
 	e.uint(img.applied)
@@ -249,6 +253,14 @@ func loadImage(r io.ReaderAt, size int64) (*image, error) {
 		return nil, err
 	}
 	return img, nil
+}
+
+// countWriter counts what is written to it, and keeps nothing.
+type countWriter int64
+
+func (c *countWriter) Write(p []byte) (int, error) {
+	*c += countWriter(len(p))
+	return len(p), nil
 }
 
 // imageEncoder writes an image's fields, and keeps the first error.

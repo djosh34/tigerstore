@@ -1,7 +1,6 @@
 package sim
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -182,15 +181,22 @@ func forkMode(t *testing.T, forks int) (save bool, only int) {
 	return false, k
 }
 
-// saveImage saves img as the run's artifact "image", which the driver
-// hands each fork's run as its input (simrun.ImageSeeds).
+// saveImage saves img to the run's output "image", a file the driver
+// hands each fork's run as its input (simrun.ImageSeeds). It streams to
+// the file, which alone holds the whole image.
 func saveImage(t *testing.T, img *image) Stats {
 	t.Helper()
-	var b bytes.Buffer
-	if err := img.save(&b); err != nil {
+	w, closeOutput, err := simrun.CreateOutput("image")
+	if err != nil {
+		t.Fatalf("the image's file: %v", err)
+	}
+	err = img.save(w)
+	if cerr := closeOutput(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		t.Fatalf("saving the image: %v", err)
 	}
-	simrun.Artifact("image", b.Bytes())
 	return Stats{}
 }
 

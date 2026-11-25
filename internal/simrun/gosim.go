@@ -121,6 +121,30 @@ func OpenInput(name string) (io.ReaderAt, int64, func() error, error) {
 	return f, n, f.Close, nil
 }
 
+// CreateOutput makes the run's output name (Run.Outputs), a file on the
+// machine that runs the simulation, which the driver reads once the run
+// ended, and returns a writer that appends to it, and its close. Writing
+// it changes nothing in the run (gosim.CreateOutput).
+func CreateOutput(name string) (io.Writer, func() error, error) {
+	f, err := gosim.CreateOutput(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &hostWriter{f: f}, f.Close, nil
+}
+
+// hostWriter writes a HostFile from its start on.
+type hostWriter struct {
+	f   *gosim.HostFile
+	off int64
+}
+
+func (w *hostWriter) Write(p []byte) (int, error) {
+	n, err := w.f.WriteAt(p, w.off)
+	w.off += int64(n)
+	return n, err
+}
+
 // afterSeed is what runs after the seed's last simulation.
 var afterSeed []func()
 
