@@ -269,8 +269,10 @@ func TestReadsKeepTheSlabWithinItsLimit(t *testing.T) {
 // ranges, each its own (#832). One of 2 minutes for both was passed twice
 // in CI's test job. Measured under -race here, with every fsync made 5 ms
 // slower, the puts took 13 to 20 s and the ranges 7 to 35 s: one range of
-// 100 values can take about 10 s (#833). CI's runner is slower still.
-const fetchSharePuts, fetchShareReads = 3 * time.Minute, 3 * time.Minute
+// 100 values can take about 10 s (#833). CI's runner is slower still. The
+// two together leave test-wl-slow's other tests a third of its package
+// timeout of 10 minutes.
+const fetchSharePuts, fetchShareReads = 2 * time.Minute, 3 * time.Minute
 
 // What the loop keeps of values read off the loop stays within its share
 // of the budget (fetchedMax), however fast reads fetch them: kept a
@@ -354,14 +356,23 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 			errs <- err
 		}()
 	}
+	// The first error cancels the rest, and every range and the watcher
+	// end before it is reported: the watcher posts to a loop that stops
+	// with the cluster, and waited for good.
+	var failed error
+	took := time.Duration(0)
 	for range keys / 100 {
-		if err := <-errs; err != nil {
-			t.Fatalf("the ranges, %v into their %v: %v", time.Since(started).Round(time.Millisecond), fetchShareReads, err)
+		if err := <-errs; err != nil && failed == nil {
+			failed, took = err, time.Since(started)
+			cancelReads()
 		}
 	}
-	t.Logf("the %d ranges took %v", keys/100, time.Since(started).Round(time.Millisecond))
 	close(stop)
 	<-watched
+	if failed != nil {
+		t.Fatalf("the ranges, %v into their %v: %v", took.Round(time.Millisecond), fetchShareReads, failed)
+	}
+	t.Logf("the %d ranges took %v", keys/100, time.Since(started).Round(time.Millisecond))
 	b, after := fetched()
 	if after-before < keys/2 {
 		t.Fatalf("the reads fetched %d values off the loop, want most of the %d", after-before, keys)
