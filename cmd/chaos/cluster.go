@@ -258,7 +258,14 @@ func (c *cluster) dialer(conn *net.TCPConn) int {
 // start starts the process of n.
 func (c *cluster) start(n *node) error { return c.startExpecting(n, false) }
 
-// startExpecting starts the process of n; with exit, its exit is expected,
+// env is the environment of a run of n's binary with its flags: the
+// runner's, but the ETCD_ variables its flags set (nodeEnv), with n's
+// drawn GOMAXPROCS, which a run that must refuse to start gets too.
+func (n *node) env() []string {
+	return append(nodeEnv(os.Environ(), n.args), fmt.Sprintf("GOMAXPROCS=%d", n.procs))
+}
+
+// startExpectingstarts the process of n; with exit, its exit is expected,
 // as of a restart that must refuse its log.
 func (c *cluster) startExpecting(n *node, exit bool) error {
 	n.mu.Lock()
@@ -267,7 +274,7 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 	_, _ = fmt.Fprintf(n.log, "chaos: start incarnation %d at %s, GOMAXPROCS %d\n", n.starts, time.Now().UTC().Format(time.RFC3339Nano), n.procs)
 	cmd := exec.Command(c.bin, n.args...)
 	cmd.Stdout, cmd.Stderr = n.log, n.log
-	cmd.Env = append(nodeEnv(os.Environ(), n.args), fmt.Sprintf("GOMAXPROCS=%d", n.procs))
+	cmd.Env = n.env()
 	if err := cmd.Start(); err != nil {
 		return err
 	}

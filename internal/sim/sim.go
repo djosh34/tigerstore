@@ -1330,7 +1330,7 @@ func (s *Sim) run() error {
 // (#481). Under the faults a confirmation round of the upgrade rarely
 // completes, and a member fenced for good blocks it for the rest of the
 // run, as in etcd, so without this almost no seed ran the code that needs
-// the newest version, such as lease checkpoints.
+// the newest version, such as member attributes.
 const formUnderFaults = 8
 
 // formLimit is how long a cluster with no faults may take to form and
