@@ -67,9 +67,9 @@ func (n *node) ckptNeed() int64 {
 	// Each key's state now, live or deleted, and those in the history.
 	states := keys + int64(st.nhist) - int64(st.nfree)
 	need := st.liveBytes + st.histBytes +
-		keys*(1+3*u32) + st.kmem.used + // its tag, id, key length and state count; the key
+		keys*(1+3*u32) + st.keyBytes + // its tag, id, key length and state count; the key
 		states*(1+3*rev+u64+2*u32+u64) + // flags, create, mod, version, lease, value length and sum, place
-		int64(len(st.changes))*(1+rev+u32+1+u32) + st.kmem.used + // tag, revision, key id, deletion, key length; the keys named
+		int64(len(st.changes))*(1+rev+u32+1+u32) + st.keyBytes + // tag, revision, key id, deletion, key length; the keys named, each once at most
 		int64(len(st.leases))*2*u64 + int64(len(n.encodeMembers(nil))) + page
 	return need + need/8 + page
 }
