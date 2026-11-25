@@ -177,6 +177,7 @@ func (n *node) appendNow(m *pb.Message) error {
 			return err
 		}
 	}
+	dataEnd := n.wal.dataEnd
 	if len(ents) > 0 || len(hs) > 0 {
 		t := time.Now()
 		err := n.wal.write(ents, hs)
@@ -194,13 +195,51 @@ func (n *node) appendNow(m *pb.Message) error {
 		n.commit = st.GetCommit()
 		n.storage.setHardState(st)
 	}
-	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st, at: n.now})
+	if n.commitOnly(m, st) {
+		// Only the commit moved: its record is written, and goes durable
+		// with the next sync or the idle mark (markIdle), but nothing
+		// waits for that, as etcd syncs no hard state whose term and vote
+		// stand (raft.MustSync). A commit lost to a crash is learned
+		// again from the leader. Synced, it took a sync of its own on
+		// every node at every commit, which the next write's sync waited
+		// behind (#802). Nothing relies on the record being durable, so
+		// no mark need claim it: the idle mark claims the records before
+		// it, which were synced and answered, as it did (dataEnd).
+		n.wal.dataEnd = dataEnd
+		n.deliver(m.Responses)
+		return nil
+	}
+	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st, at: n.now, ents: len(ents) > 0})
 	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off || n.plantedEarlyDurable() {
 		n.synced()
 		return nil
 	}
 	n.wal.kick()
 	return nil
+}
+
+// commitOnly reports whether append m, which wrote hard state st, needs
+// no sync: it carries no entry and no snapshot, its hard state's term and
+// vote are the durable one's, and no append before it waits for a sync,
+// whose responses must go first.
+func (n *node) commitOnly(m *pb.Message, st *pb.HardState) bool {
+	w := n.wal
+	d := w.durableHS
+	if len(m.GetEntries()) > 0 || m.GetSnapshot().GetMetadata().GetIndex() > 0 || st == nil || d == nil || len(w.pending) > 0 {
+		return false
+	}
+	return st.GetTerm() == d.GetTerm() && st.GetVote() == d.GetVote()
+}
+
+// deliver steps or sends an append's responses.
+func (n *node) deliver(resps []*pb.Message) {
+	for _, r := range resps {
+		if r.GetTo() == n.id {
+			_ = n.rn.Step(r)
+		} else {
+			n.sendPeer(r)
+		}
+	}
 }
 
 // synced delivers the responses of the appends that are durable now.
@@ -212,13 +251,7 @@ func (n *node) synced() {
 	}
 	k := 0
 	for ; k < len(w.pending) && w.pending[k].end <= done; k++ {
-		for _, r := range w.pending[k].resps {
-			if r.GetTo() == n.id {
-				_ = n.rn.Step(r)
-			} else {
-				n.sendPeer(r)
-			}
-		}
+		n.deliver(w.pending[k].resps)
 		n.simDurable(&w.pending[k])
 		w.stable = w.pending[k].end
 		if hs := w.pending[k].hs; hs != nil {

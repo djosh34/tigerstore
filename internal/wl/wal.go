@@ -179,7 +179,8 @@ type wal struct {
 	// formatted is how long this start took to format the ring, 0 if the
 	// log had one: the node logs it.
 	formatted time.Duration
-	// dataEnd is where the log's last record but a sync's mark ends, and
+	// dataEnd is where the log's last record but a sync's mark, or a hard
+	// state that only moved the commit (commitOnly), ends, and
 	// claimed what the newest mark says is durable (appendSynced): a ring
 	// syncs a mark alone once the log goes idle with its last records
 	// unclaimed (markIdle).
@@ -191,6 +192,9 @@ type walStats struct {
 	syncs  uint64
 	writes uint64
 	bytes  uint64
+	// marks are the syncs of a mark alone (markIdle), and stateOnly the
+	// syncs for appends that carried no entry, a hard state only.
+	marks, stateOnly uint64
 }
 
 type walJob struct {
@@ -198,6 +202,7 @@ type walJob struct {
 	resps []*pb.Message
 	hs    *pb.HardState // the hard state the append wrote, if any
 	at    time.Time     // when the loop handed it the log
+	ents  bool          // whether the append carried entries
 }
 
 type segment struct {
@@ -932,6 +937,9 @@ func (w *wal) kick() {
 	w.deferred = false
 	w.lastKick = now
 	w.stats.syncs++
+	if !slices.ContainsFunc(w.pending, func(j walJob) bool { return j.ents }) {
+		w.stats.stateOnly++
+	}
 	if w.ring != nil {
 		w.appendSynced()
 	}

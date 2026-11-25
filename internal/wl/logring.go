@@ -268,6 +268,7 @@ func (w *wal) markIdle(now time.Time) {
 		return
 	}
 	w.stats.syncs++
+	w.stats.marks++
 	w.want.Store(w.off)
 	w.inflight = true
 	var b [8]byte
