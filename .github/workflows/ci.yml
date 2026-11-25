@@ -85,10 +85,15 @@ jobs:
       # slowest, those internal/wl/slow-tests.txt names, in test-wl-slow:
       # wl took 490 to 559 s of its 600 here, and a run past it failed
       # (#829's ci).
+      # The skip applies to internal/wl alone: a test of one of those
+      # names in another package runs here.
       - shell: bash
         run: |
           slow="^($(paste -sd'|' internal/wl/slow-tests.txt))\$"
-          go list ./... | grep -v '/internal/sim$' | xargs go test -race -skip "$slow" 2>&1 | tee "$RUNNER_TEMP/test.log"
+          status=0
+          go list ./... | grep -v -e '/internal/sim$' -e '/internal/wl$' | xargs go test -race 2>&1 | tee "$RUNNER_TEMP/test.log" || status=1
+          go test -race -skip "$slow" ./internal/wl 2>&1 | tee -a "$RUNNER_TEMP/test.log" || status=1
+          exit "$status"
       # wl's nodes on simos and simfs need the simulator's seam, the tag
       # simio (internal/wl/sys.go).
       - shell: bash
@@ -114,19 +119,27 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # The list must be test names, each a test of internal/wl: a name
+      # that no longer is one fails here, before the tests run.
       - shell: bash
         run: |
-          set -o pipefail
+          if grep -vqxE 'Test[A-Za-z0-9_]+' internal/wl/slow-tests.txt; then
+            echo "internal/wl/slow-tests.txt holds a line that is not a test name:"
+            grep -vnxE 'Test[A-Za-z0-9_]+' internal/wl/slow-tests.txt
+            exit 1
+          fi
           slow="^($(paste -sd'|' internal/wl/slow-tests.txt))\$"
-          want=$(grep -c . internal/wl/slow-tests.txt)
-          got=$(go test -list "$slow" ./internal/wl | grep -c '^Test')
-          if [ "$got" -ne "$want" ]; then
-            echo "internal/wl/slow-tests.txt names $want tests, of which $got are in internal/wl"
+          listed=$(go test -list "$slow" ./internal/wl)
+          if ! diff <(sort -u internal/wl/slow-tests.txt) <(printf '%s\n' "$listed" | grep '^Test' | sort -u); then
+            echo "internal/wl/slow-tests.txt (<) and the tests of internal/wl it names (>) differ"
             exit 1
           fi
           go test -race -run "$slow" ./internal/wl 2>&1 | tee "$RUNNER_TEMP/test.log"
       - if: failure()
-        run: scripts/replay.sh "$RUNNER_TEMP/test.log" -race
+        run: |
+          if [ -f "$RUNNER_TEMP/test.log" ]; then
+            scripts/replay.sh "$RUNNER_TEMP/test.log" -race
+          fi
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
