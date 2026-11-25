@@ -341,3 +341,26 @@ func TestOptionalIndexRandomReference(t *testing.T) {
 		t.Run(strconv.Itoa(trial), func(t *testing.T) { compareOptional(t, h) })
 	}
 }
+
+// An op the index finds impossible is named by its kind and the revision
+// and size of its answer, not its contents: a range that answered 100,000
+// keys made a 7 MB error of one step (#849's review).
+func TestAnIndexErrorNamesTheOpBriefly(t *testing.T) {
+	kvs := make([]history.KeyValue, 100_000)
+	for i := range kvs {
+		kvs[i] = history.KeyValue{Key: fmt.Sprintf("k%06d", i), Value: "v", CreateRevision: 2, ModRevision: 2, Version: 1}
+	}
+	h := &history.History{}
+	for i := range 4 {
+		h.Ops = append(h.Ops, history.Op{Client: 0, Call: int64(2*i + 1), Return: int64(2*i + 2), Req: history.Request{Put: &history.PutRequest{Key: "a", Value: "v"}}, Resp: &history.Response{Revision: int64(i + 2), Put: &history.PutResponse{}}})
+	}
+	// Called after the put at revision 5 returned, it answers revision 2.
+	h.Ops = append(h.Ops, history.Op{Client: 1, Call: 9, Return: 10, Req: history.Request{Range: &history.RangeRequest{Key: "k", End: "l"}}, Resp: &history.Response{Revision: 2, Range: &history.RangeResponse{KVs: kvs, Count: int64(len(kvs))}}})
+	err := Witnessed(h, FromRevisions, time.Minute, MaxSteps(1_000))
+	if err == nil || errors.Is(err, ErrWitnessTimeout) {
+		t.Fatalf("an impossible range: %v", err)
+	}
+	if len(err.Error()) > 1<<10 || !strings.Contains(err.Error(), "a range, with answer revision 2, 100000 keys of 100000") {
+		t.Fatalf("the error takes %d bytes: %.300s", len(err.Error()), err)
+	}
+}

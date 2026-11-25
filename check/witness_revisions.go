@@ -169,7 +169,7 @@ func (r *revisionOrder) progress() string {
 	for _, f := range r.stack[max(0, len(r.stack)-3):] {
 		fmt.Fprintf(&b, "; gap %d had tried %d of its %d candidates", f.rev, f.next, len(f.cands))
 		if f.next > 0 && f.next <= len(f.cands) {
-			fmt.Fprintf(&b, ", the last %s", r.w.describe(f.cands[f.next-1]))
+			fmt.Fprintf(&b, ", the last %s", r.w.describeBrief(f.cands[f.next-1]))
 		}
 	}
 	if r.failure != nil {
@@ -315,7 +315,7 @@ func (r *revisionOrder) index() error {
 		op := &h.Ops[i]
 		if op.Resp != nil {
 			if !r.checkRange(op.Resp.Revision) {
-				return fmt.Errorf("%s: %w", r.w.describe(i), r.outOfRange)
+				return fmt.Errorf("%s: %w", r.w.describeBrief(i), r.outOfRange)
 			}
 			r.top = max(r.top, op.Resp.Revision)
 		}
@@ -323,7 +323,7 @@ func (r *revisionOrder) index() error {
 		case op.Req.Range != nil && op.Req.Range.Serializable:
 		case op.Resp != nil && r.indexBumps(op):
 			if j, ok := r.writer(op.Resp.Revision); ok {
-				return fmt.Errorf("%s and op %d both wrote revision %d", r.w.describe(i), j, op.Resp.Revision)
+				return fmt.Errorf("%s and op %d both wrote revision %d", r.w.describeBrief(i), j, op.Resp.Revision)
 			}
 			r.setWriter(op.Resp.Revision, i)
 		case op.Resp != nil && op.Req.LeaseRevoke != nil:
@@ -870,7 +870,7 @@ func (r *revisionOrder) inRealTime() error {
 			before = r.highest[n-1]
 		}
 		if before > op.Resp.Revision {
-			return fmt.Errorf("%s has no state that real time allows: it answers revision %d, but an op that returned before it was called answered %d", r.w.describe(i), op.Resp.Revision, before)
+			return fmt.Errorf("%s has no state that real time allows: it answers revision %d, but an op that returned before it was called answered %d", r.w.describeBrief(i), op.Resp.Revision, before)
 		}
 	}
 	return nil
@@ -1119,6 +1119,14 @@ func (r *revisionOrder) scheduleOptional() {
 		}
 	}
 	indexSort(r, r.mutations, func(a, b int) int { return cmp.Compare(r.w.returns[a], r.w.returns[b]) })
+	// Only an ambiguous compaction, with a compacted rejection to explain,
+	// uses the indexes below. Without one they are built empty, and an
+	// ambiguous compaction finds no rejection to explain, as it would: a
+	// history of reads alone took 17 times the old index's time building
+	// them for nothing (#849's review).
+	if len(compacted) == 0 || !slices.ContainsFunc(r.ambiguous, func(i int) bool { return h.Ops[i].Req.Compact != nil }) {
+		reads, compactions, compacted = nil, nil, nil
+	}
 	readPrefix, compactPrefix := r.optionalPrefix(reads), r.optionalPrefix(compactions)
 	// A suffix minimum answers whether any acked compaction large enough
 	// returned strictly before a rejection's call. Compute explanations once,
