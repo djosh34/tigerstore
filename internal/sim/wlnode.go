@@ -583,6 +583,23 @@ func (h *wlHooks) Turn(st wl.TurnState, values func() []wl.LogValue) {
 // (FlipSnapshot). Peers talk TLS, so only this hook reaches the stream's
 // own CRC. A stream larger than a chunk is cut or damaged in its first.
 func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
+	// Only a cold restart waits on snapshots (coldRestart's progress), and
+	// traces them: the main runs keep their draws.
+	if h.s.inColdRestart {
+		if mib, at := h.s.snaps.chunk(to, first, len(p)); first || mib {
+			h.s.mu.Lock()
+			h.s.tracef("node %d: serving a snapshot stream to %d, %d MiB of it so far", h.p.n.id, to, at>>20)
+			h.s.mu.Unlock()
+		}
+	}
+	if w := h.s.cfg.snapshotWait; w > 0 {
+		t := time.NewTimer(time.Duration(w))
+		select {
+		case <-t.C:
+		case <-h.p.ctx.Done():
+			t.Stop()
+		}
+	}
 	keep := len(p)
 	if !first {
 		return keep
