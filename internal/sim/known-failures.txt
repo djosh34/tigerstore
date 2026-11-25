@@ -12,6 +12,7 @@ TestScenarios 42 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 53 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 59 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 61 https://github.com/djosh34/tigerstore/issues/769
+TestScenarios 78 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 81 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 83 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 448 https://github.com/djosh34/tigerstore/issues/769
