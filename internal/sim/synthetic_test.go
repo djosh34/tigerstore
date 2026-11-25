@@ -178,6 +178,9 @@ func TestSyntheticStoresAreValidStarts(t *testing.T) {
 // the data dir keeps its checkpoint, its pointer and its log's directory
 // (#842).
 func TestARestoreOutlastsAPowerLoss(t *testing.T) {
+	// A restore onto a simulated disk needs wl's seam, which a plain go
+	// test leaves out: Here skips there, as every simulator test does.
+	simrun.Here(t)
 	spec := syntheticSpec(1, 3, 20)
 	cfg := synthConfig(1, 20)
 	var img *image
