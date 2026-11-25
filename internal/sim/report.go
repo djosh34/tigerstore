@@ -56,7 +56,7 @@ func (s *Sim) report() string {
 		}
 		for _, w := range n.installs {
 			if w[1] == 0 {
-				fmt.Fprintf(&b, "  installing a snapshot since %s, not done\n", seconds(w[0]))
+				fmt.Fprintf(&b, "  began to install a snapshot at %s, which never ended\n", seconds(w[0]))
 			} else {
 				fmt.Fprintf(&b, "  installed a snapshot at %s in %s\n", seconds(w[0]), seconds(w[1]-w[0]))
 			}

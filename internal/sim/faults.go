@@ -1164,13 +1164,20 @@ func during(times []int64, from, to int64) bool {
 	return false
 }
 
-// installingDuring reports whether a call from from to to overlapped a
-// snapshot install of the node that ended: the node's loop loads the
-// store from the snapshot and answers no client until it is done
-// (#775's ruling). An install that never ended excuses nothing.
-func (n *node) installingDuring(from, to int64) bool {
+// installExcused reports whether r is a call that failed, other than as
+// a rejection the rule counts as served, and overlapped a span in which
+// its node took a snapshot that it installed: from when the snapshot
+// reached the node until the install was done, the node can apply
+// nothing, and its loop answers no client while it loads the snapshot
+// (#775's ruling). The client's timeout bounds how far back of the span
+// a call can start. A span that never ended excuses nothing, nor does a
+// call that ended before the span began or started after it ended.
+func (n *node) installExcused(r *Record) bool {
+	if r.Err == nil || isRejection(r.Err) {
+		return false
+	}
 	for _, w := range n.installs {
-		if w[1] != 0 && from < w[1] && to >= w[0] {
+		if w[1] != 0 && r.Call < w[1] && r.Return >= w[0] {
 			return true
 		}
 	}

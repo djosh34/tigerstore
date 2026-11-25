@@ -220,6 +220,7 @@ func (*recovered) Checkpoint(uint64, uint64)                    {}
 func (*recovered) CheckpointDone(uint64, string)                {}
 func (*recovered) Loaded(uint64, uint64)                        {}
 func (*recovered) Installing(uint64)                            {}
+func (*recovered) Installed(uint64)                             {}
 func (*recovered) Expired(int64)                                {}
 
 // A write of the log that fails leaves its bytes in the page cache, where
