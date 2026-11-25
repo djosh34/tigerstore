@@ -2,9 +2,11 @@ package mvcc
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -97,15 +99,7 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 				return false
 			}
 			v := &k.vers()[i]
-			b = binary.AppendVarint(b, v.mod.main)
-			b = binary.AppendVarint(b, v.mod.sub)
-			b = binary.AppendVarint(b, v.create)
-			b = binary.AppendVarint(b, v.ver)
-			b = binary.AppendVarint(b, v.lease)
-			b = binary.AppendUvarint(b, v.value.Index)
-			b = binary.AppendUvarint(b, uint64(v.value.Off))
-			b = binary.AppendUvarint(b, uint64(v.value.Len))
-			b = binary.LittleEndian.AppendUint32(b, v.value.Sum)
+			b = appendVersion(b, v)
 			if v.value.Len > 0 && (minRef == 0 || v.value.Index < minRef) {
 				minRef = v.value.Index
 			}
@@ -127,6 +121,57 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 		s.drop(f.compact)
 	}
 	return b, minRef, true
+}
+
+// appendVersion appends v as a checkpoint holds it.
+func appendVersion(b []byte, v *version) []byte {
+	b = binary.AppendVarint(b, v.mod.main)
+	b = binary.AppendVarint(b, v.mod.sub)
+	b = binary.AppendVarint(b, v.create)
+	b = binary.AppendVarint(b, v.ver)
+	b = binary.AppendVarint(b, v.lease)
+	b = binary.AppendUvarint(b, v.value.Index)
+	b = binary.AppendUvarint(b, uint64(v.value.Off))
+	b = binary.AppendUvarint(b, uint64(v.value.Len))
+	return binary.LittleEndian.AppendUint32(b, v.value.Sum)
+}
+
+// Seed is a key a store starts with (StartAt): its one version, as a
+// read at the store's revision sees it.
+type Seed struct {
+	Key, Value                  []byte
+	Create, Mod, Version, Lease int64
+}
+
+// StartAt makes the empty store s one at revision at, compacted at at,
+// that holds seeds, in key order, each value kept in s's Values. No run
+// of writes from revision 1 reaches such a store: the simulator's
+// synthetic images start a store with its revision near the bound Load
+// takes, as one restored from another engine's snapshot is (#502). It
+// takes them as Load takes a checkpoint, with Load's checks.
+func (s *Store) StartAt(at int64, seeds []Seed) error {
+	var b []byte
+	for _, k := range seeds {
+		if len(k.Key) == 0 {
+			// Its length, 0, would end the keys.
+			return fmt.Errorf("%w: an empty key", ErrBadCheckpoint)
+		}
+		var ref Ref
+		if len(k.Value) > 0 {
+			var err error
+			if ref, err = s.values.Place(k.Value); err != nil {
+				return err
+			}
+			ref.Sum = crc32.Checksum(k.Value, castagnoli)
+		}
+		b = binary.AppendUvarint(b, uint64(len(k.Key)))
+		b = append(b, k.Key...)
+		b = binary.AppendUvarint(b, 1)
+		b = appendVersion(b, &version{mod: rev{main: k.Mod}, create: k.Create, ver: k.Version, lease: k.Lease, value: ref})
+	}
+	b = binary.AppendUvarint(b, 0)
+	_, err := s.Load(bufio.NewReader(bytes.NewReader(b)), at, at)
+	return err
 }
 
 // ErrBadCheckpoint means that the keys of a checkpoint do not parse.

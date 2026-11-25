@@ -55,7 +55,7 @@ func (s *Sim) checkWL(res *Result) error {
 			res.Log = append(res.Log, op)
 		}
 	}
-	model, log, revs, err := replay(res.Log)
+	model, log, revs, err := replay(s.synth, res.Log)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,11 @@ func (s *Sim) checkWL(res *Result) error {
 	}
 	// Without a quorum no lease expires, so none must be gone by the end;
 	// none may expire early either way.
-	alive := aliveLeases(res.Log)
+	var imaged map[int64]int64
+	if s.synth != nil {
+		imaged = s.synth.leases
+	}
+	alive := aliveLeases(imaged, res.Log)
 	if s.quorumLostAt > 0 {
 		alive = nil
 	}
@@ -217,11 +221,15 @@ func (s *Sim) finalReads(live []*node, rev int64, want []*mvccpb.KeyValue) error
 	return nil
 }
 
-// aliveLeases are the leases the committed log leaves alive: granted and
-// never revoked, in ID order. Main's check asks a live node's core; wl's
-// asks the log every node applied.
-func aliveLeases(log []proto.Message) []int64 {
+// aliveLeases are the leases the committed log leaves alive: granted, or
+// in imaged, a synthetic image's leases, and never revoked, in ID order.
+// Main's check asks a live node's core; wl's asks the log every node
+// applied.
+func aliveLeases(imaged map[int64]int64, log []proto.Message) []int64 {
 	alive := map[int64]bool{}
+	for id := range imaged {
+		alive[id] = true
+	}
 	for _, op := range log {
 		switch r := op.(type) {
 		case *pb.LeaseGrantRequest:
@@ -253,7 +261,7 @@ func (s *Sim) survivorReads(live []*node) error {
 			}
 			ops = append(ops, o...)
 		}
-		model, _, _, err := replay(ops)
+		model, _, _, err := replay(s.synth, ops)
 		if err != nil {
 			return err
 		}

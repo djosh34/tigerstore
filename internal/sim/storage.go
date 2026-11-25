@@ -30,6 +30,10 @@ type logRec struct {
 // holds no pointers, as a run applies one entry after the other on every
 // node and keeps them all.
 type entryLog struct {
+	// from is the first index the log can hold: 0, or the index of a
+	// synthetic image's snapshot, which no entry before it reaches
+	// (syntheticImage). recs[i-from] is index i's record.
+	from uint64
 	recs []logRec
 	// set marks the indexes that have a record.
 	set  []bool
@@ -38,20 +42,25 @@ type entryLog struct {
 
 // get returns the record of index i.
 func (l *entryLog) get(i uint64) (logRec, bool) {
-	if i >= uint64(len(l.recs)) || !l.set[i] {
+	if i < l.from || i-l.from >= uint64(len(l.recs)) || !l.set[i-l.from] {
 		return logRec{}, false
 	}
-	return l.recs[i], true
+	return l.recs[i-l.from], true
 }
 
-// put keeps r at index i.
+// put keeps r at index i. An index before from has no place: no node
+// holds one, as every node starts from the image at from.
 func (l *entryLog) put(i uint64, r logRec) {
-	if i >= uint64(len(l.recs)) {
-		n := max(i+1, 2*uint64(len(l.recs)))
+	if i < l.from {
+		return
+	}
+	j := i - l.from
+	if j >= uint64(len(l.recs)) {
+		n := max(j+1, 2*uint64(len(l.recs)))
 		l.recs = append(l.recs, make([]logRec, n-uint64(len(l.recs)))...)
 		l.set = append(l.set, make([]bool, n-uint64(len(l.set)))...)
 	}
-	l.recs[i], l.set[i] = r, true
+	l.recs[j], l.set[j] = r, true
 }
 
 // bytes returns the data of r, which the log keeps.
@@ -89,8 +98,14 @@ func (s *Sim) record(n *node, a core.Applied) {
 // committed returns the committed entries up to index last, from the
 // simulator's own record.
 func (s *Sim) committed(last uint64) ([]*raftpb.Entry, error) {
-	out := make([]*raftpb.Entry, 0, last)
-	for i := uint64(1); i <= last; i++ {
+	// A synthetic image's record starts after its snapshot, whose store
+	// the model starts from (replay).
+	// It counts the entries, not the indexes, which may end at the
+	// largest uint64.
+	n := last - min(last, s.log.from)
+	out := make([]*raftpb.Entry, 0, n)
+	for k := range n {
+		i := s.log.from + 1 + k
 		r, ok := s.log.get(i)
 		if !ok || !r.known {
 			return nil, fmt.Errorf("the record of committed entries has no entry %d", i)
