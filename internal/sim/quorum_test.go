@@ -78,6 +78,41 @@ func TestHasQuorum(t *testing.T) {
 	}
 }
 
+// TestALossTheSurvivorsUndidIsTakenBack: a loss decided at a fence is taken
+// back at the end when a survivor applied, since, a configuration whose
+// surviving voters are a majority, as one that held the replacement's add
+// committed and not yet applied does (#850's review). A loss that stands,
+// and a LoseQuorum run's, stay.
+func TestALossTheSurvivorsUndidIsTakenBack(t *testing.T) {
+	members := func(ids ...uint64) []wl.TurnMember {
+		ms := make([]wl.TurnMember, len(ids))
+		for i, id := range ids {
+			ms[i].ID = id
+		}
+		return ms
+	}
+	for _, tc := range []struct {
+		name       string
+		one        []wl.TurnMember
+		loseQuorum bool
+		kept       bool
+	}{
+		{"the add applied since", members(1, 3, 4), false, false},
+		{"the add never applied", members(1, 3), false, true},
+		{"a LoseQuorum run", members(1, 3, 4), true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Sim{nodes: []*node{{id: 1, lastMembers: tc.one}, {id: 4}, {id: 3, fenced: true}}, quorumLostAt: 5 * Second}
+			s.stats.QuorumLostAt = s.quorumLostAt
+			s.cfg.LoseQuorum = tc.loseQuorum
+			s.recheckQuorum()
+			if kept := s.quorumLostAt != 0 && s.stats.QuorumLostAt != 0; kept != tc.kept {
+				t.Fatalf("the loss kept: %v, want %v", kept, tc.kept)
+			}
+		})
+	}
+}
+
 // TestReplacementLosesQuorum is TestCampaign seed 780 (#850): node 2
 // was replaced, but node 1 had not applied the add when node 3 was fenced
 // too. Its run must check safety and unavailability, not convergence.

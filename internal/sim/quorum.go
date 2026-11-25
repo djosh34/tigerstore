@@ -31,3 +31,17 @@ func hasQuorum(nodes []*node) bool {
 	}
 	return false
 }
+
+// recheckQuorum takes back, at the end, a loss of the quorum that a fence
+// seemed to make, when a survivor has applied a configuration whose
+// surviving voters are a majority by then: at the fence it held the
+// change committed and not yet applied, or it applied it at a restart
+// (#850's review). The run then takes the checks of a cluster that kept
+// its quorum. A LoseQuorum run keeps its loss. The lock is held.
+func (s *Sim) recheckQuorum() {
+	if s.quorumLostAt == 0 || s.cfg.LoseQuorum || !hasQuorum(s.nodes) {
+		return
+	}
+	s.tracef("the quorum lost at %d ms was not lost: a survivor applied a configuration with a surviving majority since", s.quorumLostAt/Millisecond)
+	s.quorumLostAt, s.stats.QuorumLostAt = 0, 0
+}

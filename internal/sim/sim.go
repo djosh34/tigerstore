@@ -1318,6 +1318,9 @@ func (s *Sim) run() error {
 	if err := s.freeze(); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	s.recheckQuorum()
+	s.mu.Unlock()
 	if s.lagged != nil {
 		// LagAtEnd's follower may catch up now.
 		s.mu.Lock()
