@@ -55,7 +55,7 @@ func (s *Sim) checkWL(res *Result) error {
 			res.Log = append(res.Log, op)
 		}
 	}
-	model, log, revs, err := replay(res.Log)
+	model, log, revs, err := replay(s.synth, res.Log)
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func (s *Sim) survivorReads(live []*node) error {
 			}
 			ops = append(ops, o...)
 		}
-		model, _, _, err := replay(ops)
+		model, _, _, err := replay(s.synth, ops)
 		if err != nil {
 			return err
 		}

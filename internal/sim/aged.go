@@ -50,6 +50,10 @@ type image struct {
 	// store after them, compacted at its revision.
 	ops   int
 	start *history.Start
+	// synth, for a synthetic image (syntheticImage), is the store its
+	// snapshot holds, which no committed log leads to: the model starts
+	// from it (replay).
+	synth *synthStore
 }
 
 // capture compacts the aging run s at its last revision, once its nodes
@@ -120,7 +124,7 @@ func (s *Sim) capture() (*image, error) {
 		}
 		ops = append(ops, o...)
 	}
-	model, log, _, err := replay(ops)
+	model, log, _, err := replay(nil, ops)
 	if err != nil {
 		return nil, err
 	}
@@ -174,13 +178,13 @@ func (s *Sim) fork(img *image) {
 	s.log, s.ckpts = img.log.clone(), maps.Clone(img.ckpts)
 	s.maxLogged, s.applied = img.maxLogged, img.applied
 	s.expiredAt, s.revokedAt = maps.Clone(img.expiredAt), maps.Clone(img.revokedAt)
-	s.startRev = img.start.Rev
+	s.startRev, s.synth = img.start.Rev, img.synth
 }
 
 // clone is a copy of l that its owner can add to without changing l: the
 // records are copied, and the bytes l holds stay where they are.
 func (l *entryLog) clone() *entryLog {
-	return &entryLog{recs: slices.Clone(l.recs), set: slices.Clone(l.set), data: l.data.clone()}
+	return &entryLog{from: l.from, recs: slices.Clone(l.recs), set: slices.Clone(l.set), data: l.data.clone()}
 }
 
 // agedRequest is one of the calls a fork makes on the image's store

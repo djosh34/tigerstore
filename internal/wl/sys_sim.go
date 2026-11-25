@@ -49,6 +49,19 @@ func newSysEnv(cfg *Config) (sysEnv, error) {
 // envOf is the system for sys, a node's on the simulator's descriptors.
 func envOf(sys Sys) sysEnv { return sysEnv{s: sys} }
 
+// RestoreSys is Restore of the snapshot of size bytes in snap, its files
+// written through sys: the simulator restores a node's disk as an
+// operator restores a member's data dir (#502).
+func RestoreSys(sys Sys, snap io.ReaderAt, size int64, dataDir string, members []Member, skipHash bool) (index, term uint64, rev int64, err error) {
+	if sys == nil {
+		return 0, 0, 0, errNoSys
+	}
+	// The files' calls go to the first system any node or restore had,
+	// as a node's do (newSysEnv).
+	fdSys.CompareAndSwap(nil, &sys)
+	return restore(envOf(sys), snap, size, dataDir, members, skipHash)
+}
+
 // lockOSThread does nothing: the simulator schedules the goroutines of
 // its nodes itself, and gosim's cannot be locked to a thread.
 func (sysEnv) lockOSThread() {}

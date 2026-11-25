@@ -210,14 +210,10 @@ const storageVersion = "3.7.0"
 // replacing the snapshot's, is the newest, and the log is empty. It
 // returns the snapshot's index, term and revision.
 func Restore(path, dataDir string, members []Member, skipHash bool) (index, term uint64, rev int64, err error) {
-	// As etcdutl and main's restore, never into a node's data: its old
-	// log would go on after the new checkpoint.
-	entries, err := os.ReadDir(dataDir)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	// The data dir is checked before the snapshot is read, as etcdutl
+	// does, and again by restore.
+	if err := restorable(sysEnv{}, dataDir); err != nil {
 		return 0, 0, 0, err
-	}
-	if len(entries) > 0 {
-		return 0, 0, 0, fmt.Errorf("%w: %s", ErrDataDirNotEmpty, dataDir)
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -228,16 +224,39 @@ func Restore(path, dataDir string, members []Member, skipHash bool) (index, term
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	if fi.Size() < int64(clientSnapHeader)+sha256.Size {
+	return restore(sysEnv{}, f, fi.Size(), dataDir, members, skipHash)
+}
+
+// restorable checks that dataDir is missing or empty: as etcdutl and
+// main's restore, a restore never goes into a node's data, whose old log
+// would go on after the new checkpoint.
+func restorable(sys sysEnv, dataDir string) error {
+	entries, err := sys.readDir(dataDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if len(entries) > 0 {
+		return fmt.Errorf("%w: %s", ErrDataDirNotEmpty, dataDir)
+	}
+	return nil
+}
+
+// restore is Restore of the snapshot of size bytes that f holds, written
+// through sys.
+func restore(sys sysEnv, f io.ReaderAt, size int64, dataDir string, members []Member, skipHash bool) (index, term uint64, rev int64, err error) {
+	if err := restorable(sys, dataDir); err != nil {
+		return 0, 0, 0, err
+	}
+	if size < int64(clientSnapHeader)+sha256.Size {
 		return 0, 0, 0, errors.New("not a tigerstore snapshot: too short")
 	}
 	if !skipHash {
 		h := sha256.New()
-		if _, err := io.Copy(h, io.NewSectionReader(f, 0, fi.Size()-sha256.Size)); err != nil {
+		if _, err := io.Copy(h, io.NewSectionReader(f, 0, size-sha256.Size)); err != nil {
 			return 0, 0, 0, err
 		}
 		want := make([]byte, sha256.Size)
-		if _, err := f.ReadAt(want, fi.Size()-sha256.Size); err != nil {
+		if _, err := f.ReadAt(want, size-sha256.Size); err != nil {
 			return 0, 0, 0, err
 		}
 		if string(h.Sum(nil)) != string(want) {
@@ -268,18 +287,24 @@ func Restore(path, dataDir string, members []Member, skipHash bool) (index, term
 		cs.Voters = append(cs.Voters, m.ID)
 	}
 	dir := filepath.Join(dataDir, "ckpt")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := sys.mkdirAll(dir); err != nil {
 		return 0, 0, 0, err
 	}
-	if err := os.MkdirAll(filepath.Join(dataDir, "wal"), 0o700); err != nil {
+	if err := sys.mkdirAll(filepath.Join(dataDir, "wal")); err != nil {
+		return 0, 0, 0, err
+	}
+	// The data dir's sync makes its two directories durable: without it a
+	// power loss after the restore could leave the data dir empty, and
+	// the node would start a new cluster instead (#842).
+	if err := syncDir(sys, dataDir); err != nil {
 		return 0, 0, 0, err
 	}
 	name := ckptName(index)
-	out, err := os.Create(filepath.Join(dir, name))
+	out, err := sys.openFile(filepath.Join(dir, name), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	src := io.NewSectionReader(f, int64(clientSnapHeader), fi.Size()-int64(clientSnapHeader)-sha256.Size)
+	src := io.NewSectionReader(f, int64(clientSnapHeader), size-int64(clientSnapHeader)-sha256.Size)
 	err = rewriteCkpt(src, out, &ckptHeader{cs: cs, members: cm})
 	if err == nil {
 		err = out.Sync()
@@ -291,5 +316,5 @@ func Restore(path, dataDir string, members []Member, skipHash bool) (index, term
 		return 0, 0, 0, err
 	}
 	hs := &pb.HardState{Term: new(term), Commit: new(index)}
-	return index, term, rev, writePointer(sysEnv{}, dir, &ckptPointer{name: name, hs: hs})
+	return index, term, rev, writePointer(sys, dir, &ckptPointer{name: name, hs: hs})
 }

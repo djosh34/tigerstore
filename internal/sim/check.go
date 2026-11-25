@@ -80,9 +80,19 @@ func sameRead(st *mvcc.Store, req *pb.RangeRequest, got *pb.RangeResponse) error
 		q.Revision = got.Header.Revision
 	}
 	q.Serializable = false
-	want, err := st.Range(q)
-	if err != nil {
-		return fmt.Errorf("re-reading at revision %d: %w", q.Revision, err)
+	var want *pb.RangeResponse
+	if q.Revision == 1 && st.CompactRev() > 1 {
+		// Only a model that starts from a synthetic image's store
+		// (replay) is compacted, and before its revision it has only
+		// revision 1, the empty store: a member added with an empty
+		// disk serves a serializable read from it until the image
+		// reaches it, as etcd's does (#502).
+		want = &pb.RangeResponse{}
+	} else {
+		var err error
+		if want, err = st.Range(q); err != nil {
+			return fmt.Errorf("re-reading at revision %d: %w", q.Revision, err)
+		}
 	}
 	g := proto.CloneOf(got)
 	g.Header, want.Header = nil, nil
@@ -474,14 +484,22 @@ func isRejection(err error) bool {
 		errors.Is(err, rpctypes.ErrGRPCLeaseNotFound) || errors.Is(err, rpctypes.ErrGRPCNoSpace)
 }
 
-// replay applies the committed log to a fresh state, without compactions,
-// so every revision stays readable. It returns the log as the checkers
-// read it: an expiry that applied becomes the LeaseRevoke it amounts to,
-// and one that no longer applied, because a keepalive came first, is left
-// out, as are alarms and the writes the NOSPACE alarm refused. With it
-// come the revisions right after each of its entries.
-func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) {
-	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)), &mvcc.Heap{})
+// replay applies the committed log to a fresh state, or to a synthetic
+// image's store if from is set, without compactions, so every revision
+// stays readable. It returns the log as the checkers read it: an expiry
+// that applied becomes the LeaseRevoke it amounts to, and one that no
+// longer applied, because a keepalive came first, is left out, as are
+// alarms and the writes the NOSPACE alarm refused. With it come the
+// revisions right after each of its entries.
+func replay(from *synthStore, log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) {
+	minTTL := core.MinLeaseTTL(core.DefaultConfig(1, nil))
+	st := core.NewState(minTTL, &mvcc.Heap{})
+	if from != nil {
+		var err error
+		if st, err = core.NewStateAt(minTTL, &mvcc.Heap{}, from.rev, from.seeds, from.leases); err != nil {
+			return nil, nil, nil, fmt.Errorf("the synthetic image's store: %w", err)
+		}
+	}
 	var out []proto.Message
 	var revs []int64
 	for i, op := range log {
