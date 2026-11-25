@@ -380,7 +380,55 @@ func (w *wal) ringFree() int64 {
 // so that the segments go back to the pool (cutPoint). Only the loop
 // calls it; a node with no log, as checkpoint tests make, has no ring.
 func (w *wal) ringLow() bool {
-	return w != nil && w.ring != nil && w.ringFree() <= ringReserve(w.ring.segs)+max(1, w.ring.segs/8)
+	return w != nil && w.ring != nil && (w.ringFree() <= ringReserve(w.ring.segs)+max(1, w.ring.segs/8) || w.wanted > w.ringRoom())
+}
+
+// ringRoom is how many bytes the log can take before it waits for a
+// segment the cut gives back: what the ring's free segments hold, its
+// reserve too, and the rest of the segment the log's end is in.
+func (w *wal) ringRoom() int64 {
+	return w.ringFree()*segSize + segSize - w.off%segSize
+}
+
+// ringRecordSlack bounds what the log adds to a request's bytes in its
+// entry: the op's own framing within the batch (#814).
+const ringRecordSlack = 64
+
+// nudgeRing proposes an empty entry when this node refused a write for
+// want of room in its ring and no checkpoint can free it: it applied every
+// entry it has, and its newest checkpoint is at the last, so none is due
+// (ringDue), and a client that sends only writes the ring has no room for
+// was refused for good. The empty entry applies, a checkpoint is due past
+// it, and its cut gives the ring's room back (#814). A follower's goes to
+// its leader, as any proposal, and comes back in the leader's append: a
+// leader of a release before this one takes it as any empty entry.
+//
+// One is in flight at a time: Raft's storage holds the entry only once
+// Raft hands it out, so writes refused before then in the same turn, or
+// before a follower's comes back in its leader's append, propose none
+// (nudgedAt, the apply it waits for).
+func (n *node) nudgeRing() {
+	if n.lead == 0 || n.ckpt != nil || n.ringDue() || n.storage.lastIndex() != n.applied {
+		return
+	}
+	if n.nudgedAt == n.applied+1 && n.now.Sub(n.nudgedWhen) < requestTimeout {
+		return
+	}
+	if n.rn.Propose(nil) == nil {
+		// One lost, as in a leader change or a follower's leader dropping
+		// it, goes again once a request would have timed out.
+		n.nudgedAt, n.nudgedWhen = n.applied+1, n.now
+		n.stats.ringNudges++
+	}
+}
+
+// ringTaken is the log bytes the ring must still hold besides a new write:
+// the writes taken since Raft last handed the log an append (ringPledged),
+// the appends that wait for the stage, and appendMargin for the records
+// that are not a write's own, as each append's hard state and the writes
+// no room check takes in (deletes, keepalives, revokes).
+func (n *node) ringTaken() int64 {
+	return n.ringPledged + n.wal.waitingBytes() + appendMargin
 }
 
 // ringShort reports whether the ring holds no more than its reserve: the
@@ -457,33 +505,83 @@ var ringHoldCut atomic.Bool
 // while every write is refused, until it ends.
 var ckptHold atomic.Bool
 
-// ringRefuses refuses a write of stream s while the log's ring is short
-// (ringShort), and reports whether it did: a put, a lease grant, or a Txn
-// that puts. While a checkpoint runs or is due, whose cut gives segments
-// back, the node is too busy for it, as etcd answers past its apply gap;
-// with nothing left to free, it raises NOSPACE, as a full disk does to
-// etcd (#602's ruling), and answers NOSPACE while the alarm is up, as
-// etcd does. Deletes and compactions, which free space, pass,
-// within the ring's reserve.
+// ringRefuses refuses a write of stream s the log's ring has no room for,
+// and reports whether it did. While the ring is short (ringShort) it
+// refuses a put, a lease grant, or a Txn that puts: while a checkpoint
+// runs or is due, whose cut gives segments back, the node is too busy for
+// it, as etcd answers past its apply gap; with nothing left to free, it
+// raises NOSPACE, as a full disk does to etcd (#602's ruling), and answers
+// NOSPACE while the alarm is up, as etcd does. Deletes and compactions,
+// which free space, pass, within the ring's reserve.
+//
+// Every write, a delete too, is refused as too many requests when its log
+// bytes, with what the ring must still hold besides (ringTaken), pass the
+// ring's room: it would wait for a segment the cut gives back, and the
+// cut waits for a checkpoint that needs an apply behind it; it waited for
+// good, and its client timed out (#814). The room it wants makes the ring
+// low (ringLow), so that the next checkpoint the node can make cuts past
+// what the log keeps for a follower that lags, which then takes a
+// snapshot; a smaller write that fits goes on, and its apply lets that
+// checkpoint be made, or, with none, the node proposes an empty entry
+// (nudgeRing). A write that fits but takes the reserve goes on, as before:
+// then the ring is short.
 func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
-	if !n.wal.ringShort() {
+	if n.noSpace || n.corrupt {
+		// An alarm is up: the apply refuses what it forbids (alarmGate),
+		// and so does this node, before the log takes it, with the same
+		// error, CORRUPT first; deletes and compactions go on. A put
+		// through a follower whose leader's ring is short never comes to
+		// the apply: the leader drops it (leaderDrops), and its client was
+		// refused as busy for good (#818's review). A node with no ring of
+		// its own checks it too.
+		if err := n.alarmGate(s.kind, msg); err != nil {
+			n.reject(c, s, err)
+			return true
+		}
+	}
+	w := n.wal
+	if w.ring == nil {
 		return false
 	}
+	puts := false
 	switch s.kind {
 	case kPut, kLeaseGrant:
+		puts = true
 	case kTxn:
-		if txnCost(msg) == 0 {
-			return false
-		}
-	default:
-		return false
+		puts = txnCost(msg) != 0
 	}
-	if (n.ckpt != nil || n.ringDue()) && !n.noSpaceRaised() {
-		n.reject(c, s, errTooManyRequests)
+	if puts && w.ringShort() {
+		if (n.ckpt != nil || n.ringDue()) && !n.noSpaceRaised() {
+			n.reject(c, s, errTooManyRequests)
+			return true
+		}
+		n.refuseNoSpace(c, s)
 		return true
 	}
-	n.refuseNoSpace(c, s)
+	need := int64(len(msg)) + walEntHdr + ringRecordSlack + n.callerBytes(c, s)
+	if need+n.ringTaken() <= w.ringRoom() {
+		n.ringPledged += need
+		n.batchPledge += need
+		w.wanted = 0
+		return false
+	}
+	// The room the write needs, with what the ring holds besides, is what
+	// it wants: the ring is low until it has that, so that a checkpoint
+	// can be due (ringDue).
+	w.wanted = max(w.wanted, need+n.ringTaken())
+	n.nudgeRing()
+	n.reject(c, s, errTooManyRequests)
 	return true
+}
+
+// callerBytes is what the caller op addCaller adds to the batch for the
+// write of stream s, while auth is on.
+func (n *node) callerBytes(c *client, s *stream) int64 {
+	if !n.auth.enabled {
+		return 0
+	}
+	ai, _, _ := n.identify(c, s)
+	return opHdr + binary.MaxVarintLen64 + int64(len(ai.user))
 }
 
 // ckptEvery is the log written after the newest checkpoint before the
