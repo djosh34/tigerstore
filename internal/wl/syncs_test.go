@@ -225,6 +225,68 @@ func TestASkippedCommitSyncsWithinItsBound(t *testing.T) {
 	}
 }
 
+// TestADeferredSyncEndsWithWhatItWaitsFor is #821's hang in the dispatched
+// ci (TestMembershipFaults seeds 8 and 67, TestSeeds 1391 and 1456,
+// TestScenarios 1207, TestAgedFork/1, all timed out under gosim). A
+// leader's skipped commit defers its sync (kick), and the idle mark, at
+// the tick, takes the commit's record in its own sync (markIdle). The
+// sync deferred must end with it: while it stayed, the loop woke for it
+// at once (deferUntil, past), on every turn, and never blocked, so
+// gosim's clock never moved and the mark's sync never ended. A deferred
+// sync with nothing left to take ends too, at the next kick.
+func TestADeferredSyncEndsWithWhatItWaitsFor(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, 8*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	hs, err := proto.Marshal(&pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An entry, synced, whose records no mark claims yet.
+	ents := []*pb.Entry{{Term: new(uint64(1)), Index: new(uint64(1)), Data: []byte("x")}}
+	if err := w.write(ents, hs); err != nil {
+		t.Fatal(err)
+	}
+	w.want.Store(w.off)
+	w.done.Store(w.off)
+	// A commit skipped after it, as appendNow writes one: its record
+	// leaves dataEnd where it was.
+	dataEnd := w.dataEnd
+	if err := w.write(nil, hs); err != nil {
+		t.Fatal(err)
+	}
+	w.dataEnd = dataEnd
+	now := time.Now()
+	w.skippedAt = now
+	w.lastKick = now.Add(-tickEvery)
+	w.kick()
+	if w.inflight || !w.deferred {
+		t.Fatalf("the skipped commit's sync: in flight %v, deferred %v; want deferred", w.inflight, w.deferred)
+	}
+	w.markIdle(now)
+	if !w.inflight || w.want.Load() != w.off {
+		t.Fatalf("the idle mark did not take the skipped commit: in flight %v, the sync up to %d of %d", w.inflight, w.want.Load(), w.off)
+	}
+	if w.deferred {
+		t.Fatalf("the idle mark's sync took the skipped commit, and the sync deferred for it stayed: the loop wakes at once for it (%v ago) until the mark's sync ends", time.Since(w.deferUntil()))
+	}
+	// With nothing left to sync, a sync deferred ends at the next kick.
+	for w.done.Load() < w.want.Load() {
+		time.Sleep(time.Millisecond)
+	}
+	w.inflight = false
+	w.deferred = true
+	w.kick()
+	if w.inflight || w.deferred {
+		t.Fatalf("a kick with nothing to sync: in flight %v, deferred %v; want neither", w.inflight, w.deferred)
+	}
+}
+
 // TestAnAppendSyncsAHeldCommitAtOnce is the hold's other end: an append
 // with entries after a held commit starts the sync at once, which covers
 // both.

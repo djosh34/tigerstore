@@ -954,7 +954,14 @@ func (w *wal) plantedUnsyncedWrite(from, n, pos int64) error {
 // comes before the gap between syncs: it bounds the wait, the gap only
 // gathers more appends to a sync.
 func (w *wal) kick() {
-	if w.inflight || len(w.pending) == 0 && w.want.Load() >= w.off {
+	if w.inflight {
+		return
+	}
+	if len(w.pending) == 0 && w.want.Load() >= w.off {
+		// Nothing is left for a sync deferred: another, the idle mark's
+		// (markIdle), took it. Kept, the loop would wake for it at once,
+		// on every turn, and never block (#821's hang under gosim).
+		w.deferred = false
 		return
 	}
 	now := time.Now()
