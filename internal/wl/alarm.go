@@ -286,17 +286,53 @@ func (n *node) noSpaceRaised() bool {
 
 // alarmGate refuses a write of kind that a raised alarm forbids.
 func (n *node) alarmGate(kind uint8, req []byte) error {
-	if n.corrupt {
-		switch kind {
-		case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
-			return requestErr(codeDataLoss, msgCorrupt)
-		case kTxn:
-			if txnWrites(req, false) {
-				return requestErr(codeDataLoss, msgCorrupt)
-			}
-		}
+	if n.corrupt && corruptForbids(kind, req) {
+		return requestErr(codeDataLoss, msgCorrupt)
 	}
 	if n.noSpace && noSpaceForbids(kind, req) {
+		return requestErr(codeResourceExhausted, msgNoSpace)
+	}
+	return nil
+}
+
+// corruptForbids reports whether a raised CORRUPT alarm forbids a write of
+// kind, as etcd's corrupt applier: every write, a Txn that writes too.
+func corruptForbids(kind uint8, req []byte) bool {
+	switch kind {
+	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
+		return true
+	case kTxn:
+		return txnWrites(req, false)
+	}
+	return false
+}
+
+// The alarms that forbid a write, as alarmFlags gives them.
+const (
+	forbidNoSpace uint8 = 1 << iota
+	forbidCorrupt
+)
+
+// alarmFlags are the alarms that would forbid a write of kind, whether up
+// or not.
+func alarmFlags(kind uint8, req []byte) uint8 {
+	var f uint8
+	if noSpaceForbids(kind, req) {
+		f |= forbidNoSpace
+	}
+	if corruptForbids(kind, req) {
+		f |= forbidCorrupt
+	}
+	return f
+}
+
+// alarmErr is the error the alarms up now give a write whose alarmFlags
+// are f, CORRUPT first, or nil if none forbids it.
+func (n *node) alarmErr(f uint8) error {
+	switch {
+	case n.corrupt && f&forbidCorrupt != 0:
+		return requestErr(codeDataLoss, msgCorrupt)
+	case n.noSpace && f&forbidNoSpace != 0:
 		return requestErr(codeResourceExhausted, msgNoSpace)
 	}
 	return nil
