@@ -1037,6 +1037,19 @@ func during(times []int64, from, to int64) bool {
 	return false
 }
 
+// installingDuring reports whether a call from from to to overlapped a
+// snapshot install of the node that ended: the node's loop loads the
+// store from the snapshot and answers no client until it is done
+// (#775's ruling). An install that never ended excuses nothing.
+func (n *node) installingDuring(from, to int64) bool {
+	for _, w := range n.installs {
+		if w[1] != 0 && from < w[1] && to >= w[0] {
+			return true
+		}
+	}
+	return false
+}
+
 // stalledAt reports whether a node's disk was stalled at a time. A node
 // with a stalled disk cannot apply, so it answers nothing; the liveness
 // rule is about the healthy nodes.

@@ -54,6 +54,13 @@ func (s *Sim) report() string {
 			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d, first entry held %d, cluster version %d; members %s\n",
 				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.first, l.version, describeMembers(l.members))
 		}
+		for _, w := range n.installs {
+			if w[1] == 0 {
+				fmt.Fprintf(&b, "  installing a snapshot since %s, not done\n", seconds(w[0]))
+			} else {
+				fmt.Fprintf(&b, "  installed a snapshot at %s in %s\n", seconds(w[0]), seconds(w[1]-w[0]))
+			}
+		}
 		var lines []string
 		mark := fmt.Sprintf(" node %d: ", n.id)
 		for i := len(s.trace) - 1; i >= 0 && len(lines) < reportLines; i-- {
