@@ -437,6 +437,11 @@ func (n *node) ckptStep(block bool) error {
 		}
 		r.sent--
 		if c.err != nil {
+			if isNoSpace(c.err) {
+				// The node stays up with NOSPACE raised (#769).
+				n.ckptNoSpace(c.err)
+				return nil
+			}
 			return c.err
 		}
 		if c.last {

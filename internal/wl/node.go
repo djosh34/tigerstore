@@ -211,6 +211,9 @@ type node struct {
 	// the loop's time encoding the last is at most 1/ckptLoopShare of the
 	// time since it started.
 	ckptNotBefore time.Time
+	// ckptRoomAt: after a checkpoint found no room on the disk, the next
+	// asks again at this time, not at every turn (ckptRoom, #769).
+	ckptRoomAt time.Time
 	// ckptLog is the log written after the newest checkpoint before the
 	// next is taken (Config.CheckpointLog).
 	ckptLog  int64

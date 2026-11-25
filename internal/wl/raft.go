@@ -463,6 +463,9 @@ func (n *node) maybeCkpt() error {
 	if err != nil {
 		return err
 	}
+	if !n.ckptRoom() {
+		return nil
+	}
 	s.wantCkpt = false
 	return n.startCkpt(index, term, off-walEntHdr)
 }
