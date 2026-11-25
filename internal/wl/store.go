@@ -170,9 +170,6 @@ type store struct {
 	liveBytes, histBytes int64
 	// liveKeys is how many keys are live, which the metrics read.
 	liveKeys int64
-	// keyBytes is the length of every key the store holds, live or not,
-	// which a checkpoint's room counts (ckptNeed).
-	keyBytes int64
 
 	// changes is every change by revision, the index of watches from a
 	// past revision.
@@ -280,7 +277,6 @@ func (st *store) intern(key []byte) (uint32, error) {
 	}
 	copy(st.kmem.mem[koff:], key)
 	st.keys[id] = keyEnt{koff: koff, klen: uint32(len(key)), dir: noDir}
-	st.keyBytes += int64(len(key))
 	putEntry(st.hash, maphash.Bytes(st.seed, key), id)
 	return id, nil
 }
@@ -297,7 +293,6 @@ func (st *store) freeKey(id uint32) {
 		}
 	}
 	st.kmem.free(k.koff, int(k.klen))
-	st.keyBytes -= int64(k.klen)
 	*k = keyEnt{dir: noDir}
 	st.keyFree = append(st.keyFree, id)
 }

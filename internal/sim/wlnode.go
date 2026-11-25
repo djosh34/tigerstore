@@ -656,6 +656,7 @@ func (h *wlHooks) NoRoom() {
 		return
 	}
 	s.stats.NoRoom++
+	n.noRoomAt = s.now()
 	short := n.shortArmed && !n.disk.ShortPending()
 	if short {
 		n.shortArmed = false

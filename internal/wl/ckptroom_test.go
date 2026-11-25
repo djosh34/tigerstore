@@ -19,31 +19,43 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// A checkpoint takes no more room than ckptNeed asks for, whatever the
-// store holds: here keys with empty, small or larger values, leased with
-// long IDs, at revisions past 2^40, each replaced in the history and half
-// of them deleted. The quota's size, which the first bound used, counts
-// 32 bytes a state and no changes, and a store of such keys passed it.
+// A checkpoint takes no more room than it asks for once scanned
+// (ckptNeed), and not much less, whatever the store holds:
+//   - keys with empty, small or larger values, leased with long IDs, at
+//     revisions past 2^40, each replaced in the history and half of them
+//     deleted, which a bound on the quota's size missed;
+//   - revisions of a Put that keeps its value, which share its bytes and
+//     which a count of every revision's value took for 100 copies;
+//   - a long key put and deleted at the revision the store is compacted
+//     at, whose changes at it name the key twice.
 func TestACheckpointFitsTheRoomItAsksFor(t *testing.T) {
+	put := func(t *testing.T, st *store, id uint32, value string, lease, voff int64) {
+		t.Helper()
+		if _, err := st.put(id, []byte(value), lease, st.rev, voff, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	intern := func(t *testing.T, st *store, key []byte) uint32 {
+		t.Helper()
+		id, err := st.intern(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	cases := map[string]func(t *testing.T, st *store, l *memLog){}
 	for _, value := range []string{"", "v", strings.Repeat("v", 3000)} {
-		t.Run(fmt.Sprintf("values of %d bytes", len(value)), func(t *testing.T) {
-			n, l := ckptNode(t)
-			st := n.st
+		cases[fmt.Sprintf("leased keys with values of %d bytes", len(value))] = func(t *testing.T, st *store, l *memLog) {
 			st.rev = 1 << 40
 			const leases = 300
 			for i := range leases {
 				st.leases[1<<62+int64(i)] = &lease{ttl: maxLeaseTTL, keys: map[uint32]struct{}{}}
 			}
 			for i := range 3000 {
-				id, err := st.intern(fmt.Appendf(nil, "/k/%05d", i))
-				if err != nil {
-					t.Fatal(err)
-				}
+				id := intern(t, st, fmt.Appendf(nil, "/k/%05d", i))
 				for range 3 {
 					st.rev++
-					if _, err := st.put(id, []byte(value), 1<<62+int64(i%leases), st.rev, l.add(value), false); err != nil {
-						t.Fatal(err)
-					}
+					put(t, st, id, value, 1<<62+int64(i%leases), l.add(value))
 					st.endApply()
 				}
 				if i%2 == 0 {
@@ -54,13 +66,56 @@ func TestACheckpointFitsTheRoomItAsksFor(t *testing.T) {
 					st.endApply()
 				}
 			}
-			need := n.ckptNeed()
-			writeCkpt(t, n, 5)
+		}
+	}
+	cases["a value kept by 100 revisions"] = func(t *testing.T, st *store, l *memLog) {
+		value := strings.Repeat("v", 128<<10)
+		id, voff := intern(t, st, []byte("/kept")), l.add(value)
+		for range 100 {
+			st.rev++
+			put(t, st, id, value, 0, voff)
+			st.endApply()
+		}
+	}
+	cases["a long key put and deleted at the compacted revision"] = func(t *testing.T, st *store, l *memLog) {
+		key := []byte("/" + strings.Repeat("k", 64<<10))
+		id := intern(t, st, key)
+		st.rev++
+		put(t, st, id, "v", 0, l.add("v"))
+		if _, _, err := st.del(id, st.rev, false); err != nil {
+			t.Fatal(err)
+		}
+		st.endApply()
+		st.compact(st.rev)
+		other := intern(t, st, []byte("/other"))
+		st.rev++
+		put(t, st, other, "v", 0, l.add("v"))
+		st.endApply()
+	}
+	for name, fill := range cases {
+		t.Run(name, func(t *testing.T) {
+			n, l := ckptNode(t)
+			fill(t, n.st, l)
+			takeEveryValue(t)
+			n.ckptFrom = int64(len(l.b))
+			if err := n.startCkpt(5, 1, 0); err != nil {
+				t.Fatal(err)
+			}
+			need := int64(-1)
+			for n.ckpt != nil {
+				r := n.ckpt
+				if err := n.ckptStep(r.sent > 0); err != nil {
+					t.Fatal(err)
+				}
+				if need < 0 && r.phase != ckptScanning {
+					need = n.ckptNeed(r)
+				}
+			}
 			info, err := os.Stat(filepath.Join(n.ckptDir, n.ckptName))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if info.Size() > need {
+			if info.Size() > need || need > 3*info.Size()+16<<10 {
 				t.Fatalf("the checkpoint took %d bytes; it asked for %d", info.Size(), need)
 			}
 			t.Logf("the checkpoint took %d bytes; it asked for %d", info.Size(), need)
@@ -200,9 +255,10 @@ func currentCkpt(t *testing.T, tc *testCluster, i int) string {
 
 // A checkpoint whose write meets ENOSPC, the room counted wrong or taken
 // meanwhile, is dropped: its file is removed, the checkpoint before stays
-// current, the node raises NOSPACE and goes on, and asks for room again a
-// while later. Before #769 the error stopped the node, and its file
-// stayed on the full disk.
+// current, the node raises NOSPACE and goes on, and tries again a while
+// later, the checkpoint still wanted, so that a client's Snapshot that
+// waited for it gets the next. Before #769 the error stopped the node,
+// and its file stayed on the full disk.
 func TestACheckpointThatRunsOutOfRoomIsDropped(t *testing.T) {
 	if _, err := os.Stat("/dev/full"); err != nil {
 		t.Skipf("no /dev/full, whose writes fail with ENOSPC: %v", err)
@@ -219,13 +275,18 @@ func TestACheckpointThatRunsOutOfRoomIsDropped(t *testing.T) {
 	if err := os.Symlink("/dev/full", tmp); err != nil {
 		t.Fatal(err)
 	}
+	n.snapWaiters = []handle{7} // a client's Snapshot
 	if err := n.startCkpt(5, 1, 0); err != nil {
 		t.Fatal(err)
 	}
+	n.storage.wantCkpt = false // as maybeCkpt leaves it
 	for n.ckpt != nil {
 		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
 			t.Fatalf("a checkpoint that met ENOSPC stopped the node: %v", err)
 		}
+	}
+	if !slices.Equal(n.snapWaiters, []handle{7}) || !n.storage.wantCkpt {
+		t.Fatalf("after the dropped checkpoint the Snapshots %v wait, and a checkpoint is wanted: %v", n.snapWaiters, n.storage.wantCkpt)
 	}
 	if n.ckptName != cur {
 		t.Fatalf("the current checkpoint is %s, want %s", n.ckptName, cur)
@@ -241,42 +302,40 @@ func TestACheckpointThatRunsOutOfRoomIsDropped(t *testing.T) {
 	if n.noSpaceAsked != n.applied || n.batchOps == 0 {
 		t.Fatal("the dropped checkpoint raised no NOSPACE")
 	}
-	if n.ckptRoom() {
-		t.Fatal("the next checkpoint asked for room at once")
+	if !n.ckptRoomAt.Equal(n.now.Add(ckptRoomRetry)) {
+		t.Fatalf("the next checkpoint may start at %v, want %v", n.ckptRoomAt, n.now.Add(ckptRoomRetry))
 	}
-	was := freeSpaceOf
-	freeSpaceOf = func(string) (int64, error) { return 1 << 40, nil }
-	t.Cleanup(func() { freeSpaceOf = was })
-	n.now = n.now.Add(ckptRoomRetry)
-	if !n.ckptRoom() {
-		t.Fatal("no room for the next checkpoint on a disk with room")
-	}
+	n.snapWaiters = nil
 	writeCkptAt(t, n, 6)
 	if n.ckptName != ckptName(6) {
 		t.Fatalf("the checkpoint after is %s, want %s", n.ckptName, ckptName(6))
 	}
 }
 
-// A start removes the files of checkpoints a node was writing when it
-// stopped, before it writes anything: one half written when the disk
-// filled took the room the start's own files need, and the node stopped
-// again at every start (#769). It keeps the rest.
+// A start removes the checkpoints a node was writing when it stopped,
+// before it writes anything: half written, or whole but not yet named by
+// CURRENT. One left when the disk filled took the room the start's own
+// files need, and the node stopped again at every start (#769). It keeps
+// CURRENT and the checkpoint it names.
 func TestAStartDropsHalfWrittenCheckpoints(t *testing.T) {
 	data := t.TempDir()
-	if err := dropCkptTemps(sysEnv{}, data); err != nil {
+	if err := cleanCkptDirAtStart(sysEnv{}, data); err != nil {
 		t.Fatalf("a data dir with no checkpoint dir: %v", err)
 	}
 	dir := filepath.Join(data, "ckpt")
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := writePointer(sysEnv{}, dir, &ckptPointer{name: ckptName(3)}); err != nil {
+		t.Fatal(err)
+	}
 	keep := []string{ckptName(3), ptrName}
-	for _, name := range append([]string{ckptName(9) + ".tmp", ptrName + ".tmp"}, keep...) {
+	for _, name := range []string{ckptName(3), ckptName(9), ckptName(11) + ".tmp", ptrName + ".tmp"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := dropCkptTemps(sysEnv{}, data); err != nil {
+	if err := cleanCkptDirAtStart(sysEnv{}, data); err != nil {
 		t.Fatal(err)
 	}
 	ents, err := os.ReadDir(dir)

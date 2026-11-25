@@ -358,6 +358,10 @@ type ckptRun struct {
 	rels        []ckptRel
 	segLive     map[int64]int64
 	relAt       int // the next value to hand the writer
+	// nKeys, keyBytes and nStates count the keys the scan found states
+	// of, their bytes and the states, which the room it needs counts
+	// (ckptNeed).
+	nKeys, keyBytes, nStates int64
 
 	// For the stats line: when it started, the loop's time encoding, and
 	// the bytes of values it takes in and of those it leaves in the log.
@@ -456,6 +460,9 @@ func (n *node) ckptStep(block bool) error {
 		if r.phase == ckptScanning {
 			return nil
 		}
+		if !n.ckptFits(r) {
+			return nil // dropped, with NOSPACE raised (#769)
+		}
 	}
 	te := time.Now()
 	defer func() { n.turnCkpt.encode = time.Since(te) }()
@@ -512,6 +519,11 @@ func (n *node) scanKeys(r *ckptRun) {
 		r.states, walked = st.takeStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
 		// What it walked counts, behind a hold a key's long history.
 		states += max(len(r.states), walked)
+		if len(r.states) > 0 {
+			r.nKeys++
+			r.keyBytes += int64(st.keys[r.next].klen)
+			r.nStates += int64(len(r.states))
+		}
 		for i := range r.states {
 			s := &r.states[i]
 			switch {

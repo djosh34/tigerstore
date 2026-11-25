@@ -460,8 +460,10 @@ type node struct {
 	// NOSPACE the node raised for lack of room (disarmNoSpace). diskFull
 	// is set while a fault holds its disk full (Sim.diskFull), and
 	// shortArmed from a short write armed on it until the node's NoRoom
-	// sees it happened.
+	// sees it happened. noRoomAt is when the node last found no room
+	// for a checkpoint.
 	disarming, diskFull, shortArmed bool
+	noRoomAt                        int64
 	// pausedUntil holds the process back; frozen holds it for good, for
 	// the checks at the end. wake is closed and replaced when either
 	// changes, or the stall ends.

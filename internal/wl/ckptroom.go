@@ -3,12 +3,14 @@ package wl
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io/fs"
 	"math/bits"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // A checkpoint needs room on the disk beside the checkpoint it replaces,
@@ -18,98 +20,107 @@ import (
 // the alarm's disarm, and writes no checkpoint until there is room again.
 // Before #769 it wrote the checkpoint anyway, stopped on ENOSPC halfway,
 // and stopped again at every start, its half-written file filling the
-// disk. A checkpoint that meets ENOSPC partway, the room counted wrong or
-// taken meanwhile, is dropped the same way.
+// disk. The room is asked for once the checkpoint's scan knows which
+// values it copies in, before it writes anything (ckptFits). A checkpoint
+// that meets ENOSPC partway, the room taken meanwhile, is dropped the same
+// way (ckptNoSpace).
 
 // ckptRoomRetry is how long a node that found no room for a checkpoint
-// waits before it asks again.
-const ckptRoomRetry = time.Second
+// waits before it tries again; each try scans the store.
+const ckptRoomRetry = 5 * time.Second
 
-// ckptRoom reports whether the disk has room for the next checkpoint
-// beside the current one, with a margin. If not, it raises NOSPACE and
-// asks again ckptRoomRetry later. A disk whose free space the system does
-// not say has room.
-func (n *node) ckptRoom() bool {
-	if n.now.Before(n.ckptRoomAt) {
-		return false
-	}
+// CheckpointRoomRetry is ckptRoomRetry, for the simulator's operator, who
+// waits for a node to try again before it disarms its NOSPACE.
+const CheckpointRoomRetry = ckptRoomRetry
+
+// ckptFits reports whether the disk has room for checkpoint r, scanned,
+// beside the current one, with a margin. If not, it drops r: NOSPACE is
+// raised and the next try comes ckptRoomRetry later. A disk whose free
+// space the system does not say has room.
+func (n *node) ckptFits(r *ckptRun) bool {
 	free, err := n.sys.freeSpace(n.ckptDir)
 	if err != nil {
 		return true
 	}
-	need := n.ckptNeed()
+	need := n.ckptNeed(r)
 	if free >= need {
 		return true
 	}
-	n.ckptRoomAt = n.now.Add(ckptRoomRetry)
-	n.logf("checkpoint: it needs about %d bytes and the disk has %d free: NOSPACE, and no checkpoint until there is room", need, free)
-	n.raiseNoSpace()
-	n.simNoRoom()
+	n.dropCkpt(fmt.Errorf("it needs about %d bytes and the disk has %d free", need, free))
 	return false
 }
 
-// ckptNeed bounds the room a checkpoint of the store takes, with a margin.
-// The file holds at most the values it copies in, which the store's value
-// bytes, live and in the history, bound; each key, its bytes and its
-// states' fields; the changes back to the compacted revision, some of
-// which name their key; the leases and the members. Each field counts as
-// the longest varint its values make. The quota's size is no bound: it
-// counts 32 bytes a state, which a leased key's state passes, and no
-// changes.
-func (n *node) ckptNeed() int64 {
+// ckptNeed bounds the room checkpoint r, scanned, takes, with a margin:
+// its header with the members and leases; the values it copies in, each
+// once; each key it holds, with its bytes and its states' fields; the
+// changes back to the compacted revision, those at it with their key's
+// bytes; its end and checksum. Each field counts as the longest varint
+// its values make.
+func (n *node) ckptNeed(r *ckptRun) int64 {
 	st := n.st
 	const (
 		page = 4 << 10
 		u32  = binary.MaxVarintLen32
 		u64  = binary.MaxVarintLen64
 	)
-	rev := int64(uvarintLen(uint64(max(st.rev, 0))))
-	keys := int64(st.nkeys) - int64(len(st.keyFree))
-	// Each key's state now, live or deleted, and those in the history.
-	states := keys + int64(st.nhist) - int64(st.nfree)
-	need := st.liveBytes + st.histBytes +
-		keys*(1+3*u32) + st.keyBytes + // its tag, id, key length and state count; the key
-		states*(1+3*rev+u64+2*u32+u64) + // flags, create, mod, version, lease, value length and sum, place
-		int64(len(st.changes))*(1+rev+u32+1+u32) + st.keyBytes + // tag, revision, key id, deletion, key length; the keys named, each once at most
-		int64(len(st.leases))*2*u64 + int64(len(n.encodeMembers(nil))) + page
+	rev := int64(uvarintLen(uint64(max(r.meta.rev, 0))))
+	need := int64(len(ckptMagic)+5*u64+u64+proto.Size(r.meta.cs)) + int64(len(r.members)+len(r.leases)) + u64
+	for _, v := range r.rels {
+		need += int64(v.n)
+	}
+	need += r.nKeys*(1+3*u32) + r.keyBytes + // its tag, id, key length and state count; the key
+		r.nStates*(1+3*rev+u64+2*u32+u64) // flags, create, mod, version, lease, value length and sum, place
+	from, to := searchChanges(st.changes, r.meta.compactRev), searchChanges(st.changes, r.meta.rev+1)
+	need += int64(to-from) * (1 + rev + u32 + 1 + u32) // tag, revision, key id, deletion, key length
+	for _, ch := range st.changes[from:to] {
+		if ch.rev != r.meta.compactRev {
+			break
+		}
+		need += int64(st.keys[ch.key].klen) // a change at the compacted revision names its key
+	}
+	need += 1 + 4 // the end and the checksum
 	return need + need/8 + page
 }
 
 // uvarintLen is the length of v as a uvarint.
 func uvarintLen(v uint64) int { return (bits.Len64(v|1) + 6) / 7 }
 
-// dropCkptTemps removes the files a node that stopped was writing in the
-// checkpoint dir of dataDir, before the start writes anything: a
-// checkpoint half written when the disk filled took the room the start's
-// own small files need, and the node stopped again at every start (#769).
-// No start needs one; loadNewest removes them too, later.
-func dropCkptTemps(sys sysEnv, dataDir string) error {
+// cleanCkptDirAtStart does loadNewest's cleanup of the checkpoint dir of
+// dataDir before the start writes anything: CURRENT made durable, then
+// every checkpoint it does not name and every file being written
+// removed. A checkpoint half written, or written whole but not yet named
+// by CURRENT, when the disk filled took the room the start's own small
+// files need, and the node stopped again at every start (#769).
+func cleanCkptDirAtStart(sys sysEnv, dataDir string) error {
 	dir := filepath.Join(dataDir, "ckpt")
-	names, err := sys.readDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
+	if _, err := sys.readDir(dir); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
+	p, err := readPointer(sys, dir)
 	if err != nil {
 		return err
 	}
-	for _, name := range names {
-		if strings.HasSuffix(name, ".tmp") {
-			if err := sys.remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return err
-			}
+	keep := ""
+	if p != nil {
+		keep = p.name
+		if err := syncDir(sys, dir); err != nil {
+			return err
 		}
 	}
-	return nil
+	return cleanCkptDir(sys, dir, keep)
 }
 
 // isNoSpace reports whether err is the disk's ENOSPC.
 func isNoSpace(err error) bool { return errors.Is(err, syscall.ENOSPC) }
 
-// ckptNoSpace drops the checkpoint being written, which met ENOSPC: it
-// removes what it wrote, raises NOSPACE, and leaves the next checkpoint
-// to ask for room ckptRoomRetry later. The clients waiting for the
-// checkpoint wait for the next.
-func (n *node) ckptNoSpace(err error) {
+// ckptNoSpace drops the checkpoint being written, which met ENOSPC.
+func (n *node) ckptNoSpace(err error) { n.dropCkpt(err) }
+
+// dropCkpt drops the checkpoint being written, for lack of room (why): it
+// removes what it wrote, raises NOSPACE, and leaves the next to try
+// ckptRoomRetry later. The checkpoint stays wanted, so that the clients
+// waiting for it get the next.
+func (n *node) dropCkpt(why error) {
 	r := n.ckpt
 	if r == nil {
 		return
@@ -126,8 +137,9 @@ func (n *node) ckptNoSpace(err error) {
 		}
 	}
 	n.snapWaiters = append(waiters, n.snapWaiters...)
+	n.storage.wantCkpt = true
 	n.ckptRoomAt = n.now.Add(ckptRoomRetry)
-	n.logf("checkpoint at index %d: %v: dropped, NOSPACE, and no checkpoint until there is room", r.meta.index, err)
+	n.logf("checkpoint at index %d: %v: dropped, NOSPACE, and no checkpoint until there is room", r.meta.index, why)
 	n.raiseNoSpace()
 	n.simNoRoom()
 }
