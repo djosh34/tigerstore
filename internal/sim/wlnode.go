@@ -542,7 +542,6 @@ func (h *wlHooks) Turn(st wl.TurnState, values func() []wl.LogValue) {
 		return
 	}
 	p.wl.turn = st
-	n.lastMembers = st.Members
 	if k := len(n.installs) - 1; k >= 0 {
 		if w := &n.installs[k]; w.installed != 0 && w.caughtUp == 0 && st.Applied >= w.target {
 			w.caughtUp = s.now()
@@ -916,11 +915,12 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 	n.fenced = true
 	n.why = fmt.Sprintf("refused to start on its damaged disk: %v", err)
 	s.stats.Fenced++
+	s.lastFenceAt = s.now()
 	s.tracef("node %d: fenced: %v", n.id, err)
 	s.down(n)
-	if s.quorumLostAt == 0 && !hasQuorum(s.nodes) {
+	if s.cfg.LoseQuorum && s.quorumLostAt == 0 && s.count(func(m *node) bool { return m.fenced }) > (s.cfg.voters()-1)/2 {
 		s.quorumLostAt, s.stats.QuorumLostAt = s.now(), s.now()
-		s.tracef("no surviving voter has a configuration with a surviving majority: the cluster lost its quorum for good")
+		s.tracef("a majority of the voters is fenced for good: the cluster lost its quorum")
 	}
 	if s.cfg.Faults.Replace && !s.cfg.LoseQuorum {
 		s.wg.Go(func() { s.replace(n) })

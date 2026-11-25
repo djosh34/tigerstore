@@ -1,47 +1,35 @@
 package sim
 
-// hasQuorum reports whether a voter that can still run has an applied
-// configuration in which a majority of the voters can still run. A node
-// down for now comes back; a fenced or removed member does not. A joining
-// node with no applied configuration cannot campaign, and a learner
-// cannot campaign or vote. The lock is held.
-func hasQuorum(nodes []*node) bool {
-	alive := make(map[uint64]bool, len(nodes))
-	for _, n := range nodes {
-		alive[n.id] = !n.out()
+// lostQuorum decides, at the run's end, whether a run that had a node
+// fenced for good lost its quorum for good without Config.LoseQuorum
+// asking for it, as a replacement can (#850): its nodes still disagree
+// once settled, none leads, and none can win an election (canElect),
+// each by the voters it applied and their logs. The loss then dates from
+// the last fence for good, after which nothing could commit, and the run
+// takes the checks of a cluster that lost its quorum, not convergence.
+//
+// It decides only here, once the faults, the clients and the operator
+// have stopped and the nodes are frozen: a loss that looked certain at a
+// fence can be undone by a survivor that applies a committed change at
+// its next start (#850's review). A run that converged, or a LoseQuorum
+// run, which decides at its fences, is left as it is.
+func (s *Sim) lostQuorum() error {
+	s.mu.Lock()
+	skip := s.quorumLostAt > 0 || s.cfg.LoseQuorum || s.lastFenceAt == 0 || hasLeader(s.nodes)
+	s.mu.Unlock()
+	if skip {
+		return nil
 	}
-	for _, n := range nodes {
-		if !alive[n.id] {
-			continue
-		}
-		voters, votes, self := 0, 0, false
-		for _, m := range n.lastMembers {
-			if m.Learner {
-				continue
-			}
-			voters++
-			if alive[m.ID] {
-				votes++
-			}
-			self = self || m.ID == n.id
-		}
-		if self && votes > voters/2 {
-			return true
-		}
+	if a, _ := disagree(s.live()); a == nil {
+		return nil
 	}
-	return false
-}
-
-// recheckQuorum takes back, at the end, a loss of the quorum that a fence
-// seemed to make, when a survivor has applied a configuration whose
-// surviving voters are a majority by then: at the fence it held the
-// change committed and not yet applied, or it applied it at a restart
-// (#850's review). The run then takes the checks of a cluster that kept
-// its quorum. A LoseQuorum run keeps its loss. The lock is held.
-func (s *Sim) recheckQuorum() {
-	if s.quorumLostAt == 0 || s.cfg.LoseQuorum || !hasQuorum(s.nodes) {
-		return
+	ok, err := s.canElect()
+	if err != nil || ok {
+		return err
 	}
-	s.tracef("the quorum lost at %d ms was not lost: a survivor applied a configuration with a surviving majority since", s.quorumLostAt/Millisecond)
-	s.quorumLostAt, s.stats.QuorumLostAt = 0, 0
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.quorumLostAt, s.stats.QuorumLostAt = s.lastFenceAt, s.lastFenceAt
+	s.tracef("no node can win an election by the voters it applied: the cluster lost its quorum for good at the fence at %d ms", s.lastFenceAt/Millisecond)
+	return nil
 }

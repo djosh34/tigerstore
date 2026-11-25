@@ -16,8 +16,7 @@ import (
 // n as that member, which joins the running cluster. Each call goes again
 // until it is done; one that got no answer is resolved by a linearizable
 // member list first, as the membership work does. With no quorum there
-// is no leader, so nothing is replaced; it stops trying once the run
-// recognises a permanent loss.
+// is no leader, so nothing is replaced.
 func (s *Sim) replace(n *node) {
 	s.mu.Lock()
 	wait, old, url, fencedAt := Second+s.rng.Int64N(19*Second), n.id, peerURL(n.idx), n.since
@@ -71,10 +70,9 @@ func (s *Sim) replace(n *node) {
 }
 
 // memberCall makes a membership call through the leader until done says
-// the member list shows it, and reports false if the run ended first,
-// lost its quorum for good or failed: an acknowledged change whose
-// answer does not show it fails the run. A call that got no answer is
-// resolved by a linearizable member
+// the member list shows it, and reports false if the run ended first or
+// failed: an acknowledged change whose answer does not show it fails the
+// run. A call that got no answer is resolved by a linearizable member
 // list before it goes again. An add has no client-chosen ID, so it waits for
 // the node's own answer, as the membership work's does.
 func (s *Sim) memberCall(req proto.Message, done func([]*pb.Member) bool) bool {
@@ -85,7 +83,7 @@ func (s *Sim) memberCall(req proto.Message, done func([]*pb.Member) bool) bool {
 	list := false
 	for {
 		s.mu.Lock()
-		i, stopped := s.leaderIdx(), s.now() >= s.stopAt || s.quorumLostAt > 0
+		i, stopped := s.leaderIdx(), s.now() >= s.stopAt
 		s.mu.Unlock()
 		if stopped {
 			return false
