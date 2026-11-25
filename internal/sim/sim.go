@@ -2108,6 +2108,8 @@ func (s *Sim) exited(p *proc, err error) {
 			s.stats.ReadOnlyStops++
 		}
 		n.disk.Fault = nil
+		// A short write that stopped the node made no NOSPACE to disarm.
+		n.shortArmed = false
 		if s.cfg.syncFaultExits || s.rng.IntN(2) == 0 {
 			// The process exits and starts again on a machine that keeps
 			// its page cache, where a failed sync left bytes that never
