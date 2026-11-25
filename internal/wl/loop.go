@@ -111,7 +111,7 @@ const (
 var errStopped = errors.New("the node was stopped")
 
 // testAfterStopCheck, if set, runs on a loop right after it looked for a
-// stop on a wake (TestANodeStopsWhenCancelledRightAfterItLooked).
+// stop on a wake (TestACancelRightAfterTheLoopLookedWakesItAgain).
 var testAfterStopCheck atomic.Pointer[func(l *loop)]
 
 // Run runs a node until it fails, or until ctx is done, when it returns
@@ -592,6 +592,25 @@ func (l *loop) handOver(h *handoff) {
 // testLoops, set only by tests, is told of each loop a node starts.
 var testLoops func(id uint64, l *loop)
 
+// wakeStops reads the loop's wake, and reports whether the loop must stop:
+// its context is done and, if it leads, it has no one to hand the
+// leadership to (leave). The wake is read before the stop is looked at. A
+// cancel writes its wake after its context is done, so either the read
+// takes it and the check sees the cancel, or it comes after the read and
+// wakes the next turn. Read after the check, it could take a cancel's wake
+// with a post's, and the loop never looked again (#828).
+func (l *loop) wakeStops() bool {
+	var b [8]byte
+	_, _ = sysRead(l.hoFD, b[:])
+	if l.ctx.Err() != nil && l.leaveBy.IsZero() && !l.leave() {
+		return true
+	}
+	if f := testAfterStopCheck.Load(); f != nil {
+		(*f)(l)
+	}
+	return false
+}
+
 // post hands the loop fn to run in its next turn.
 func (l *loop) post(fn func() error) {
 	l.mu.Lock()
@@ -1032,19 +1051,8 @@ func (l *loop) run() error {
 			ev := events[i]
 			switch ev.Fd {
 			case evHandoff:
-				// The wake is read before the stop is looked at. A cancel
-				// writes its wake after its context is done, so either the
-				// read takes it and the check below sees the cancel, or it
-				// comes after the read and wakes the next turn. Read after
-				// the check, it could take a cancel's wake with a post's,
-				// and the loop never looked again (#828).
-				var b [8]byte
-				_, _ = sysRead(l.hoFD, b[:])
-				if l.ctx.Err() != nil && l.leaveBy.IsZero() && !l.leave() {
+				if l.wakeStops() {
 					return errStopped
-				}
-				if f := testAfterStopCheck.Load(); f != nil {
-					(*f)(l)
 				}
 				t := time.Now()
 				l.takeHandoffs()

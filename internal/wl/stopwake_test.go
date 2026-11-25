@@ -1,50 +1,48 @@
 package wl
 
 import (
-	"errors"
-	"sync/atomic"
+	"context"
+	"encoding/binary"
 	"testing"
-	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-// TestANodeStopsWhenCancelledRightAfterItLooked is #828: a node's context
-// is cancelled right after its loop looked for a stop on a wake, and before
-// it read the wake. The cancel's wake then came before that read, which
-// took it with the post's, and the loop never looked for the stop again:
-// Run did not return, and a test cluster's cleanup waited for good. The
-// node must stop within 10 s.
-func TestANodeStopsWhenCancelledRightAfterItLooked(t *testing.T) {
-	loopOf := watchLoops(t)
-	tc := newTestCluster(t)
-	c := tc.client(t)
-	waitMembers(t, c, 3)
-	i := 2
-	id, cancel, stopped := tc.ids[i], tc.cancels[i], tc.stopped[i]
-	var armed atomic.Bool
-	armed.Store(true)
-	hook := func(l *loop) {
-		if l.n.id == id && armed.CompareAndSwap(true, false) {
-			cancel()
-			// The cancel's wake is written by a goroutine of its own:
-			// it comes now, before the loop goes on.
-			time.Sleep(100 * time.Millisecond)
+// TestACancelRightAfterTheLoopLookedWakesItAgain is #828: a loop's context
+// is cancelled right after the loop looked for a stop on a post's wake,
+// and the cancel's wake comes then too. The loop read its wake after it
+// looked, which took the cancel's with the post's: nothing woke it to look
+// again, and Run never returned. Its wake must still be there for the next
+// turn. The loop here is one eventfd and a context, with no goroutine of
+// its own that writes a wake: the test writes each, in that order.
+func TestACancelRightAfterTheLoopLookedWakesItAgain(t *testing.T) {
+	fd, err := unix.Eventfd(0, unix.EFD_NONBLOCK|unix.EFD_CLOEXEC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = unix.Close(fd) })
+	wake := func() {
+		var b [8]byte
+		binary.LittleEndian.PutUint64(b[:], 1)
+		if _, err := unix.Write(fd, b[:]); err != nil {
+			t.Error(err)
 		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	l := &loop{ctx: ctx, hoFD: fd}
+	wake() // a post's
+	hook := func(*loop) {
+		cancel()
+		wake() // the cancel's, as run's goroutine writes it once ctx is done
 	}
 	testAfterStopCheck.Store(&hook)
 	t.Cleanup(func() { testAfterStopCheck.Store(nil) })
-	// A post wakes the loop; the hook cancels it right after it looked.
-	go onLoop(loopOf(id), func() {})
-	select {
-	case err := <-stopped:
-		if !errors.Is(err, errStopped) {
-			t.Fatalf("node %d stopped with %v", i+1, err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatalf("node %d did not stop within 10 s of its cancel (armed %v)", i+1, armed.Load())
+	if l.wakeStops() {
+		t.Fatal("the loop stopped before its context was cancelled")
 	}
-	if armed.Load() {
-		t.Fatal("the hook never ran: the test tested nothing")
+	var b [8]byte
+	if n, err := unix.Read(fd, b[:]); err != nil || n != 8 {
+		t.Fatalf("the cancel's wake was read with the post's (read %d, %v): nothing wakes the loop to look for its stop again", n, err)
 	}
-	// Stopped: the cluster's cleanup must not wait for it again.
-	tc.cancels[i] = nil
 }
