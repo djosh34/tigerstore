@@ -731,8 +731,11 @@ type Sim struct {
 	pages, chunks *keptPages
 	stats         Stats
 	uncached      atomic.Int64 // the reads Faults.Uncached sent off the loop
-	membership    membershipWork
-	err           error
+	// snapServed counts the bytes of snapshot streams the nodes served
+	// (progress).
+	snapServed atomic.Int64
+	membership membershipWork
+	err        error
 	// loadFrom is the process's CPU time when the clients started, and
 	// loadCPU the CPU time from then until the last client stopped
 	// (markLoad); firedFrom and loadFired count the timers that fired, and

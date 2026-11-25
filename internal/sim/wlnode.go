@@ -520,6 +520,7 @@ func (h *wlHooks) Turn(st wl.TurnState, values func() []wl.LogValue) {
 // (FlipSnapshot). Peers talk TLS, so only this hook reaches the stream's
 // own CRC. A stream larger than a chunk is cut or damaged in its first.
 func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
+	h.s.snapServed.Add(int64(len(p)))
 	keep := len(p)
 	if !first {
 		return keep

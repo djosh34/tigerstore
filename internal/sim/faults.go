@@ -676,6 +676,19 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 	return nil
 }
 
+// progress is what a cold restart's nodes have done so far: the bytes of
+// snapshot streams served and the entries the running nodes applied. The
+// nodes are frozen.
+func (s *Sim) progress() int64 {
+	n := s.snapServed.Load()
+	for _, m := range s.nodes {
+		if !m.out() && m.proc != nil {
+			n += int64(m.proc.applied())
+		}
+	}
+	return n
+}
+
 // erasing names the disk a cold restart erased, -1 for none.
 func erasing(erased int) string {
 	if erased < 0 {
@@ -933,6 +946,26 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		r.thaw()
 		if err := r.runFor(Second / 10); err != nil {
 			return err
+		}
+	}
+	// A node behind may be taking a snapshot of the whole store, which
+	// with a large one takes far longer than that: 160 MB under a 137 MiB
+	// budget takes minutes (#809). The restart waits on, a second at a
+	// time, while a snapshot stream is served or a node applies more, and
+	// gives up after 10 s with neither, or after 20 minutes.
+	for idle, waited := 0, int64(0); idle < 10 && waited < 20*60*Second; waited += Second {
+		if a, _ := disagree(r.nodes); a == nil {
+			break
+		}
+		before := r.progress()
+		r.thaw()
+		if err := r.runFor(Second); err != nil {
+			return err
+		}
+		if r.progress() == before {
+			idle++
+		} else {
+			idle = 0
 		}
 	}
 	if a, b := disagree(r.nodes); a != nil {
