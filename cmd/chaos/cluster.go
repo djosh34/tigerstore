@@ -5,10 +5,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -59,6 +61,9 @@ type node struct {
 	i    int
 	args []string
 	log  *os.File
+	// procs is the node's GOMAXPROCS, drawn from the cluster's seed
+	// (drawProcs).
+	procs int
 
 	mu     sync.Mutex
 	cmd    *exec.Cmd
@@ -82,6 +87,7 @@ func writeFile(path string, b []byte) error {
 // default, and extra goes to every node's arguments.
 func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*cluster, error) {
 	c := &cluster{dir: dir, bin: bin, data: data}
+	procs := drawProcs(seed, runtime.NumCPU())
 	for i := range c.data {
 		if c.data[i] == "" {
 			c.data[i] = filepath.Join(dir, "data", fmt.Sprintf("node%d", i+1))
@@ -186,7 +192,7 @@ func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*
 		cert := filepath.Join(certs, name+".pem")
 		key := filepath.Join(certs, name+"-key.pem")
 		caFile := filepath.Join(certs, "ca.pem")
-		n := &node{i: i, log: log, args: []string{
+		n := &node{i: i, log: log, procs: procs[i], args: []string{
 			"--name", name, "--data-dir", c.data[i],
 			"--initial-cluster", strings.Join(members, ","),
 			"--listen-peer-urls", fmt.Sprintf("https://127.0.0.1:%d", peerPort[i]),
@@ -258,10 +264,10 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.starts++
-	_, _ = fmt.Fprintf(n.log, "chaos: start incarnation %d at %s\n", n.starts, time.Now().UTC().Format(time.RFC3339Nano))
+	_, _ = fmt.Fprintf(n.log, "chaos: start incarnation %d at %s, GOMAXPROCS %d\n", n.starts, time.Now().UTC().Format(time.RFC3339Nano), n.procs)
 	cmd := exec.Command(c.bin, n.args...)
 	cmd.Stdout, cmd.Stderr = n.log, n.log
-	cmd.Env = nodeEnv(os.Environ(), n.args)
+	cmd.Env = append(nodeEnv(os.Environ(), n.args), fmt.Sprintf("GOMAXPROCS=%d", n.procs))
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -285,6 +291,26 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 		exited <- cmd.ProcessState
 	}()
 	return nil
+}
+
+// minProcs is cmd/tigerstore's least GOMAXPROCS, which it raises a lower
+// one to.
+const minProcs = 2
+
+// drawProcs draws each of the three nodes' GOMAXPROCS from seed: from
+// cmd/tigerstore's least, minProcs, up to the runner's cpus, so a cluster
+// runs with cores from few to as many as there are (#502). In the
+// simulator a core limit changes nothing, as gosim runs one goroutine at a
+// time; here the cores are real. A runner with fewer cpus than minProcs
+// gives every node minProcs.
+func drawProcs(seed uint64, cpus int) [3]int {
+	rng := rand.New(rand.NewPCG(seed, 0x70726f6373))
+	top := max(cpus, minProcs)
+	var p [3]int
+	for i := range p {
+		p[i] = minProcs + rng.IntN(top-minProcs+1)
+	}
+	return p
 }
 
 // signal sends sig to n's process. For SIGKILL, SIGTERM and SIGQUIT, whose

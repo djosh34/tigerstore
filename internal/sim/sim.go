@@ -630,11 +630,9 @@ type Sim struct {
 	// wallStacks is every goroutine's stack when the run passed its limit
 	// of real time (watchWall).
 	wallStacks []byte
-	// leaseCheckpoints is set when the nodes checkpoint their leases, and
 	// formed is how long the cluster took to form before the run, if it
 	// did (formCluster).
-	leaseCheckpoints bool
-	formed           int64
+	formed int64
 	// servedRoot is the newest durable root of the source of the last
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
@@ -1247,10 +1245,12 @@ func (s *Sim) run() error {
 	if s.cfg.Membership {
 		s.nodes[voters].inactive = true
 	}
-	// Half the seeds checkpoint their leases, as etcd does with its
-	// LeaseCheckpoint feature, every second instead of 5 minutes, so
-	// that the clients' short leases get checkpoints too.
-	s.leaseCheckpoints = s.rng.IntN(2) == 0
+	// Once a draw of whether the nodes checkpoint their leases, as etcd's
+	// LeaseCheckpoint feature: wl has no lease checkpoints and reads no
+	// feature gate, so nothing used it, and scenarios draw only the
+	// options wl has (#758, option b). The draw stays, discarded, so that
+	// every seed plays out as before and its known failures still hold.
+	_ = s.rng.IntN(2)
 	// Saved before any node runs: a node that spins at once leaves this.
 	s.saveBlackbox()
 	for _, n := range s.nodes[:voters] {
