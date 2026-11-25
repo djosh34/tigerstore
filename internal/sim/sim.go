@@ -600,6 +600,9 @@ type Sim struct {
 	// wroteOK is set once a client's write succeeded: the quorum loss
 	// waits for it (loseQuorum).
 	wroteOK bool
+	// firstWritten is how long a run that loses its quorum took for its
+	// first write (writeFirst), by which its windows moved.
+	firstWritten int64
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
@@ -1188,6 +1191,19 @@ func (s *Sim) run() error {
 			return err
 		}
 	}
+	if s.cfg.LoseQuorum {
+		begin := s.now()
+		if err := s.writeFirst(); err != nil {
+			return err
+		}
+		// The faults' and the clients' windows start after the write,
+		// and the quorum loss a quarter into them.
+		s.mu.Lock()
+		d := s.now() - begin
+		s.healAt, s.stopAt, s.endAt = s.healAt+d, s.stopAt+d, s.endAt+d
+		s.firstWritten = d
+		s.mu.Unlock()
+	}
 	s.schedule()
 	s.wg.Go(s.watchWall)
 	// The end can move while the run goes on (extendLiveness).
@@ -1430,7 +1446,7 @@ func (s *Sim) schedule() {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
 	}
 	if s.cfg.LoseQuorum {
-		s.at(s.cfg.Duration/4, s.loseQuorum)
+		s.at(s.firstWritten+s.cfg.Duration/4, s.loseQuorum)
 	}
 	s.at(s.healAt, s.heal)
 }
@@ -1509,6 +1525,62 @@ func (s *Sim) holdBack() {
 		// with its links down it cannot catch up before then.
 		s.restartLater(lagged, 0)
 	})
+}
+
+// firstWriteClient is the client of the history whose call is a run's
+// first write (writeFirst).
+const firstWriteClient = 1<<20 + 1
+
+// firstWriteKey is the key of writeFirst's write, which no client uses.
+var firstWriteKey = []byte("first-write")
+
+// writeFirst is a run that loses its quorum (Config.LoseQuorum): before
+// the scheduled faults and the clients start, it puts a key until a put
+// succeeds, so that the run has committed a write before the faults may
+// damage a majority of the voters (spare, maybeCorrupt), and its checks
+// have a log. Under the race detector, with the host's timing, the faults
+// from the run's start let seed 1 of TestLoseQuorum commit nothing until
+// they healed (main's ci run 45509039905). The hooks that slow syncs and
+// packets act from the start, as in any run. Each try is a call of the
+// history, with a value of its own, after the last returned, and none
+// outlasts the run's fault window, which bounds the whole write.
+func (s *Sim) writeFirst() error {
+	c := &client{id: firstWriteClient, sim: s}
+	for try := 0; ; try++ {
+		s.mu.Lock()
+		left := s.cfg.Duration - s.now()
+		if left <= 0 {
+			s.fail("LoseQuorum: no write succeeded in %s, before the faults", seconds(s.cfg.Duration))
+			err := s.err
+			s.mu.Unlock()
+			return err
+		}
+		n := s.upNode()
+		s.mu.Unlock()
+		if n != nil {
+			timeout := left
+			if t := s.cfg.ClientTimeout; t > 0 {
+				timeout = min(t, left)
+			}
+			c.n = try
+			r := &Record{Client: c.id, Node: n.idx, Call: s.now(), req: &pb.PutRequest{Key: firstWriteKey, Value: fmt.Appendf(nil, "first-write-%d", try)}}
+			resp, err := s.call(n, r.req, timeout)
+			s.mu.Lock()
+			c.done(r, resp, err)
+			s.mu.Unlock()
+			if err == nil {
+				return nil
+			}
+		}
+		if !s.sleep(100 * Millisecond) {
+			// The run failed while it wrote, as a node broke a rule:
+			// that is its error.
+			if err := s.failure(); err != nil {
+				return err
+			}
+			return errors.New("sim: the run ended before its first write")
+		}
+	}
 }
 
 // linksWithout is the mask of setLinks with every link of node i down

@@ -256,6 +256,17 @@ func TestLoseQuorum(t *testing.T) {
 		cfg.Nodes = 1 + 2*int(seed)
 		cfg.Duration, cfg.LoseQuorum = 40*Second, true
 		res := run(t, cfg)
+		// The quorum goes only after a client's write succeeded (spare),
+		// whatever the host's timing: the checks need a committed log.
+		wrote := int64(math.MaxInt64)
+		for _, r := range res.History {
+			if r.Err == nil && isWrite(r.req) {
+				wrote = min(wrote, r.Return)
+			}
+		}
+		if lost := res.Stats.QuorumLostAt; lost > 0 && lost < wrote {
+			t.Fatalf("seed %d: the cluster lost its quorum at %d ms, before a client's write succeeded (at %d ms)", seed, lost/Millisecond, wrote/Millisecond)
+		}
 		checkers(t, res)
 		if st := res.Stats; st.QuorumLostAt == 0 {
 			t.Fatalf("seed %d: the cluster of %d kept its quorum: %d fenced", seed, cfg.Nodes, st.Fenced)
