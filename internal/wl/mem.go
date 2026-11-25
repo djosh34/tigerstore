@@ -59,6 +59,13 @@ func classOf(n int) (int, int) {
 
 var errSlabFull = errors.New("the store's slab is full")
 
+// reuses reports whether a slot of n bytes would come from the free slots
+// of its class, not from past the slab's top.
+func (s *slab) reuses(n int) bool {
+	c, _ := classOf(n)
+	return s.heads[c] != 0
+}
+
 func (s *slab) alloc(n int) (uint64, error) {
 	c, size := classOf(n)
 	if h := s.heads[c]; h != 0 {

@@ -363,14 +363,16 @@ func (st *store) live(id uint32) ([]byte, error) {
 }
 
 // load builds key id's record from its value in the log, and keeps it in
-// the slab while that stays within its limit. A read keeps no record past
-// it (#805): nothing lets records go during a read, only after an apply
-// (fit), so a range over more values than the limit kept every one it
-// read. Past the limit's budget, and under the simulator past its fixed
-// slab, where it failed with errSlabFull and the node closed the client.
-// Past the limit, the record is built in Go's heap for its caller, and a
-// read of it again builds it again; a reply holds at most a piece of them
-// (bigRange).
+// the slab while the slab stays within topMax, the room past its limit an
+// apply then takes back (fit). A read kept every record it loaded before
+// (#805): nothing lets records go during a read, only after an apply, so
+// a range over more values than the limit kept every one it read, past
+// the budget, and under the simulator past its fixed slab, where it
+// failed with errSlabFull and the node closed the client. Past topMax,
+// or with the slab full, the record is built in Go's heap for its caller,
+// and a read of it again builds it again; a reply holds at most a piece
+// of them (bigRange). Records are not let go during a read: the reply
+// holds slab bytes until it is written.
 func (st *store) load(id uint32) ([]byte, error) {
 	k := &st.keys[id]
 	val, err := st.readValue(k.voff, k.vlen, k.vsum)
@@ -380,7 +382,14 @@ func (st *store) load(id uint32) ([]byte, error) {
 	key := st.key(id)
 	n := kvSize(len(key), len(val), k.create, k.mod, k.ver, k.lease)
 	st.loads++
-	if _, size := classOf(n); st.budget != 0 && st.slab.used+int64(size) > st.limit {
+	// Up to topMax, the room the slab has past its limit until an apply
+	// lets records go (fit), as the writes do: kept only up to the limit
+	// itself, a read kept almost nothing once writes filled the slab, and
+	// read a key read again and again from the disk each time (the review
+	// of #807). Its top counts too, as its pages stay resident once handed
+	// out: a slot past it must come from the free slots.
+	if _, size := classOf(n); st.budget != 0 && (st.slab.used+int64(size) > st.topMax() ||
+		!st.slab.reuses(n) && int64(st.slab.top+size) > st.topMax()) {
 		st.unkept++
 		return appendKV(make([]byte, 0, n), key, val, k.create, k.mod, k.ver, k.lease), nil
 	}
