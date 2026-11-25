@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/url"
 	"sync/atomic"
@@ -124,6 +125,22 @@ type Member struct {
 
 var errConfig = errors.New("a node's configuration")
 
+// ErrMemberID is a member ID wl cannot use: 0, or one of 2^32 or more.
+// wl's member IDs have 32 bits: those it makes (newMemberID), and the
+// proposer a batch names (batch.go). A larger one, such as the 64-bit IDs
+// etcd makes, it would take, but never answer that member's writes, and
+// one with bit 62 or 63 set the peers would misread in their hello
+// (snapMark, beatMark) (#841).
+var ErrMemberID = errors.New("a member ID must be from 1 to 2^32-1 (wl's member IDs have 32 bits)")
+
+// checkMemberID returns ErrMemberID for an ID wl cannot use.
+func checkMemberID(id uint64) error {
+	if id == 0 || id > math.MaxUint32 {
+		return fmt.Errorf("%w: member %d (%#x)", ErrMemberID, id, id)
+	}
+	return nil
+}
+
 func (c *Config) check() error {
 	least := ringMinSegs * segSize
 	switch {
@@ -149,6 +166,14 @@ func (c *Config) check() error {
 	case c.Logger == nil:
 		return fmt.Errorf("%w: no logger", errConfig)
 	}
+	if err := checkMemberID(c.ID); err != nil {
+		return fmt.Errorf("%w: %w", errConfig, err)
+	}
+	for _, m := range c.Members {
+		if err := checkMemberID(m.ID); err != nil {
+			return fmt.Errorf("%w: %w", errConfig, err)
+		}
+	}
 	for _, m := range c.Members {
 		if m.ID == c.ID {
 			return nil
@@ -159,6 +184,9 @@ func (c *Config) check() error {
 
 // member is m as the node keeps it.
 func (m Member) member() (member, error) {
+	if err := checkMemberID(m.ID); err != nil {
+		return member{}, fmt.Errorf("%w: %w", errConfig, err)
+	}
 	if len(m.PeerURLs) == 0 {
 		return member{}, fmt.Errorf("%w: member %d has no peer URL", errConfig, m.ID)
 	}
