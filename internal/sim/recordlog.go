@@ -198,18 +198,21 @@ func (l *recordLog) decode(m loggedMessage) (proto.Message, error) {
 	return out, nil
 }
 
-// records returns the calls.
-// valueBytes is the bytes of the values the calls carry, each as often as
-// it comes: about what a run's history takes past its calls' own
-// fields, which a run with large values, as a bulk load, is mostly.
-func (l *recordLog) valueBytes() int64 {
-	n := int64(0)
+// sizes are the bytes of the values the calls carry, each as often as it
+// comes, the bytes of their messages without the values, and how many
+// calls there are: what bounds a run's history.json and calls.txt
+// (saveBounds).
+func (l *recordLog) sizes() (values, messages int64, calls int) {
 	for _, id := range l.ids {
-		n += int64(l.vals.spans[id].n)
+		values += int64(l.vals.spans[id].n)
 	}
-	return n
+	for _, r := range l.recs {
+		messages += int64(r.req.at.n) + int64(r.resp.at.n)
+	}
+	return values, messages, len(l.recs)
 }
 
+// records returns the calls.
 func (l *recordLog) records() ([]*Record, error) {
 	out := make([]*Record, len(l.recs))
 	for i, lr := range l.recs {
