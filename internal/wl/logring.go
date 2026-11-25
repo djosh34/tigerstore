@@ -268,7 +268,12 @@ func (w *wal) markIdle(now time.Time) {
 		return
 	}
 	w.stats.syncs++
+	w.stats.marks++
 	w.want.Store(w.off)
+	// The mark's sync takes what a sync deferred waited for, a leader's
+	// commits skipped (kick): that one ends here, or the loop would wake
+	// for it at once until this sync ends, and under gosim never block.
+	w.skippedAt, w.deferred = time.Time{}, false
 	w.inflight = true
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)

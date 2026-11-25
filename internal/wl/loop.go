@@ -253,6 +253,9 @@ func run(ctx context.Context, cfg Config) error {
 		hs.Commit = new(n.storage.snapIndex)
 	}
 	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
+	// Every entry the log holds past the commit has its commit synced
+	// (mustSyncCommit): the start did not read their kinds.
+	n.recoveredLast = n.storage.lastIndex()
 	if planted.On("B23") && n.commit > n.applied {
 		n.plantedSkip = n.commit
 	}
@@ -1027,7 +1030,7 @@ func (l *loop) run() error {
 		timeout := 0
 		wake := l.next
 		if n.wal.deferred {
-			if t := n.wal.lastKick.Add(n.wal.gap()); t.Before(wake) {
+			if t := n.wal.deferUntil(); t.Before(wake) {
 				wake = t
 			}
 		}
@@ -1520,6 +1523,14 @@ func (l *loop) logStats() {
 		n.ring.stats.spans, n.rx.stats.spans, n.side.stats.spans, n.ring.stats.heap, n.rx.stats.heap, n.side.stats.heap,
 		n.storage.stats.letGo, n.storage.stats.reads)
 	l.logger.Printf("rings: sweeps %d; oldest held: %s / %s / %s", n.ring.stats.sweeps, n.ring.held(), n.rx.held(), n.side.held())
+	if w := n.wal; w != nil && w.ring != nil {
+		// What the log's ring takes and refuses (#814): a follower that
+		// drops its leader's appends for want of room, with pledges that
+		// never came back, leaves its room at nothing on an empty disk.
+		l.logger.Printf("ring room: %d bytes, %d segments free, wanted %d; pledged: writes %d, batch %d, appends %d; appends' room %d; appends dropped %d, trimmed %d; proposals dropped %d, refusals sent %d, got %d; nudges %d",
+			w.ringRoom(), w.ringFree(), w.wanted, n.ringPledged, n.batchPledge, n.appendPledged, w.ringRoom()-n.appendPledged-w.waitingBytes()-appendMargin,
+			n.stats.appendsDropped, n.stats.appendsTrimmed, n.stats.propsDropped, n.stats.refusalsSent, n.stats.refusalsGot, n.stats.ringNudges)
+	}
 	l.last, l.lastAt = d, now
 	l.logger.Printf("ops by kind %v bytes %v named %d carried %v bytes %v held %d", d.opsByKind, d.bytesByKind, d.named, d.carried, d.carriedBytes, d.held)
 	c := l.n.cpuStats()
