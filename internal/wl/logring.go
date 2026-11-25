@@ -510,6 +510,11 @@ var ringHoldCut atomic.Bool
 // while every write is refused, until it ends.
 var ckptHold atomic.Bool
 
+// testAdmit, if set, sees each put, delete, compaction and lease write a
+// node takes from a client, on its loop, before the ring and the alarms
+// judge it: what the node held then (TestAPutAfterADisarmIsTakenByAFollowerThatLags).
+var testAdmit atomic.Pointer[func(n *node, kind uint8, msg []byte)]
+
 // ringRefuses refuses a write of stream s the log's ring has no room for,
 // and reports whether it did. While the ring is short (ringShort) it
 // refuses a put, a lease grant, or a Txn that puts: while a checkpoint
@@ -531,19 +536,6 @@ var ckptHold atomic.Bool
 // (nudgeRing). A write that fits but takes the reserve goes on, as before:
 // then the ring is short.
 func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
-	if n.noSpace || n.corrupt {
-		// An alarm is up: the apply refuses what it forbids (alarmGate),
-		// and so does this node, before the log takes it, with the same
-		// error, CORRUPT first; deletes and compactions go on. A put
-		// through a follower whose leader's ring is short never comes to
-		// the apply: the leader drops it (leaderDrops), and its client was
-		// refused as busy for good (#818's review). A node with no ring of
-		// its own checks it too.
-		if err := n.alarmGate(s.kind, msg); err != nil {
-			n.reject(c, s, err)
-			return true
-		}
-	}
 	w := n.wal
 	if w.ring == nil {
 		return false
@@ -556,6 +548,10 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 		puts = txnCost(msg) != 0
 	}
 	if puts && w.ringShort() {
+		if err := n.alarmRefusal(s.kind, msg); err != nil {
+			n.reject(c, s, err)
+			return true
+		}
 		if (n.ckpt != nil || n.ringDue()) && !n.noSpaceRaised() {
 			n.reject(c, s, errTooManyRequests)
 			return true
@@ -565,6 +561,10 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 	}
 	need := int64(len(msg)) + walEntHdr + ringRecordSlack + n.callerBytes(c, s)
 	if need+n.ringTaken() <= w.ringRoom() {
+		// The write's batch first, which its pledge goes with: charged to
+		// the batch before, its room was given back with that batch's,
+		// dropped by the leader, while it was still owed (#827's re-check).
+		n.alarmApart(s.kind, msg)
 		n.ringPledged += need
 		n.batchPledge += need
 		w.wanted = 0
@@ -573,10 +573,48 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 	// The room the write needs, with what the ring holds besides, is what
 	// it wants: the ring is low until it has that, so that a checkpoint
 	// can be due (ringDue).
+	if err := n.alarmRefusal(s.kind, msg); err != nil {
+		// A write the alarm forbids wants no room: it is never taken.
+		n.reject(c, s, err)
+		return true
+	}
 	w.wanted = max(w.wanted, need+n.ringTaken())
 	n.nudgeRing()
 	n.reject(c, s, errTooManyRequests)
 	return true
+}
+
+// alarmApart keeps a write that the alarms up forbid out of a batch of
+// writes they allow, and the other way round: the open batch is proposed
+// first. A leader whose ring is short drops a follower's batch whole if
+// it puts (leaderDrops), so a delete, a compaction or the alarm's disarm
+// in a batch with a put was refused with it, as busy, and a cluster whose
+// clients keep putting through a follower freed no space for good (#827's
+// review). A node that refused such puts itself before the log kept them
+// apart, at the cost of #825. Called before the write's ops are added.
+func (n *node) alarmApart(kind uint8, msg []byte) {
+	err := n.alarmRefusal(kind, msg)
+	if n.batch != nil && (err != nil) != (n.batchAlarm != nil) {
+		n.proposeBatch(n.now)
+	}
+	if n.batch == nil {
+		n.batchAlarm = err
+	}
+}
+
+// alarmRefusal is the error a write of kind that this node refuses anyway,
+// before the log takes it, gets in place of too many requests while an
+// alarm forbids it (alarmGate): NOSPACE or CORRUPT, as etcd answers it,
+// and not as busy for good (#818's review). A write that goes to the log
+// is never refused by the node's own view of the alarms, which is only
+// what it applied: a put sent once AlarmDisarm answered comes after the
+// disarm in the log, and the apply takes it, as etcd's capped applier
+// does, on a node that had not applied the disarm yet too (#825).
+func (n *node) alarmRefusal(kind uint8, msg []byte) error {
+	if !n.noSpace && !n.corrupt {
+		return nil
+	}
+	return n.alarmGate(kind, msg)
 }
 
 // callerBytes is what the caller op addCaller adds to the batch for the

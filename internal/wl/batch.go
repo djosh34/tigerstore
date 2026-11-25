@@ -32,8 +32,12 @@ func (n *node) growBatch(k int) {
 	n.batch = nb
 }
 
-// addOp appends a write to this turn's batch.
+// addOp appends a write to this turn's batch. A caller op goes with the
+// write after it, whose batch its caller chose before it (alarmApart).
 func (n *node) addOp(h handle, kind uint8, msg []byte) {
+	if kind != kCaller {
+		n.alarmApart(kind, msg)
+	}
 	if n.batch == nil {
 		n.batchInRing = true
 		n.growBatch(batchHdr + opHdr + len(msg))
@@ -46,6 +50,7 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 		n.batch = append(n.batch, hdr[:]...)
 		n.batchOps = 0
 		n.batchOwn = n.batchOwn[:0]
+		n.batchFlags = n.batchFlags[:0]
 	}
 	n.growBatch(opHdr + len(msg))
 	var oh [opHdr]byte
@@ -54,6 +59,11 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 	n.batch = append(append(n.batch, oh[:]...), msg...)
 	n.batchOps++
 	n.batchOwn = append(n.batchOwn, h)
+	var fl uint8
+	if n.noSpace || n.corrupt {
+		fl = alarmFlags(kind, msg)
+	}
+	n.batchFlags = append(n.batchFlags, fl)
 }
 
 // addTxn adds a Txn. A failure branch of reads only changes nothing,
@@ -121,6 +131,8 @@ func (n *node) proposeBatch(now time.Time) {
 	f.handles = append(f.handles[:0], n.batchOwn...)
 	f.pledged, f.pledgeEpoch = n.batchPledge, n.pledgeEpoch
 	n.batchPledge = 0
+	f.flags = append(f.flags[:0], n.batchFlags...)
+	n.batchAlarm = nil
 	n.proposed = append(n.proposed, proposal{seq: seq, at: now})
 	if n.batchInRing {
 		// A leader's Raft copies the proposal as it takes it, so only the
