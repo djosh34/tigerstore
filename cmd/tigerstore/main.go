@@ -44,6 +44,7 @@ const minProcs = 2
 const gcPercent = 400
 
 func main() {
+	stacksOnSignal()
 	if runtime.GOMAXPROCS(0) < minProcs {
 		runtime.GOMAXPROCS(minProcs)
 	}
