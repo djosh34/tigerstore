@@ -110,6 +110,10 @@ const (
 // errStopped is Run's error once its context is done.
 var errStopped = errors.New("the node was stopped")
 
+// testAfterStopCheck, if set, runs on a loop right after it looked for a
+// stop on a wake (TestANodeStopsWhenCancelledRightAfterItLooked).
+var testAfterStopCheck atomic.Pointer[func(l *loop)]
+
 // Run runs a node until it fails, or until ctx is done, when it returns
 // nil.
 func Run(ctx context.Context, cfg Config) error {
@@ -756,8 +760,6 @@ func (l *loop) shut(listeners ...net.Listener) {
 }
 
 func (l *loop) takeHandoffs() {
-	var b [8]byte
-	_, _ = sysRead(l.hoFD, b[:])
 	l.mu.Lock()
 	hs := l.handoffs
 	l.handoffs = nil
@@ -1030,8 +1032,19 @@ func (l *loop) run() error {
 			ev := events[i]
 			switch ev.Fd {
 			case evHandoff:
+				// The wake is read before the stop is looked at. A cancel
+				// writes its wake after its context is done, so either the
+				// read takes it and the check below sees the cancel, or it
+				// comes after the read and wakes the next turn. Read after
+				// the check, it could take a cancel's wake with a post's,
+				// and the loop never looked again (#828).
+				var b [8]byte
+				_, _ = sysRead(l.hoFD, b[:])
 				if l.ctx.Err() != nil && l.leaveBy.IsZero() && !l.leave() {
 					return errStopped
+				}
+				if f := testAfterStopCheck.Load(); f != nil {
+					(*f)(l)
 				}
 				t := time.Now()
 				l.takeHandoffs()
