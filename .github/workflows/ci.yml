@@ -81,9 +81,14 @@ jobs:
           tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
           echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
       # The simulator's tests run under -race in their own job, race-sim:
-      # they took 545 s of the 600 s package timeout here.
+      # they took 545 s of the 600 s package timeout here. So do wl's
+      # slowest, those internal/wl/slow-tests.txt names, in test-wl-slow:
+      # wl took 490 to 559 s of its 600 here, and a run past it failed
+      # (#829's ci).
       - shell: bash
-        run: go list ./... | grep -v '/internal/sim$' | xargs go test -race 2>&1 | tee "$RUNNER_TEMP/test.log"
+        run: |
+          slow="^($(paste -sd'|' internal/wl/slow-tests.txt))\$"
+          go list ./... | grep -v '/internal/sim$' | xargs go test -race -skip "$slow" 2>&1 | tee "$RUNNER_TEMP/test.log"
       # wl's nodes on simos and simfs need the simulator's seam, the tag
       # simio (internal/wl/sys.go).
       - shell: bash
@@ -94,6 +99,38 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: test-log
+          path: ${{ runner.temp }}/test.log
+          retention-days: 30
+
+  # wl's slowest tests under -race, those internal/wl/slow-tests.txt
+  # names, which test skips: about half of wl's time there (#829's ci).
+  # A name that no longer names a test fails the job, so that none is
+  # left out of both.
+  test-wl-slow:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - shell: bash
+        run: |
+          set -o pipefail
+          slow="^($(paste -sd'|' internal/wl/slow-tests.txt))\$"
+          want=$(grep -c . internal/wl/slow-tests.txt)
+          got=$(go test -list "$slow" ./internal/wl | grep -c '^Test')
+          if [ "$got" -ne "$want" ]; then
+            echo "internal/wl/slow-tests.txt names $want tests, of which $got are in internal/wl"
+            exit 1
+          fi
+          go test -race -run "$slow" ./internal/wl 2>&1 | tee "$RUNNER_TEMP/test.log"
+      - if: failure()
+        run: scripts/replay.sh "$RUNNER_TEMP/test.log" -race
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-wl-slow-log
           path: ${{ runner.temp }}/test.log
           retention-days: 30
 
@@ -633,7 +670,7 @@ jobs:
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, replay, replay-compare, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
+    needs: [lint, build, test, test-wl-slow, stress, determinism-lint, sim, replay, replay-compare, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
