@@ -50,6 +50,17 @@ func openWLStream(p *proc) (*wlStream, error) {
 		cancel()
 		return nil, err
 	}
+	// Commit the call's attempt now, before its receiver starts: gRPC
+	// retries an uncommitted stream transparently, holding the stream's
+	// lock while it picks a transport, which waits for a node that is
+	// down. A Send waits on that lock, not durably, and under -race
+	// synctest's clock stops for good, with the node's restart behind it
+	// (#837). Committed, a transport that fails ends the call, and the
+	// watch client opens another, as for any stream that ends. That
+	// Context commits is grpc v1.84's clientStream.Context, which calls
+	// commitAttempt: it is not documented, so a gRPC upgrade must check it
+	// still does, as no test here would fail, only race-sim hang.
+	_ = call.Context()
 	ws := &wlStream{cancel: cancel, call: call, c: make(chan *pb.WatchResponse), done: make(chan struct{})}
 	go ws.receive(ctx)
 	return ws, nil
