@@ -456,6 +456,9 @@ type node struct {
 
 	// graySync makes its fsyncs slow while it is gray.
 	graySync bool
+	// disarming is set while an operator is on the way to disarm the
+	// NOSPACE the node raised for lack of room (disarmNoSpace).
+	disarming bool
 	// pausedUntil holds the process back; frozen holds it for good, for
 	// the checks at the end. wake is closed and replaced when either
 	// changes, or the stall ends.
@@ -861,9 +864,12 @@ type Stats struct {
 	KillLosses int
 	Disk       simfs.Counts
 	// LogCuts counts the log's segments a running node removed behind a
-	// checkpoint, NoSpace the calls the NOSPACE alarm refused, and
-	// OutOfSpace the nodes that stopped on a write that ran out of space.
-	LogCuts, NoSpace, OutOfSpace int
+	// checkpoint, NoSpace the calls the NOSPACE alarm refused,
+	// OutOfSpace the nodes that stopped on a write that ran out of space,
+	// NoRoom the checkpoints a node held or dropped for lack of room,
+	// raising NOSPACE and staying up (#769), and Disarms the NOSPACE
+	// alarms an operator disarmed after (disarmNoSpace).
+	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms int
 	// Netem counts the writes each kind of link fault hit (netemKind),
 	// Resets the resets of the connections between two nodes,
 	// and BlockedWrites the writes that waited for room in a connection's

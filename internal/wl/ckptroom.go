@@ -44,6 +44,7 @@ func (n *node) ckptRoom() bool {
 	n.ckptRoomAt = n.now.Add(ckptRoomRetry)
 	n.logf("checkpoint: it needs about %d bytes and the disk has %d free: NOSPACE, and no checkpoint until there is room", need, free)
 	n.raiseNoSpace()
+	n.simNoRoom()
 	return false
 }
 
@@ -128,4 +129,5 @@ func (n *node) ckptNoSpace(err error) {
 	n.ckptRoomAt = n.now.Add(ckptRoomRetry)
 	n.logf("checkpoint at index %d: %v: dropped, NOSPACE, and no checkpoint until there is room", r.meta.index, err)
 	n.raiseNoSpace()
+	n.simNoRoom()
 }

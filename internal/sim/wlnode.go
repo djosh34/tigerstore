@@ -642,6 +642,24 @@ func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
 	return keep
 }
 
+// NoRoom counts a checkpoint the node held or dropped for lack of room on
+// its disk, with NOSPACE raised: a full disk's effect on a node that
+// stays up (#769). An operator comes to disarm the alarm.
+func (h *wlHooks) NoRoom() {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := p.n
+	if n.proc != p {
+		return
+	}
+	s.stats.NoRoom++
+	if !n.disarming {
+		n.disarming = true
+		s.wg.Go(func() { s.disarmNoSpace(n) })
+	}
+}
+
 // SnapshotCut crashes the source of a stream SnapshotChunk cut, once the
 // follower read what it kept.
 func (h *wlHooks) SnapshotCut(to uint64) { h.s.crashSource(h.p, to, h.p.ctx.Done()) }
@@ -723,6 +741,8 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 		return pb.NewClusterClient(conn).MemberRemove(ctx, r)
 	case *pb.MemberListRequest:
 		return pb.NewClusterClient(conn).MemberList(ctx, r)
+	case *pb.AlarmRequest:
+		return pb.NewMaintenanceClient(conn).Alarm(ctx, r)
 	case *pb.LeaseKeepAliveRequest:
 		ka, err := pb.NewLeaseClient(conn).LeaseKeepAlive(ctx)
 		if err != nil {

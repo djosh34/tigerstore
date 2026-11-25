@@ -218,6 +218,7 @@ func (*recovered) SnapshotCut(uint64)                           {}
 func (*recovered) Deliver(*raftpb.Message) bool                 { return true }
 func (*recovered) Checkpoint(uint64, uint64)                    {}
 func (*recovered) CheckpointDone(uint64, string)                {}
+func (*recovered) NoRoom()                                      {}
 func (*recovered) Loaded(uint64, uint64)                        {}
 func (*recovered) Installing(uint64)                            {}
 func (*recovered) Installed(uint64)                             {}

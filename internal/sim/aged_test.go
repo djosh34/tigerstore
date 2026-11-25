@@ -19,7 +19,13 @@ import (
 // 1,000 times further apart) or faulted (2 to 8 times), on 1, 3 or 5
 // voters, half with a memory budget, a quarter with hot keys. Its crash
 // images keep whole writes and no disk is damaged on purpose, so that
-// every node is up for the image; its forks keep those faults.
+// every node is up for the image; its forks keep those faults. A disk
+// holds two checkpoints of the store the load makes, about 10 KiB an
+// object, with a margin: the one a node has and the next beside it, so
+// that most images reach their forks. One seed in five keeps the disk of
+// before, twice the budget, which holds less once there are 1,500
+// objects or so: its nodes age under NOSPACE, holding their checkpoints
+// (#769), and its forks start from what they hold.
 func agingConfig(seed uint64) Config {
 	rng := rand.New(rand.NewPCG(seed, 0x61676564))
 	cfg := kubeConfig(seed, false)
@@ -33,14 +39,24 @@ func agingConfig(seed uint64) Config {
 	}
 	cfg.Faults.Corrupt, cfg.Faults.Rot, cfg.noFence, cfg.longCerts = false, false, true, true
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
-	cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
+	cfg.Faults.DiskCapacity = int(max(2*cfg.Faults.DiskBudget, int64(cfg.Objects)*agedDiskPerObject))
 	cfg.Nodes = pick(rng, scenarioSizes)
 	if rng.IntN(2) == 0 {
 		cfg.MemoryBytes = logUniform(rng, 256<<20, 4<<30)
 	}
 	cfg.HotKeys = rng.IntN(4) == 0
+	// Drawn last, so that the draws before stay those of every image
+	// aged before.
+	if rng.IntN(5) == 0 {
+		cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
+	}
 	return cfg
 }
+
+// agedDiskPerObject is an aging disk's room for each object: two
+// checkpoints of 10 KiB an object, the most #769's images took, the next
+// counted with its margin (wl's ckptNeed), and room to spare.
+const agedDiskPerObject = 32 << 10
 
 // forkConfig is fork seed's run from an image aged by aging: the small
 // keys' load beside the image's store (agedRequest), DefaultConfig's
