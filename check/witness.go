@@ -116,7 +116,7 @@ var ErrWitnessTimeout = errors.New("timed out")
 type witness struct {
 	h        *history.History
 	deadline time.Time
-	// steps counts the search's steps, and a check with maxSteps above 0
+	// steps counts the index's and search's steps, and maxSteps above 0
 	// stops after that many (MaxSteps).
 	steps, maxSteps int64
 	keys            []string

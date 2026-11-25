@@ -2,8 +2,6 @@ package check
 
 import (
 	"cmp"
-	"iter"
-	"maps"
 	"slices"
 	"sort"
 
@@ -75,6 +73,9 @@ func (r *revisionOrder) indexRoom() {
 	// The start's keys on leases are attached to them too.
 	if st := r.w.h.Start; st != nil {
 		for _, kv := range st.KVs {
+			if r.indexStep() {
+				return
+			}
 			if k := s.index(kv.Key); k >= 0 && kv.Lease != 0 {
 				if x.attached[kv.Lease] == nil {
 					x.attached[kv.Lease] = make([]bool, n)
@@ -87,7 +88,10 @@ func (r *revisionOrder) indexRoom() {
 		}
 	}
 	for _, req := range r.w.reqs {
-		for p := range putsIn(req) {
+		if r.indexStep() {
+			return
+		}
+		for p := range r.indexPuts(req) {
 			if k := s.index(p.Key); k >= 0 && p.Lease != 0 {
 				if x.attached[p.Lease] == nil {
 					x.attached[p.Lease] = make([]bool, n)
@@ -117,7 +121,13 @@ func (r *revisionOrder) indexRoom() {
 	}
 	counts := make([]int, r.limit-r.first+2)
 	for _, ls := range r.noted {
+		if r.indexStep() {
+			return
+		}
 		for _, l := range ls {
+			if r.indexStep() {
+				return
+			}
 			x.byM = append(x.byM, lifeOf{l.k, l.life})
 			mark(l.c)
 			mark(l.m)
@@ -128,22 +138,39 @@ func (r *revisionOrder) indexRoom() {
 			counts[l.c-r.first+1]++
 		}
 	}
-	slices.SortStableFunc(early, func(a, b lifeOf) int { return cmp.Compare(a.c, b.c) })
+	indexSort(r, early, func(a, b lifeOf) int { return cmp.Compare(a.c, b.c) })
 	counts[0] = len(early)
 	for c := 1; c < len(counts); c++ {
+		if r.indexStep() {
+			return
+		}
 		counts[c] += counts[c-1]
 	}
 	x.byC = make([]lifeOf, len(x.byM))
 	copy(x.byC, early)
 	for _, l := range x.byM {
+		if r.indexStep() {
+			return
+		}
 		if l.c >= r.first {
 			x.byC[counts[l.c-r.first]] = l
 			counts[l.c-r.first]++
 		}
 	}
-	slices.Sort(before)
-	lives := slices.Compact(before)
+	indexSort(r, before, cmp.Compare[int64])
+	lives := before[:0]
+	for _, rev := range before {
+		if r.indexStep() {
+			return
+		}
+		if len(lives) == 0 || lives[len(lives)-1] != rev {
+			lives = append(lives, rev)
+		}
+	}
 	for i, ok := range marks {
+		if r.indexStep() {
+			return
+		}
 		if ok {
 			lives = append(lives, r.first+int64(i))
 		}
@@ -152,20 +179,26 @@ func (r *revisionOrder) indexRoom() {
 	// bounds by limit, so the counts' are merged in order, not marked: a
 	// read at a far future revision must fail the check, not make a slice
 	// as long as its revision.
-	x.ends = unionRevs(lives, r.countRevs)
+	x.ends = r.unionRevs(lives, r.countRevs)
 	// The acked writers' puts and deletions are those of indexCounts, in
 	// either branch; the resolved writers' and the acked revokes' come on
 	// top.
 	for k := range n {
+		if r.indexStep() {
+			return
+		}
 		x.puts[k], x.deletes[k] = slices.Clone(r.putRevs[k]), slices.Clone(r.delRevs[k])
 	}
 	credit := func(rev int64, req history.Request) {
-		for p := range putsIn(req) {
+		if r.indexStep() {
+			return
+		}
+		for p := range r.indexPuts(req) {
 			if k := s.index(p.Key); k >= 0 {
 				x.puts[k] = append(x.puts[k], rev)
 			}
 		}
-		for _, k := range x.deleted(s, req) {
+		for _, k := range x.deletedWithStep(s, req, r.indexStep) {
 			x.deletes[k] = append(x.deletes[k], rev)
 		}
 		if q := req.LeaseRevoke; q != nil {
@@ -176,6 +209,9 @@ func (r *revisionOrder) indexRoom() {
 	// held is kept by revision from the history's first, as writers.
 	held := slices.Clone(r.writers)
 	for rev, i := range r.resolved {
+		if r.indexStep() {
+			return
+		}
 		if _, ok := r.writer(rev); !ok {
 			held = at(held, rev-r.first)
 			held[rev-r.first] = -1
@@ -183,6 +219,9 @@ func (r *revisionOrder) indexRoom() {
 		}
 	}
 	for j, i := range held {
+		if r.indexStep() {
+			return
+		}
 		if i == 0 {
 			continue
 		}
@@ -195,21 +234,39 @@ func (r *revisionOrder) indexRoom() {
 	// An acked revoke may or may not write its header revision; what it
 	// may delete, it deletes for free either way.
 	for j, is := range r.revokes {
+		if r.indexStep() {
+			return
+		}
 		for _, i := range is {
+			if r.indexStep() {
+				return
+			}
 			credit(r.first+int64(j), r.w.reqs[i])
 		}
 	}
-	for _, revs := range slices.Concat(x.puts, x.deletes, slices.Collect(maps.Values(x.revokes))) {
-		slices.Sort(revs)
+	for _, revs := range slices.Concat(x.puts, x.deletes) {
+		if r.indexStep() {
+			return
+		}
+		indexSort(r, revs, cmp.Compare[int64])
+	}
+	for _, revs := range x.revokes {
+		if r.indexStep() {
+			return
+		}
+		indexSort(r, revs, cmp.Compare[int64])
 	}
 	for _, i := range r.ambiguous {
+		if r.indexStep() {
+			return
+		}
 		a := make([]int, 2*n)
-		for p := range putsIn(r.w.reqs[i]) {
+		for p := range r.indexPuts(r.w.reqs[i]) {
 			if k := s.index(p.Key); k >= 0 {
 				a[k]++
 			}
 		}
-		for _, k := range x.deleted(s, r.w.reqs[i]) {
+		for _, k := range x.deletedWithStep(s, r.w.reqs[i], r.indexStep) {
 			a[n+k] = 1
 		}
 		x.actions[i] = a
@@ -247,9 +304,12 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 
 // unionRevs returns the revisions of a and b, which are each in order and
 // once each, in order and once each.
-func unionRevs(a, b []int64) []int64 {
+func (r *revisionOrder) unionRevs(a, b []int64) []int64 {
 	out := make([]int64, 0, len(a)+len(b))
 	for len(a) > 0 || len(b) > 0 {
+		if r.indexStep() {
+			return nil
+		}
 		switch {
 		case len(b) == 0 || len(a) > 0 && a[0] < b[0]:
 			out, a = append(out, a[0]), a[1:]
@@ -425,31 +485,21 @@ func fewestActions(need []int, actions [][]int, limit int) int {
 	return solve(need)
 }
 
-// putsIn yields the puts of req, in both branches of a transaction.
-func putsIn(req history.Request) iter.Seq[*history.PutRequest] {
-	return func(yield func(*history.PutRequest) bool) {
-		if req.Put != nil {
-			yield(req.Put)
-			return
-		}
-		if req.Txn != nil {
-			for o := range req.Txn.Ops() {
-				if o.Put != nil && !yield(o.Put) {
-					return
-				}
-			}
-		}
-	}
-}
-
 // deleted returns the keys req may delete, in order: those of a delete's
 // range, in either branch, or for a revoke those that hold its lease in s
 // or that a put of the history puts on it, which a later put may attach
 // again.
 func (x *room) deleted(s *state, req history.Request) []int {
+	return x.deletedWithStep(s, req, func() bool { return false })
+}
+
+func (x *room) deletedWithStep(s *state, req history.Request, stop func() bool) []int {
 	var ks []int
 	if q := req.LeaseRevoke; q != nil {
 		for k, kv := range s.kvs {
+			if stop() {
+				return nil
+			}
 			if kv.Lease == q.ID || x.attached[q.ID] != nil && x.attached[q.ID][k] {
 				ks = append(ks, k)
 			}
@@ -459,6 +509,9 @@ func (x *room) deleted(s *state, req history.Request) []int {
 	del := func(d *history.DeleteRequest) {
 		lo, hi := s.span(d.Key, d.End)
 		for k := lo; k < hi; k++ {
+			if stop() {
+				return
+			}
 			ks = append(ks, k)
 		}
 	}
@@ -467,12 +520,24 @@ func (x *room) deleted(s *state, req history.Request) []int {
 		del(req.Delete)
 	case req.Txn != nil:
 		for o := range req.Txn.Ops() {
+			if stop() {
+				return nil
+			}
 			if o.Delete != nil {
 				del(o.Delete)
 			}
 		}
-		slices.Sort(ks)
-		ks = slices.Compact(ks)
+		sortWithStep(ks, cmp.Compare[int], stop)
+		out := ks[:0]
+		for _, k := range ks {
+			if stop() {
+				return nil
+			}
+			if len(out) == 0 || out[len(out)-1] != k {
+				out = append(out, k)
+			}
+		}
+		ks = out
 	}
 	return ks
 }

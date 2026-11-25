@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -27,17 +26,21 @@ import (
 // order. Ambiguous ones of those kinds go in only when a later answer
 // needs them, after every answer that needs them left out.
 func (w *witness) fromRevisions() error {
-	r := &revisionOrder{
-		w:     w,
-		first: w.live.rev,
-		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
-		counts: map[int64][]count{},
-	}
+	r := newRevisionOrder(w)
 	w.search = r
 	if err := r.index(); err != nil {
 		return err
 	}
 	return r.search()
+}
+
+func newRevisionOrder(w *witness) *revisionOrder {
+	return &revisionOrder{
+		w:     w,
+		first: w.live.rev,
+		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
+		counts: map[int64][]count{},
+	}
 }
 
 // revisionOrder is the state of fromRevisions.
@@ -99,8 +102,11 @@ type revisionOrder struct {
 	// it create, write or delete: the writer of that revision must. They
 	// are kept by revision, not in maps: on a busy history the maps' cost
 	// per op grew with their size (#499).
-	lives                     map[string][]lifeTo
-	noted                     [][]seenLife
+	lives map[string][]lifeTo
+	noted [][]seenLife
+	// notedAt deduplicates observations of a life without scanning all the
+	// keys written at its revision. It is dropped with noted after indexing.
+	notedAt                   map[lifeOf]int
 	created, written, deleted [][]int
 	// optional are the ambiguous mutations that change no key and that a
 	// later answer needs, by the revision from which they may go, in call
@@ -147,10 +153,17 @@ type revisionOrder struct {
 	rev   int64
 	stack []*frame
 	backs int
+	// indexed distinguishes a stop in the index from one in the search.
+	indexed      bool
+	indexStopped bool
+	indexLeft    uint8
 }
 
 // progress says where the search is, for the report of a timeout.
 func (r *revisionOrder) progress() string {
+	if !r.indexed {
+		return "the revision index was being built"
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "the search was at revision %d of %d with %d gaps open and had gone back %d times", r.rev, r.top, len(r.stack), r.backs)
 	for _, f := range r.stack[max(0, len(r.stack)-3):] {
@@ -278,19 +291,27 @@ type span struct{ lo, hi int64 }
 
 // index sorts the ops into the maps of r.
 func (r *revisionOrder) index() error {
+	defer func() { r.w.sorter.step = nil }()
+	r.w.sorter.step = r.indexStep
 	h := r.w.h
 	// Each revision past the first takes a write, so none above limit
 	// can be in any order; the indexes by revision rely on it. The first
 	// is the start's, if the history has one.
 	r.limit = r.first
 	for i := range h.Ops {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		// No revision passes the int64 limit (#768).
-		if h.Ops[i].Req.Mutates() && r.limit < math.MaxInt64 {
+		if r.indexMutates(h.Ops[i].Req) && r.limit < math.MaxInt64 {
 			r.limit++
 		}
 	}
 	values := map[[2]string][]int{}
 	for i := range h.Ops {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		op := &h.Ops[i]
 		if op.Resp != nil {
 			if !r.checkRange(op.Resp.Revision) {
@@ -300,18 +321,18 @@ func (r *revisionOrder) index() error {
 		}
 		switch {
 		case op.Req.Range != nil && op.Req.Range.Serializable:
-		case op.Resp != nil && bumps(op):
+		case op.Resp != nil && r.indexBumps(op):
 			if j, ok := r.writer(op.Resp.Revision); ok {
 				return fmt.Errorf("%s and op %d both wrote revision %d", r.w.describe(i), j, op.Resp.Revision)
 			}
 			r.setWriter(op.Resp.Revision, i)
 		case op.Resp != nil && op.Req.LeaseRevoke != nil:
 			r.revokes = r.add(r.revokes, op.Resp.Revision, i)
-		case op.Resp != nil && mutation(op):
+		case op.Resp != nil && r.indexMutation(op):
 			r.others = r.add(r.others, op.Resp.Revision, i)
 		case op.Resp != nil:
 			r.seen = r.add(r.seen, op.Resp.Revision, i)
-		case op.Err.Ambiguous && op.Req.Mutates():
+		case op.Err.Ambiguous && r.indexMutates(op.Req):
 			if g := op.Req.LeaseGrant; g != nil && g.ID == 0 {
 				// Nobody learned its ID, so no answer depends on it.
 				continue
@@ -325,25 +346,38 @@ func (r *revisionOrder) index() error {
 			if g := op.Req.LeaseGrant; g != nil {
 				r.grantsOf[g.ID] = append(r.grantsOf[g.ID], i)
 			}
-			for _, kv := range putsOf(op.Req) {
+			for p := range r.indexPuts(op.Req) {
+				kv := [2]string{p.Key, p.Value}
 				values[kv] = append(values[kv], i)
 			}
 		}
 	}
 	for _, ops := range r.others {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		r.byCall(ops)
 	}
 	r.lowerBounds()
+	if r.indexStopped {
+		return ErrWitnessTimeout
+	}
 	if err := r.inRealTime(); err != nil {
 		return err
 	}
 	// The start's leases were granted before the history.
 	if h.Start != nil {
 		for _, id := range h.Start.Leases {
+			if r.indexStep() {
+				return ErrWitnessTimeout
+			}
 			r.grants[id]++
 		}
 	}
 	for i := range h.Ops {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		op := &h.Ops[i]
 		if op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
 			r.alive[op.Req.Put.Lease] = max(r.alive[op.Req.Put.Lease], op.Resp.Revision)
@@ -359,6 +393,9 @@ func (r *revisionOrder) index() error {
 	// What clients saw: a key unchanged over a span, and the writer of a
 	// value, if they saw the value, and the leases still in use.
 	saw := func(kv history.KeyValue, unchangedTo int64, valued bool) {
+		if r.indexStep() {
+			return
+		}
 		if kv.Lease != 0 {
 			r.alive[kv.Lease] = max(r.alive[kv.Lease], unchangedTo)
 		}
@@ -383,11 +420,23 @@ func (r *revisionOrder) index() error {
 		r.resolved[kv.ModRevision] = ops[0]
 	}
 	for i := range h.Ops {
-		observed(&h.Ops[i], saw)
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
+		r.observed(&h.Ops[i], saw)
 	}
 	for _, wt := range h.Watches {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		for _, resp := range wt.Responses {
+			if r.indexStep() {
+				return ErrWitnessTimeout
+			}
 			for _, e := range resp.Events {
+				if r.indexStep() {
+					return ErrWitnessTimeout
+				}
 				if e.PrevKV != nil {
 					saw(*e.PrevKV, e.Revision()-1, true)
 				}
@@ -400,11 +449,20 @@ func (r *revisionOrder) index() error {
 			}
 		}
 	}
+	if r.indexStopped {
+		return ErrWitnessTimeout
+	}
 	if r.outOfRange != nil {
 		return r.outOfRange
 	}
 	for _, ls := range r.noted {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		for _, l := range ls {
+			if r.indexStep() {
+				return ErrWitnessTimeout
+			}
 			key := r.w.live.keys[l.k]
 			r.lives[key] = append(r.lives[key], l.lifeTo)
 		}
@@ -412,6 +470,9 @@ func (r *revisionOrder) index() error {
 	// An ambiguous op seen writing two revisions wrote neither for sure.
 	revOf := map[int]int64{}
 	for rev, i := range r.resolved {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		if i < 0 {
 			delete(r.resolved, rev)
 			continue
@@ -424,16 +485,32 @@ func (r *revisionOrder) index() error {
 		revOf[i] = rev
 	}
 	for rev, i := range r.resolved {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		r.reserved[i] = rev
 	}
 	for k, ss := range r.covered {
-		r.covered[k] = merge(ss)
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
+		r.covered[k] = r.merge(ss)
 	}
 	r.indexCounts()
+	if r.indexStopped {
+		return ErrWitnessTimeout
+	}
 	r.indexRoom()
+	if r.indexStopped {
+		return ErrWitnessTimeout
+	}
 	// The room index was the last to read the noted lives.
-	r.noted = nil
+	r.noted, r.notedAt = nil, nil
 	r.scheduleOptional()
+	if r.indexStopped {
+		return ErrWitnessTimeout
+	}
+	r.indexed = true
 	return nil
 }
 
@@ -441,7 +518,8 @@ func (r *revisionOrder) index() error {
 const countHorizon = 64
 
 // indexCounts records the counts that acked reads and deletes showed, and
-// which writers may change each key.
+// which writers may change each key. Range deletes expand to one entry per
+// key they may delete; that work is charged per key, not just per request.
 func (r *revisionOrder) indexCounts() {
 	h, s := r.w.h, r.w.live
 	add := func(rev int64, key, end string, n int64) {
@@ -464,6 +542,9 @@ func (r *revisionOrder) indexCounts() {
 		del := func(d *history.DeleteRequest) {
 			lo, hi := s.span(d.Key, d.End)
 			for k := lo; k < hi; k++ {
+				if r.indexStep() {
+					return
+				}
 				if acked {
 					r.delRevs[k] = append(r.delRevs[k], h.Ops[i].Resp.Revision)
 				} else {
@@ -478,6 +559,9 @@ func (r *revisionOrder) indexCounts() {
 			del(req.Delete)
 		case req.Txn != nil:
 			for o := range req.Txn.Ops() {
+				if r.indexStep() {
+					return
+				}
 				if o.Put != nil {
 					put(o.Put)
 				}
@@ -493,8 +577,11 @@ func (r *revisionOrder) indexCounts() {
 		}
 	}
 	for i := range h.Ops {
+		if r.indexStep() {
+			return
+		}
 		op := &h.Ops[i]
-		if op.Req.Mutates() && (op.Resp != nil || op.Err.Ambiguous) {
+		if r.indexMutates(op.Req) && (op.Resp != nil || op.Err.Ambiguous) {
 			touch(i, r.w.reqs[i])
 		}
 		if op.Resp == nil {
@@ -517,10 +604,19 @@ func (r *revisionOrder) indexCounts() {
 		}
 	}
 	for _, revs := range slices.Concat(r.putRevs, r.delRevs) {
-		slices.Sort(revs)
+		if r.indexStep() {
+			return
+		}
+		indexSort(r, revs, cmp.Compare[int64])
 	}
-	slices.Sort(r.revokeRevs)
-	r.countRevs = slices.Sorted(maps.Keys(r.counts))
+	indexSort(r, r.revokeRevs, cmp.Compare[int64])
+	for rev := range r.counts {
+		if r.indexStep() {
+			return
+		}
+		r.countRevs = append(r.countRevs, rev)
+	}
+	indexSort(r, r.countRevs, cmp.Compare[int64])
 }
 
 // reachable reports whether the counts clients saw at the revisions ahead
@@ -678,12 +774,15 @@ func (r *revisionOrder) note(kv history.KeyValue, to int64) {
 	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
 	m := l.m - r.first
 	r.noted = at(r.noted, m)
-	for j, s := range r.noted[m] {
-		if s.k == k && s.life == l {
-			r.noted[m][j].to = max(s.to, to)
-			return
-		}
+	if r.notedAt == nil {
+		r.notedAt = map[lifeOf]int{}
 	}
+	key := lifeOf{k, l}
+	if j, ok := r.notedAt[key]; ok {
+		r.noted[m][j].to = max(r.noted[m][j].to, to)
+		return
+	}
+	r.notedAt[key] = len(r.noted[m])
 	r.noted[m] = append(r.noted[m], seenLife{k, lifeTo{l, to}})
 	r.created, r.written = r.add(r.created, l.c, k), r.add(r.written, l.m, k)
 }
@@ -698,6 +797,9 @@ func (r *revisionOrder) lowerBounds() {
 	h := r.w.h
 	var acked []int
 	for i := range h.Ops {
+		if r.indexStep() {
+			return
+		}
 		if op := &h.Ops[i]; op.Resp != nil && (op.Req.Range == nil || !op.Req.Range.Serializable) {
 			acked = append(acked, i)
 		}
@@ -708,6 +810,9 @@ func (r *revisionOrder) lowerBounds() {
 	r.highest = make([]int64, len(acked))
 	r.returns = make([]int64, len(acked))
 	for k, i := range acked {
+		if r.indexStep() {
+			return
+		}
 		r.returns[k] = r.w.returns[i]
 		r.highest[k] = h.Ops[i].Resp.Revision
 		if k > 0 {
@@ -720,6 +825,9 @@ func (r *revisionOrder) lowerBounds() {
 	r.calls = make([]int64, len(byCall))
 	r.lowest = make([]int64, len(byCall))
 	for k := len(byCall) - 1; k >= 0; k-- {
+		if r.indexStep() {
+			return
+		}
 		i := byCall[k]
 		r.calls[k], r.lowest[k] = r.w.calls[i], h.Ops[i].Resp.Revision
 		if k+1 < len(byCall) {
@@ -727,6 +835,9 @@ func (r *revisionOrder) lowerBounds() {
 		}
 	}
 	for _, i := range r.ambiguous {
+		if r.indexStep() {
+			return
+		}
 		r.lb[i] = r.boundAt(r.w.calls[i])
 	}
 }
@@ -744,8 +855,14 @@ func (r *revisionOrder) inRealTime() error {
 	// bound is the one boundAt gives, without a search per op.
 	n := 0
 	for _, i := range r.ackedByCall {
+		if r.indexStep() {
+			return ErrWitnessTimeout
+		}
 		op := &h.Ops[i]
 		for n < len(r.returns) && r.returns[n] < op.Call {
+			if r.indexStep() {
+				return ErrWitnessTimeout
+			}
 			n++
 		}
 		before := r.first
@@ -779,33 +896,17 @@ func (r *revisionOrder) boundAt(t int64) int64 {
 	return r.highest[n-1]
 }
 
-// putsOf lists the key and value of every put a request can make.
-func putsOf(req history.Request) [][2]string {
-	var out [][2]string
-	switch {
-	case req.Put != nil:
-		out = append(out, [2]string{req.Put.Key, req.Put.Value})
-	case req.Txn != nil:
-		for o := range req.Txn.Ops() {
-			if o.Put != nil {
-				out = append(out, [2]string{o.Put.Key, o.Put.Value})
-			}
-		}
-	}
-	return out
-}
-
 // observed calls saw with every key an acked op saw, the revision up to
 // which the key had not changed since, and whether the op saw its value:
 // a keys-only read and a compare of the mod revision do not.
-func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, valued bool)) {
+func (r *revisionOrder) observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, valued bool)) {
 	if op.Resp == nil {
 		return
 	}
 	rev := op.Resp.Revision
 	// Up to which revision what the op read before its own write held.
 	before := rev
-	if bumps(op) {
+	if r.indexBumps(op) {
 		before = rev - 1
 	}
 	reads := func(q *history.RangeRequest, got *history.RangeResponse, at int64) {
@@ -813,6 +914,9 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, v
 			at = q.Revision
 		}
 		for _, kv := range got.KVs {
+			if r.indexStep() {
+				return
+			}
 			saw(kv, at, !q.KeysOnly)
 		}
 	}
@@ -828,6 +932,9 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, v
 		prev(op.Resp.Put.PrevKV)
 	case op.Req.Delete != nil:
 		for k := range op.Resp.Delete.PrevKVs {
+			if r.indexStep() {
+				return
+			}
 			prev(&op.Resp.Delete.PrevKVs[k])
 		}
 	case op.Req.Txn != nil:
@@ -837,6 +944,9 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, v
 		}
 		wrote := false
 		for k, o := range branch {
+			if r.indexStep() {
+				return
+			}
 			res := op.Resp.Txn.Results[k]
 			switch {
 			case o.Range != nil && !wrote:
@@ -846,6 +956,9 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, v
 				wrote = true
 			case o.Delete != nil:
 				for m := range res.Delete.PrevKVs {
+					if r.indexStep() {
+						return
+					}
 					prev(&res.Delete.PrevKVs[m])
 				}
 				wrote = wrote || res.Delete.Deleted > 0
@@ -853,6 +966,9 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, v
 		}
 		if op.Resp.Txn.Succeeded {
 			for _, c := range op.Req.Txn.Compare {
+				if r.indexStep() {
+					return
+				}
 				if c.Target == history.TargetMod && c.Result == history.Equal && c.Number > 0 {
 					saw(history.KeyValue{Key: c.Key, ModRevision: c.Number}, before, false)
 				}
@@ -862,10 +978,13 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, v
 }
 
 // merge sorts spans and joins those that overlap.
-func merge(ss []span) []span {
-	slices.SortFunc(ss, func(a, b span) int { return cmp.Compare(a.lo, b.lo) })
+func (r *revisionOrder) merge(ss []span) []span {
+	indexSort(r, ss, func(a, b span) int { return cmp.Compare(a.lo, b.lo) })
 	out := ss[:0]
 	for _, s := range ss {
+		if r.indexStep() {
+			return nil
+		}
 		if n := len(out); n > 0 && s.lo <= out[n-1].hi {
 			out[n-1].hi = max(out[n-1].hi, s.hi)
 			continue
@@ -910,15 +1029,21 @@ func (r *revisionOrder) scheduleOptional() {
 	var compacted []rejection
 	var compactions, reads []int
 	note := func(lease, rev int64) {
+		if r.indexStep() {
+			return
+		}
 		if lease != 0 {
 			present[lease] = max(present[lease], rev)
 		}
 	}
 	for i := range h.Ops {
+		if r.indexStep() {
+			return
+		}
 		op := &h.Ops[i]
 		if op.Resp != nil {
 			rev := op.Resp.Revision
-			observed(op, func(kv history.KeyValue, to int64, _ bool) { note(kv.Lease, to) })
+			r.observed(op, func(kv history.KeyValue, to int64, _ bool) { note(kv.Lease, to) })
 			switch {
 			case op.Req.LeaseGrant != nil:
 				granted[op.Resp.LeaseGrant.ID] = true
@@ -932,6 +1057,9 @@ func (r *revisionOrder) scheduleOptional() {
 			}
 			// Only the branch that ran shows its leases in use (#290).
 			for _, o := range branch(op) {
+				if r.indexStep() {
+					return
+				}
 				if o.Put != nil {
 					note(o.Put.Lease, rev)
 				}
@@ -943,11 +1071,19 @@ func (r *revisionOrder) scheduleOptional() {
 		}
 		switch {
 		case sameError(op.Err, errLeaseNotFound):
-			leases := leasesOf(op.Req)
+			var leases []int64
+			for p := range r.indexPuts(op.Req) {
+				if p.Lease != 0 {
+					leases = append(leases, p.Lease)
+				}
+			}
 			if op.Req.LeaseRevoke != nil {
 				leases = append(leases, op.Req.LeaseRevoke.ID)
 			}
 			for _, lease := range leases {
+				if r.indexStep() {
+					return
+				}
 				if at, ok := gone[lease]; !ok || op.Return < at {
 					gone[lease] = op.Return
 				}
@@ -959,20 +1095,88 @@ func (r *revisionOrder) scheduleOptional() {
 		}
 	}
 	for _, w := range h.Watches {
+		if r.indexStep() {
+			return
+		}
 		for _, resp := range w.Responses {
+			if r.indexStep() {
+				return
+			}
 			for _, e := range resp.Events {
+				if r.indexStep() {
+					return
+				}
 				note(e.KV.Lease, e.Revision())
 			}
 		}
 	}
 	for i := range h.Ops {
-		if op := &h.Ops[i]; op.Resp != nil && op.Req.Mutates() && mutation(op) {
+		if r.indexStep() {
+			return
+		}
+		if op := &h.Ops[i]; op.Resp != nil && r.indexMutation(op) {
 			r.mutations = append(r.mutations, i)
 		}
 	}
-	slices.SortFunc(r.mutations, func(a, b int) int { return cmp.Compare(r.w.returns[a], r.w.returns[b]) })
+	indexSort(r, r.mutations, func(a, b int) int { return cmp.Compare(r.w.returns[a], r.w.returns[b]) })
+	readPrefix, compactPrefix := r.optionalPrefix(reads), r.optionalPrefix(compactions)
+	// A suffix minimum answers whether any acked compaction large enough
+	// returned strictly before a rejection's call. Compute explanations once,
+	// not once for every ambiguous compaction and rejection pair.
+	minReturn := make([]int64, len(compactPrefix.ops))
+	for k := len(minReturn) - 1; k >= 0; k-- {
+		if r.indexStep() {
+			return
+		}
+		minReturn[k] = r.w.returns[compactPrefix.ops[k]]
+		if k+1 < len(minReturn) {
+			minReturn[k] = min(minReturn[k], minReturn[k+1])
+		}
+	}
+	unexplained := compacted[:0]
+	for _, rj := range compacted {
+		if r.indexStep() {
+			return
+		}
+		k := sort.Search(len(compactPrefix.revs), func(k int) bool { return compacts(compactPrefix.revs[k], rj) })
+		// Keep the start's rule too: it explains only a named, positive
+		// revision. A transaction's compacted rejection names none (0).
+		explained := h.Start != nil && rj.rev > 0 && compacts(h.Start.Rev, rj) || k < len(minReturn) && minReturn[k] < rj.call
+		if !explained {
+			unexplained = append(unexplained, rj)
+		}
+	}
+	// At the same revision, a rejected compaction is explained by equality,
+	// but a rejected read needs a strictly higher compaction. This order makes
+	// the rejections each compaction could explain a prefix, without adding
+	// one to a revision (which may already be MaxInt64).
+	indexSort(r, unexplained, func(a, b rejection) int {
+		if a.rev != b.rev {
+			return cmp.Compare(a.rev, b.rev)
+		}
+		if a.read == b.read {
+			return 0
+		}
+		if a.read {
+			return 1
+		}
+		return -1
+	})
+	gonePrefix := make([]int64, len(unexplained))
+	for k, rj := range unexplained {
+		if r.indexStep() {
+			return
+		}
+		gonePrefix[k] = rj.ret
+		if k > 0 {
+			gonePrefix[k] = min(gonePrefix[k], gonePrefix[k-1])
+		}
+	}
 	revoking := map[int64]bool{}
 	for _, i := range r.ambiguous {
+		if r.indexStep() {
+			return
+		}
 		op := &h.Ops[i]
 		// Not before the revision of the ops that returned before its
 		// call; insertOptional also waits for their events.
@@ -1025,35 +1229,20 @@ func (r *revisionOrder) scheduleOptional() {
 			// answers it would turn into errors, but at their revision,
 			// before the ops that follow them there (#258).
 			c := op.Req.Compact.Revision
-			goneAt := int64(math.MaxInt64)
-			for _, rj := range compacted {
-				// An acked compaction that compacts it and returned
-				// before it was called explains it in every order, as
-				// an acked revoke a lease found gone (#514).
-				// So does the start's compaction, for a rejection that names
-				// its revision; a transaction's names none (0).
-				explained := h.Start != nil && rj.rev > 0 && compacts(h.Start.Rev, rj) || slices.ContainsFunc(compactions, func(k int) bool {
-					return compacts(h.Ops[k].Req.Compact.Revision, rj) && r.w.returns[k] < rj.call
-				})
-				if compacts(c, rj) && !explained {
-					goneAt = min(goneAt, rj.ret)
-				}
-			}
-			if goneAt == math.MaxInt64 {
+			n := sort.Search(len(unexplained), func(k int) bool { return !compacts(c, unexplained[k]) })
+			if n == 0 || gonePrefix[n-1] == math.MaxInt64 {
 				continue
 			}
-			for _, k := range reads {
-				if read := &h.Ops[k]; read.Req.Range.Revision < c {
-					at = max(at, read.Resp.Revision)
-					call = max(call, read.Call)
-					o.reads = append(o.reads, k)
-				}
+			goneAt := gonePrefix[n-1]
+			n = sort.Search(len(readPrefix.revs), func(k int) bool { return readPrefix.revs[k] >= c })
+			if n > 0 {
+				at, call = max(at, readPrefix.header[n-1]), max(call, readPrefix.call[n-1])
+				o.reads = readPrefix.ops[:n:n]
 			}
-			for _, k := range compactions {
-				if h.Ops[k].Req.Compact.Revision <= c {
-					at = max(at, h.Ops[k].Resp.Revision)
-					o.follow = append(o.follow, k)
-				}
+			n = sort.Search(len(compactPrefix.revs), func(k int) bool { return compactPrefix.revs[k] > c })
+			if n > 0 {
+				at = max(at, compactPrefix.header[n-1])
+				o.follow = compactPrefix.ops[:n:n]
 			}
 			o.late, o.gone, o.by = true, goneAt, r.lowestAfter(goneAt)
 		default:
