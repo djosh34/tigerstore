@@ -1164,6 +1164,27 @@ func during(times []int64, from, to int64) bool {
 	return false
 }
 
+// installExcused reports whether r is a call that failed, other than as
+// a rejection the rule counts as served, and overlapped a span in which
+// its node took a snapshot: from when the snapshot reached the node until
+// the node applied what the leader had committed when the install was
+// done. Until then the node can't answer a write sent to it, and its loop
+// answers no client while it loads the snapshot (#775's rulings). The
+// client's timeout bounds how far back of the span a call can start. A
+// span that never caught up excuses nothing, nor does a call that ended
+// before the span began or started after it ended.
+func (n *node) installExcused(r *Record) bool {
+	if r.Err == nil || isRejection(r.Err) {
+		return false
+	}
+	for _, w := range n.installs {
+		if w.caughtUp != 0 && r.Call < w.caughtUp && r.Return >= w.from {
+			return true
+		}
+	}
+	return false
+}
+
 // stalledAt reports whether a node's disk was stalled at a time. A node
 // with a stalled disk cannot apply, so it answers nothing; the liveness
 // rule is about the healthy nodes.

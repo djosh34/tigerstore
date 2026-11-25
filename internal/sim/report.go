@@ -54,6 +54,17 @@ func (s *Sim) report() string {
 			fmt.Fprintf(&b, "  at its last turn, %s: %s, term %d, leader %d, commit %d, applied %d, first entry held %d, cluster version %d; members %s\n",
 				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.first, l.version, describeMembers(l.members))
 		}
+		for _, w := range n.installs {
+			fmt.Fprintf(&b, "  took a snapshot from %s: ", seconds(w.from))
+			switch {
+			case w.installed == 0:
+				b.WriteString("its install never ended\n")
+			case w.caughtUp == 0:
+				fmt.Fprintf(&b, "installed after %s, never caught up to %d\n", seconds(w.installed-w.from), w.target)
+			default:
+				fmt.Fprintf(&b, "installed after %s, caught up to %d after %s\n", seconds(w.installed-w.from), w.target, seconds(w.caughtUp-w.from))
+			}
+		}
 		var lines []string
 		mark := fmt.Sprintf(" node %d: ", n.id)
 		for i := len(s.trace) - 1; i >= 0 && len(lines) < reportLines; i-- {

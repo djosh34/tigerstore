@@ -26,7 +26,7 @@ func (s *Sim) checkLive(res *Result) error {
 		if r.Call < liveFrom {
 			continue
 		}
-		if n := s.nodes[r.Node]; n.stalledAt(r.Call) || r.Err != nil && n.reloadedDuring(r.Call, r.Return) || n.hungOnReload(r) {
+		if n := s.nodes[r.Node]; n.stalledAt(r.Call) || r.Err != nil && n.reloadedDuring(r.Call, r.Return) || n.hungOnReload(r) || n.installExcused(r) {
 			continue
 		}
 		if r.Err != nil && s.removalDuring(r.Call, r.Return) {
