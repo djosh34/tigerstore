@@ -418,7 +418,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 // checkpoint once the last chunk is written.
 func (n *node) ckptStep(block bool) error {
 	r := n.ckpt
-	if r == nil || ckptHold.Load() {
+	if r == nil || ckptHold.Load() || n.holdCkpt != nil && n.holdCkpt.Load() {
 		return nil
 	}
 	for r.sent > 0 {

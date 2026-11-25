@@ -159,6 +159,7 @@ func run(ctx context.Context, cfg Config) error {
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), ckptLog: cmp.Or(cfg.CheckpointLog, ckptMin), ckptKeys: cfg.CheckpointChunkKeys, catchup: cmp.Or(cfg.CatchupEntries, storageWindow), confState: &pb.ConfState{},
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
+		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
 	}
 	n.startRun(run)
 	if n.sideSecret, err = newSideSecret(); err != nil {
@@ -1408,6 +1409,18 @@ type counters struct {
 	opsByKind, bytesByKind [kinds]int
 	named, held            int
 	carried, carriedBytes  [32]int
+	// propsDropped counts the proposals of followers this leader dropped
+	// for want of room in its log, refusalsSent the batches it told them
+	// of, and refusalsGot those a leader told this follower of
+	// (refusal.go).
+	propsDropped, refusalsSent, refusalsGot int
+	// appendsDropped counts the appends this follower dropped for want of
+	// room in its log, and appendsTrimmed those it kept only the first
+	// entries of (refusal.go).
+	appendsDropped, appendsTrimmed int
+	// ringNudges counts the empty entries this node proposed so that a
+	// checkpoint could free its ring (nudgeRing).
+	ringNudges int
 }
 
 // slowTurn is a turn long enough to log, so that a stall shows where

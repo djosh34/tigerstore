@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/authtoken"
@@ -104,6 +105,13 @@ type Config struct {
 	// checkpoint of its few keys is several writes, which a crash may
 	// keep only some of.
 	CheckpointChunkKeys int
+	// oldPeerWire makes the node act on the wire as a release before the
+	// refusal frame (refusal.go), for a test's mixed cluster.
+	oldPeerWire bool
+	// holdCkpt, while set, keeps the node's running checkpoint from going
+	// on, as ckptHold does for every node: a test's one node whose log
+	// fills.
+	holdCkpt *atomic.Bool
 }
 
 // Member is one member of the cluster.

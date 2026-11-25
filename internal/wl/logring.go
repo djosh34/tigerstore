@@ -380,7 +380,35 @@ func (w *wal) ringFree() int64 {
 // so that the segments go back to the pool (cutPoint). Only the loop
 // calls it; a node with no log, as checkpoint tests make, has no ring.
 func (w *wal) ringLow() bool {
-	return w != nil && w.ring != nil && w.ringFree() <= ringReserve(w.ring.segs)+max(1, w.ring.segs/8)
+	return w != nil && w.ring != nil && (w.ringFree() <= ringReserve(w.ring.segs)+max(1, w.ring.segs/8) || w.wanted > w.ringRoom())
+}
+
+// ringRoom is how many bytes the log can take before it waits for a
+// segment the cut gives back: what the ring's free segments hold, its
+// reserve too, and the rest of the segment the log's end is in.
+func (w *wal) ringRoom() int64 {
+	return w.ringFree()*segSize + segSize - w.off%segSize
+}
+
+// ringRecordSlack bounds what the log adds to a request's bytes in its
+// entry: the op's own framing within the batch (#814).
+const ringRecordSlack = 64
+
+// nudgeRing proposes an empty entry when this node refused a write for
+// want of room in its ring and no checkpoint can free it: it applied every
+// entry it has, and its newest checkpoint is at the last, so none is due
+// (ringDue), and a client that sends only writes the ring has no room for
+// was refused for good. The empty entry applies, a checkpoint is due past
+// it, and its cut gives the ring's room back (#814). A follower's goes to
+// its leader, as any proposal, and comes back in the leader's append: a
+// leader of a release before this one takes it as any empty entry.
+func (n *node) nudgeRing() {
+	if n.lead == 0 || n.ckpt != nil || n.ringDue() || n.storage.lastIndex() != n.applied {
+		return
+	}
+	if n.rn.Propose(nil) == nil {
+		n.stats.ringNudges++
+	}
 }
 
 // ringShort reports whether the ring holds no more than its reserve: the
@@ -466,7 +494,8 @@ var ckptHold atomic.Bool
 // etcd does. Deletes and compactions, which free space, pass,
 // within the ring's reserve.
 func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
-	if !n.wal.ringShort() {
+	w := n.wal
+	if w.ring == nil {
 		return false
 	}
 	switch s.kind {
@@ -477,6 +506,30 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 		}
 	default:
 		return false
+	}
+	if !w.ringShort() {
+		// A write the ring has no room for, with the writes taken since
+		// the log last took entries (ringPledged), would wait for a
+		// segment the cut gives back, and the cut waits for a checkpoint
+		// that needs an apply: it waited for good, and its client timed
+		// out (#814). It is refused at once as too many requests, as etcd
+		// answers past its apply gap, and the room it wants makes the ring
+		// low (ringLow), so that the next checkpoint the node can make
+		// cuts past what the log keeps for a follower that lags, which
+		// then takes a snapshot. A smaller write that fits goes on, and
+		// its apply lets that checkpoint be made. A write that fits but
+		// takes the reserve goes on too, as before: then the ring is
+		// short, and refuses writes below.
+		need := int64(len(msg)) + walEntHdr + ringRecordSlack
+		if need+n.ringPledged <= w.ringRoom() {
+			n.ringPledged += need
+			w.wanted = 0
+			return false
+		}
+		w.wanted = max(w.wanted, need)
+		n.nudgeRing()
+		n.reject(c, s, errTooManyRequests)
+		return true
 	}
 	if (n.ckpt != nil || n.ringDue()) && !n.noSpaceRaised() {
 		n.reject(c, s, errTooManyRequests)

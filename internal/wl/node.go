@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"go.etcd.io/raft/v3"
@@ -282,6 +283,17 @@ type node struct {
 	// are the requests of those whose client has not ended its side.
 	sideCalls map[handle]context.CancelFunc
 	sideReqs  map[handle][]byte
+	// ringPledged is the log bytes of the writes taken since the log last
+	// took entries, which the ring's room must hold too (ringRefuses).
+	ringPledged int64
+	// appendPledged is the log bytes of the appends this follower took
+	// that Raft has not handed to the log yet (followerDrops).
+	appendPledged int64
+	// oldPeerWire makes the node act as a release before the refusal frame
+	// on the wire (refusal.go): a test's mixed cluster.
+	oldPeerWire bool
+	// holdCkpt is Config.holdCkpt.
+	holdCkpt *atomic.Bool
 }
 
 type fwdBatch struct {

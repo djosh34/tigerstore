@@ -143,6 +143,9 @@ func (n *node) proposeBatch(now time.Time) {
 			n.replyErrorH(h, codeUnavailable, msg)
 		}
 		f.handles = f.handles[:0]
+		// The batch never comes to the log: the room its writes were
+		// taken for is free again (ringRefuses).
+		n.ringPledged = 0
 	}
 }
 
