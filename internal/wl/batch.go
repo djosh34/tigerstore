@@ -32,8 +32,12 @@ func (n *node) growBatch(k int) {
 	n.batch = nb
 }
 
-// addOp appends a write to this turn's batch.
+// addOp appends a write to this turn's batch. A caller op goes with the
+// write after it, whose batch its caller chose before it (alarmApart).
 func (n *node) addOp(h handle, kind uint8, msg []byte) {
+	if kind != kCaller {
+		n.alarmApart(kind, msg)
+	}
 	if n.batch == nil {
 		n.batchInRing = true
 		n.growBatch(batchHdr + opHdr + len(msg))
@@ -121,6 +125,7 @@ func (n *node) proposeBatch(now time.Time) {
 	f.handles = append(f.handles[:0], n.batchOwn...)
 	f.pledged, f.pledgeEpoch = n.batchPledge, n.pledgeEpoch
 	n.batchPledge = 0
+	f.alarm, n.batchAlarm = n.batchAlarm, nil
 	n.proposed = append(n.proposed, proposal{seq: seq, at: now})
 	if n.batchInRing {
 		// A leader's Raft copies the proposal as it takes it, so only the

@@ -125,6 +125,10 @@ type node struct {
 	batchInRing bool
 	batchOps    int
 	batchOwn    []handle
+	// batchAlarm is the error the alarms up gave the open batch's writes
+	// as they came, nil if they allow them: a batch never holds writes of
+	// both (alarmApart).
+	batchAlarm error
 
 	// Linearizable reads wait for a ReadIndex: reads not yet asked about,
 	// and the batches that wait for their index or the apply.
@@ -318,6 +322,10 @@ type fwdBatch struct {
 	// never comes to the log (releasePledge).
 	pledged     int64
 	pledgeEpoch uint64
+	// alarm is the error the alarms up gave the batch's writes as they
+	// came (batchAlarm): refused answers them with it, if an alarm is
+	// still up, once the leader drops the batch.
+	alarm error
 }
 
 const fwdSlots = 1 << 14
@@ -480,6 +488,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		if n.ringRefuses(c, s, msg) {
 			return nil
 		}
+		n.alarmApart(kTxn, msg)
 		n.addCaller(c, s)
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
@@ -494,9 +503,13 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 			n.refuseNoSpace(c, s)
 			return nil
 		}
+		if f := testAdmit.Load(); f != nil {
+			(*f)(n, s.kind, msg)
+		}
 		if n.ringRefuses(c, s, msg) {
 			return nil
 		}
+		n.alarmApart(s.kind, msg)
 		n.addCaller(c, s)
 		n.addOp(mkHandle(c, s.id), s.kind, msg)
 	case kLeaseKeepAlive:

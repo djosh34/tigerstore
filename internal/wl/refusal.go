@@ -120,25 +120,24 @@ func (n *node) isRefusal(f []byte) bool {
 }
 
 // refused answers the writes of the batch the leader dropped, which never
-// apply, as too many requests: its clients may send them again. A write
-// an alarm forbids gets the alarm's error instead (alarmRefusal): a put
-// through a follower whose leader's ring is short is refused with NOSPACE
-// once the alarm is up, not as busy for good (#818's review).
+// apply, as too many requests: its clients may send them again. Writes an
+// alarm forbade as they came (fwdBatch.alarm) get the alarm's error
+// instead, while an alarm is still up: a put through a follower whose
+// leader's ring is short is refused with NOSPACE once the alarm is up, not
+// as busy for good (#818's review). The batch's bytes may be gone by then,
+// the ring's span taken back (dropForward).
 func (n *node) refused(f []byte) {
 	seq := binary.LittleEndian.Uint64(f[1:])
 	b := &n.fwd[seq&(fwdSlots-1)]
 	if b.seq != seq {
 		return
 	}
-	ops := batchOps(b.data, seq, len(b.handles))
-	for i, h := range b.handles {
+	err := errTooManyRequests
+	if b.alarm != nil && (n.noSpace || n.corrupt) {
+		err = b.alarm
+	}
+	for _, h := range b.handles {
 		if c, s := n.clientOf(h); c != nil {
-			err := errTooManyRequests
-			if ops != nil {
-				if e := n.alarmRefusal(ops[i].kind, ops[i].req); e != nil {
-					err = e
-				}
-			}
 			n.reject(c, s, err)
 		}
 	}
@@ -303,32 +302,4 @@ func batchPuts(data []byte) bool {
 		p += opHdr + l
 	}
 	return false
-}
-
-// batchOp is one op of a batch: its kind and request.
-type batchOp struct {
-	kind uint8
-	req  []byte
-}
-
-// batchOps are the nops ops of data, this node's forwarded batch seq, or
-// nil if data is not that batch whole: refused then answers every write
-// as busy.
-func batchOps(data []byte, seq uint64, nops int) []batchOp {
-	if !isBatch(data) || binary.LittleEndian.Uint64(data[4:]) != seq || int(binary.LittleEndian.Uint32(data[12:])) != nops {
-		return nil
-	}
-	ops := make([]batchOp, 0, nops)
-	for p := batchHdr; p+opHdr <= len(data); {
-		l := int(binary.LittleEndian.Uint32(data[p+1:]))
-		if p+opHdr+l > len(data) {
-			return nil
-		}
-		ops = append(ops, batchOp{kind: data[p], req: data[p+opHdr : p+opHdr+l]})
-		p += opHdr + l
-	}
-	if len(ops) != nops {
-		return nil
-	}
-	return ops
 }

@@ -505,6 +505,11 @@ var ringHoldCut atomic.Bool
 // while every write is refused, until it ends.
 var ckptHold atomic.Bool
 
+// testAdmit, if set, sees each put, delete, compaction and lease write a
+// node takes from a client, on its loop, before the ring and the alarms
+// judge it: what the node held then (TestAPutAfterADisarmIsTakenByAFollowerThatLags).
+var testAdmit atomic.Pointer[func(n *node, kind uint8, msg []byte)]
+
 // ringRefuses refuses a write of stream s the log's ring has no room for,
 // and reports whether it did. While the ring is short (ringShort) it
 // refuses a put, a lease grant, or a Txn that puts: while a checkpoint
@@ -559,14 +564,33 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 	// The room the write needs, with what the ring holds besides, is what
 	// it wants: the ring is low until it has that, so that a checkpoint
 	// can be due (ringDue).
-	w.wanted = max(w.wanted, need+n.ringTaken())
-	n.nudgeRing()
 	if err := n.alarmRefusal(s.kind, msg); err != nil {
+		// A write the alarm forbids wants no room: it is never taken.
 		n.reject(c, s, err)
 		return true
 	}
+	w.wanted = max(w.wanted, need+n.ringTaken())
+	n.nudgeRing()
 	n.reject(c, s, errTooManyRequests)
 	return true
+}
+
+// alarmApart keeps a write that the alarms up forbid out of a batch of
+// writes they allow, and the other way round: the open batch is proposed
+// first. A leader whose ring is short drops a follower's batch whole if
+// it puts (leaderDrops), so a delete, a compaction or the alarm's disarm
+// in a batch with a put was refused with it, as busy, and a cluster whose
+// clients keep putting through a follower freed no space for good (#827's
+// review). A node that refused such puts itself before the log kept them
+// apart, at the cost of #825. Called before the write's ops are added.
+func (n *node) alarmApart(kind uint8, msg []byte) {
+	err := n.alarmRefusal(kind, msg)
+	if n.batch != nil && (err != nil) != (n.batchAlarm != nil) {
+		n.proposeBatch(n.now)
+	}
+	if n.batch == nil {
+		n.batchAlarm = err
+	}
 }
 
 // alarmRefusal is the error a write of kind that this node refuses anyway,

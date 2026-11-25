@@ -609,6 +609,8 @@ func aFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T, followerRing int64)
 	t.Cleanup(func() { waitStrays(t); segSize = was; ringHoldCut.Store(false) })
 	const segs = 8
 	loopOf := watchLoops(t)
+	var fid atomic.Uint64
+	seen := watchAdmissions(t, &fid, "/mixed/")
 	// The followers' rings are four times the leader's, node 1's, so that
 	// only the leader's is short: the follower's own refusals do not stand
 	// in for the leader's.
@@ -686,6 +688,47 @@ func aFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T, followerRing int64)
 	}
 	if _, err := c.Put(ctx, "/full/k", "x"); !errors.Is(err, rpctypes.ErrNoSpace) {
 		t.Fatalf("a put while NOSPACE is up: %v, want NOSPACE", err)
+	}
+	// A put and a delete through the follower in one turn: the leader,
+	// whose ring is short, drops a batch that puts whole, so the delete
+	// must not be in the put's batch (alarmApart, #827's review). The
+	// follower's loop is held while both come; testAdmit shows whether it
+	// took them in one turn, and a try that did not tests nothing.
+	fid.Store(tc.ids[1])
+	mixed := false
+	for attempt := 0; attempt < 5 && !mixed; attempt++ {
+		pk, dk := fmt.Sprintf("/mixed/put%d", attempt), fmt.Sprintf("/mixed/del%d", attempt)
+		release := holdLoop(t, loopOf(tc.ids[1]))
+		perr, derr := make(chan error, 1), make(chan error, 1)
+		go func() {
+			_, err := c.Put(ctx, pk, "x")
+			perr <- err
+		}()
+		go func() {
+			_, err := c.Delete(ctx, dk)
+			derr <- err
+		}()
+		time.Sleep(200 * time.Millisecond)
+		release()
+		pe, de := <-perr, <-derr
+		got, ok := admitted(seen, pk, dk)
+		if !ok {
+			t.Fatalf("the follower did not take both the put and the delete: %v %v", pe, de)
+		}
+		if got[pk].turn != got[dk].turn {
+			t.Logf("attempt %d: the follower took the put and the delete in turns %d and %d, which tests nothing: again", attempt, got[pk].turn, got[dk].turn)
+			continue
+		}
+		mixed = true
+		if de != nil {
+			t.Fatalf("a delete through the follower in the turn of a put while NOSPACE is up: %v, want it taken", de)
+		}
+		if !errors.Is(pe, rpctypes.ErrNoSpace) {
+			t.Fatalf("the put in the turn of a delete while NOSPACE is up: %v, want NOSPACE", pe)
+		}
+	}
+	if !mixed {
+		t.Fatal("in 5 tries the follower never took a put and a delete in one turn")
 	}
 	// The cut may go on, the alarm is disarmed, and a put is taken again.
 	ringHoldCut.Store(false)
