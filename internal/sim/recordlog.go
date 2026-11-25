@@ -199,6 +199,17 @@ func (l *recordLog) decode(m loggedMessage) (proto.Message, error) {
 }
 
 // records returns the calls.
+// valueBytes is the bytes of the values the calls carry, each as often as
+// it comes: about what a run's history takes past its calls' own
+// fields, which a run with large values, as a bulk load, is mostly.
+func (l *recordLog) valueBytes() int64 {
+	n := int64(0)
+	for _, id := range l.ids {
+		n += int64(l.vals.spans[id].n)
+	}
+	return n
+}
+
 func (l *recordLog) records() ([]*Record, error) {
 	out := make([]*Record, len(l.recs))
 	for i, lr := range l.recs {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -271,6 +272,16 @@ func seedRange(first uint64, n int) []uint64 {
 // history, disks and replay command, by path, for a directory dir of
 // their own.
 func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
+	budget := int64(math.MaxInt64)
+	if simrun.InGosim {
+		budget = gosimSaveBudget
+	}
+	return runFilesWithin(dir, cmd, res, history, budget)
+}
+
+// runFilesWithin is runFiles with budget bytes for the large files.
+func runFilesWithin(dir, cmd string, res *Result, history bool, budget int64) map[string]string {
+	room := &saveRoom{left: budget}
 	files := map[string]string{
 		"trace.txt":  strings.Join(res.Trace, "\n") + "\n",
 		"nodes.txt":  res.Report,
@@ -291,7 +302,16 @@ func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 	}
 	if !history {
 		files["replay.txt"] += "no history.json and no calls.txt: a long run kept to compare with its second run leaves them out; the replay command plays the seed again\n"
-		addDisks(files, res)
+		addDisks(files, res, room)
+		room.note(files)
+		return files
+	}
+	// history.json and calls.txt each hold every value as often as the
+	// calls carry it: in JSON's base64, and as calls.txt prints bytes, up
+	// to 4 bytes a byte.
+	if res.records != nil && !room.take("history.json and calls.txt", 4*res.records.valueBytes()) {
+		addDisks(files, res, room)
+		room.note(files)
 		return files
 	}
 	// Every call, as the clients saw it, also when the run failed before
@@ -321,19 +341,63 @@ func runFiles(dir, cmd string, res *Result, history bool) map[string]string {
 		}
 		files["replay.txt"] += "go run ./cmd/checkhistory -checkers " + checkers + " " + filepath.Join(dir, "history.json") + "\n"
 	}
-	addDisks(files, res)
+	addDisks(files, res, room)
+	room.note(files)
 	return files
+}
+
+// gosimSaveBudget is how many bytes of a failed run's large files, its
+// history and its disks, a run under gosim saves (#775). The gosim fork
+// keeps a copy of every file it saves until the run ends, then hands them
+// all to the driver as one JSON value, base64-encoded, which the driver
+// decodes whole: a bulk run of 160 MB that failed took its runner from
+// 2.8 to 15.7 GB in a minute and was shut down with its evidence. The
+// replay command plays the seed again; raised here, it saves them all.
+const gosimSaveBudget = 256 << 20
+
+// saveRoom is what is left of a save's budget for the large files, and
+// out the ones left out for it.
+type saveRoom struct {
+	left int64
+	out  []string
+}
+
+// take reports whether a file, or a set of them, of n bytes fits what is
+// left, and takes it if it does.
+func (r *saveRoom) take(name string, n int64) bool {
+	if n > r.left {
+		r.out = append(r.out, fmt.Sprintf("%s (%d MB)", name, n/1e6))
+		return false
+	}
+	r.left -= n
+	return true
+}
+
+// note says in replay.txt which files the budget left out.
+func (r *saveRoom) note(files map[string]string) {
+	if len(r.out) > 0 {
+		files["replay.txt"] += fmt.Sprintf("left out, past the %d MiB a run under gosim saves (gosimSaveBudget in internal/sim/sim_test.go, which the replay saves them all with if raised): %s\n",
+			gosimSaveBudget>>20, strings.Join(r.out, ", "))
+	}
 }
 
 // addDisks adds each node's last disk calls and its files now and right
 // after its last crash, and the disks a failed cold restart started from,
 // with that restart's disk calls (#274).
-func addDisks(files map[string]string, res *Result) {
+func addDisks(files map[string]string, res *Result, room *saveRoom) {
 	for _, n := range res.nodes {
 		d := filepath.Join("disks", fmt.Sprintf("node%d", n.id))
 		files[filepath.Join(d, "calls.txt")] = strings.Join(n.diskLines(), "\n") + "\n"
-		addFiles(files, filepath.Join(d, "now"), n.disk.Files())
-		addFiles(files, filepath.Join(d, "after-crash"), n.crashImage)
+		if room.take(filepath.Join(d, "now"), int64(n.disk.Bytes())) {
+			addFiles(files, filepath.Join(d, "now"), n.disk.Files())
+		}
+		image := 0
+		for _, b := range n.crashImage {
+			image += len(b)
+		}
+		if room.take(filepath.Join(d, "after-crash"), int64(image)) {
+			addFiles(files, filepath.Join(d, "after-crash"), n.crashImage)
+		}
 	}
 	if c := res.cold; c != nil {
 		for i, d := range c.disks {
@@ -341,7 +405,10 @@ func addDisks(files map[string]string, res *Result) {
 			if i == c.erased {
 				name += "-erased"
 			}
-			addFiles(files, filepath.Join("cold", fmt.Sprintf("copy-at-%dms", c.at/Millisecond), name), d.Files())
+			dir := filepath.Join("cold", fmt.Sprintf("copy-at-%dms", c.at/Millisecond), name)
+			if room.take(dir, int64(d.Bytes())) {
+				addFiles(files, dir, d.Files())
+			}
 		}
 		for _, n := range c.nodes {
 			files[filepath.Join("cold", fmt.Sprintf("node%d-calls.txt", n.id))] = strings.Join(n.diskLines(), "\n") + "\n"
@@ -1235,6 +1302,29 @@ func TestSaveRunKeepsDisks(t *testing.T) {
 	}
 	if crashed == 0 {
 		t.Fatal("no node crashed")
+	}
+	if _, ok := files["history.json"]; !ok {
+		t.Fatal("the run's history.json is not saved")
+	}
+	// Within a budget too small for any large file (#775), the history
+	// and the disks are left out, and replay.txt says so; the small files
+	// stay.
+	files = runFilesWithin("out", "replay", res, true, 1)
+	for _, name := range []string{"history.json", "calls.txt"} {
+		if _, ok := files[name]; ok {
+			t.Errorf("%s saved past the budget", name)
+		}
+	}
+	if saved(filepath.Join("disks", "node1", "now")) || saved(filepath.Join("disks", "node1", "after-crash")) {
+		t.Error("node 1's files saved past the budget")
+	}
+	for _, name := range []string{"trace.txt", "nodes.txt", "hashes.txt", filepath.Join("disks", "node1", "calls.txt")} {
+		if files[name] == "" {
+			t.Errorf("no %s within the budget", name)
+		}
+	}
+	if r := files["replay.txt"]; !strings.Contains(r, "left out") || !strings.Contains(r, "history.json and calls.txt") || !strings.Contains(r, filepath.Join("disks", "node1", "now")) {
+		t.Errorf("replay.txt does not say what the budget left out: %q", r)
 	}
 }
 
