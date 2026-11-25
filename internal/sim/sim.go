@@ -466,10 +466,12 @@ type node struct {
 	// again from its log, after a snapshot install or a failed fetch, as
 	// on a restart; the client tries again. fromLog are the times it did.
 	reloads, fromLog []int64
-	// installs are the snapshots the node installed: when its loop began
-	// each, and when the store was loaded from it, 0 while it goes on.
-	// The node answers no client in between (#775).
+	// installs are the snapshots the node installed: when each reached it
+	// (the first stream to it, snapFrom, or else when its loop began the
+	// install), and when the install was done, 0 while it goes on. The
+	// node can answer no client in between (#775).
 	installs [][2]int64
+	snapFrom int64
 	// hs is the term and vote the node holds durable: what its process
 	// recovered or later reported durable. mustLast and mustHS are what
 	// recovery must give after its process went down: the floor and hs
@@ -1973,6 +1975,8 @@ func (s *Sim) start(n *node) error {
 		n.corrupted, n.rotted = false, false
 	}
 	n.starting = true
+	// A new process: a snapshot that reaches it starts a span of its own.
+	n.snapFrom = 0
 	// A process takes up to a tick to start, so that the nodes' ticks
 	// fall apart, as on real machines.
 	wait := s.rng.Int64N(TickTime)

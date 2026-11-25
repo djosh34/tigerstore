@@ -14,6 +14,7 @@ func (*node) simDurable(*walJob)    {}
 func (*node) simTurn()              {}
 func (*node) simInstalled(uint64)   {}
 func (*node) simInstalling(uint64)  {}
+func (*node) simInstallDone(uint64) {}
 func (*node) simCheckpoint(uint64)  {}
 
 func (*node) simCheckpointDone(uint64, string) {}

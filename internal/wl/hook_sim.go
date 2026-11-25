@@ -166,6 +166,14 @@ func (n *node) simInstalling(index uint64) {
 	}
 }
 
+// simInstallDone tells the simulator the install of the snapshot at
+// index is done.
+func (n *node) simInstallDone(index uint64) {
+	if h := n.sys.h; h != nil {
+		h.Installed(index)
+	}
+}
+
 // simInstalled starts the changes from the store a snapshot installed.
 func (n *node) simInstalled(index uint64) {
 	n.sys.sim.rev = n.st.rev

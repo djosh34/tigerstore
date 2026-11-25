@@ -416,19 +416,29 @@ func (h *wlHooks) Loaded(index, state uint64) {
 	if p.n.proc != p {
 		return
 	}
-	// Only the install this process began ends here: one a crash cut
-	// short never ends, and a start's load is not an install.
-	if k := len(p.n.installs) - 1; p.installing && k >= 0 {
+	s.sameState(p.n, index, state, "loaded a checkpoint at")
+}
+
+// Installed notes when the node's install of a snapshot was done, with the
+// checkpoint it loaded named in CURRENT: it serves again. Only the install
+// this process began ends here; one that failed, or that a crash cut
+// short, never ends (#812's review).
+func (h *wlHooks) Installed(index uint64) {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if k := len(p.n.installs) - 1; p.n.proc == p && p.installing && k >= 0 {
 		p.installing = false
 		p.n.installs[k][1] = s.now()
 		s.tracef("node %d: installed the snapshot at index %d in %s", p.n.id, index, seconds(s.now()-p.n.installs[k][0]))
 	}
-	s.sameState(p.n, index, state, "loaded a checkpoint at")
 }
 
-// Installing notes when the node's loop began to install a snapshot: it
-// answers no client until the store is loaded from it (Loaded), and the
-// liveness rule excuses its calls in between (installingDuring). With
+// Installing notes when the node's loop began to install a snapshot, and
+// opens the install's span from when the snapshot reached the node: it
+// can answer no client until the install is done (Installed), and the
+// liveness rule excuses its calls that failed in between
+// (installExcused). With
 // Config.installWait, the loop waits here that long.
 func (h *wlHooks) Installing(index uint64) {
 	s, p := h.s, h.p
@@ -437,7 +447,14 @@ func (h *wlHooks) Installing(index uint64) {
 		s.mu.Unlock()
 		return
 	}
-	p.n.installs = append(p.n.installs, [2]int64{s.now(), 0})
+	// The span starts when the snapshot reached the node: the first stream
+	// to it since its process started, if one was served before.
+	from := s.now()
+	if f := p.n.snapFrom; f != 0 && f < from {
+		from = f
+	}
+	p.n.snapFrom = 0
+	p.n.installs = append(p.n.installs, [2]int64{from, 0})
 	p.installing = true
 	s.tracef("node %d: installing a snapshot at index %d", p.n.id, index)
 	wait := s.cfg.installWait
@@ -565,6 +582,13 @@ func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
 		wait = 200*Millisecond + s.rng.Int64N(1800*Millisecond)
 	}
 	s.stats.Snapshots++
+	// A snapshot reaches its node from here: the install's span starts
+	// at the first stream to it (Installing, #775's ruling).
+	for _, m := range s.nodes {
+		if m.id == to && m.snapFrom == 0 {
+			m.snapFrom = s.now()
+		}
+	}
 	crash := s.cfg.Faults.FetchCrash && !s.healed && s.stats.FetchCrashes == 0 && len(p) > 1
 	switch {
 	case crash:
