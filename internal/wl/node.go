@@ -283,12 +283,19 @@ type node struct {
 	// are the requests of those whose client has not ended its side.
 	sideCalls map[handle]context.CancelFunc
 	sideReqs  map[handle][]byte
-	// ringPledged is the log bytes of the writes taken since the log last
-	// took entries, which the ring's room must hold too (ringRefuses).
+	// ringPledged is the log bytes of the writes taken since Raft last
+	// handed the log an append, which the ring's room must hold too
+	// (ringTaken).
 	ringPledged int64
+	// nudgedAt is the apply the empty entry nudgeRing proposed waits for,
+	// one past the applied index it was proposed at, and nudgedWhen when.
+	nudgedAt   uint64
+	nudgedWhen time.Time
 	// appendPledged is the log bytes of the appends this follower took
-	// that Raft has not handed to the log yet (followerDrops).
+	// that Raft has not handed to the log yet, and appendLast the last
+	// index they hold (followerDrops).
 	appendPledged int64
+	appendLast    uint64
 	// oldPeerWire makes the node act as a release before the refusal frame
 	// on the wire (refusal.go): a test's mixed cluster.
 	oldPeerWire bool

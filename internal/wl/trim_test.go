@@ -209,3 +209,67 @@ func TestFitEntriesKeepsEntriesItHas(t *testing.T) {
 		}
 	}
 }
+
+// TestAFollowerTrimsDropsOrPassesAnAppend is followerDrops itself, on a
+// ring of 32 segments of 16 KiB with 11 free and the log's end at a
+// segment's start: room for 196608 bytes, less appendMargin. An append of
+// four entries of 60000 bytes is cut to the three that fit, and the bytes
+// and last index they take are counted; one whose first entry has no
+// room is dropped whole; one whose entry before them the follower lacks
+// goes to Raft untouched, which rejects it and writes none of it.
+func TestAFollowerTrimsDropsOrPassesAnAppend(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	const segs = 32
+	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, segs*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	w.off = 20 * segSize
+	if room := w.ringRoom(); room != 12*segSize {
+		t.Fatalf("the ring's room is %d, want %d", room, 12*segSize)
+	}
+	n := &node{wal: w, storage: newLogStorage(nil)}
+	n.storage.snapIndex = 5
+	app := func(prev uint64, size, k int) *pb.Message {
+		m := &pb.Message{Type: pb.MsgApp.Enum(), Index: new(prev)}
+		for i := range k {
+			m.Entries = append(m.Entries, &pb.Entry{Index: new(prev + 1 + uint64(i)), Data: make([]byte, size)})
+		}
+		return m
+	}
+	one := int64(60000 + walEntHdr)
+
+	m := app(5, 60000, 4)
+	if n.followerDrops(m) {
+		t.Fatal("an append whose first three entries fit was dropped")
+	}
+	if len(m.Entries) != 3 || m.Entries[2].GetIndex() != 8 {
+		t.Fatalf("the append kept %d entries, want the 3 that fit, 6 to 8", len(m.Entries))
+	}
+	if n.appendPledged != 3*one || n.appendLast != 8 || n.stats.appendsTrimmed != 1 || w.wanted != one+appendMargin {
+		t.Fatalf("after the trim: pledged %d, last %d, trimmed %d, wanted %d; want %d, 8, 1, %d", n.appendPledged, n.appendLast, n.stats.appendsTrimmed, w.wanted, 3*one, one+appendMargin)
+	}
+
+	// The next append, after the three, has room for none.
+	m = app(8, 60000, 1)
+	if !n.followerDrops(m) || n.stats.appendsDropped != 1 || len(m.Entries) != 1 {
+		t.Fatalf("an append with no room for its first entry: dropped %d, entries %d; want dropped whole", n.stats.appendsDropped, len(m.Entries))
+	}
+
+	// An append past what the follower holds goes to Raft whole.
+	m = app(12, 60000, 4)
+	if n.followerDrops(m) || len(m.Entries) != 4 || n.appendPledged != 3*one {
+		t.Fatalf("an append past the follower's last entry: %d entries kept, pledged %d; want it untouched", len(m.Entries), n.appendPledged)
+	}
+
+	// Raft handed the log what it took: the room counts it from the log
+	// (storageAppend), and an append that fits whole is kept whole.
+	n.appendPledged, n.appendLast = 0, 0
+	m = app(5, 100, 2)
+	if n.followerDrops(m) || len(m.Entries) != 2 || w.wanted != 0 {
+		t.Fatalf("an append that fits: %d entries kept, wanted %d; want both, 0", len(m.Entries), w.wanted)
+	}
+}

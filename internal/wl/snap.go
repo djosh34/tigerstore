@@ -254,7 +254,9 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 			mem = x
 		}
 	}
+	strays.Add(1)
 	go func() {
+		defer strays.Add(-1)
 		err := l.sendSelfContained(mem, m, f)
 		_ = f.Close()
 		status := raft.SnapshotFinish

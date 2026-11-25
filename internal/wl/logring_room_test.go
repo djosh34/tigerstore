@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	etcdpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -50,7 +52,7 @@ func roomCluster(t *testing.T, o roomOpts) *roomRun {
 	r := &roomRun{loopOf: watchLoops(t)}
 	was := segSize
 	segSize = 16 << 10
-	t.Cleanup(func() { segSize = was })
+	t.Cleanup(func() { waitStrays(t); segSize = was })
 	const segs = 32
 	oldName, heldName := "", ""
 	r.tc = newTestClusterWith(t, func(tc *testCluster) {
@@ -405,6 +407,41 @@ func TestAFollowerRefusingBigPutsNudgesBoundedly(t *testing.T) {
 	r.nudgesBoundedOn(t, r.live, "once a put was taken again")
 }
 
+// TestConcurrentRefusalsProposeBoundedEmptyEntries sends rounds of 32
+// puts of 128 KiB at once through the leader, whose ring alone is full,
+// so that many are refused in one turn: the leader proposes at most one
+// empty entry at a time (nudgeRing), so no more than one per checkpoint
+// it made, and one more, however many it refused before its Ready.
+func TestConcurrentRefusalsProposeBoundedEmptyEntries(t *testing.T) {
+	r := roomCluster(t, roomOpts{throughLeader: true, bigFollowers: true})
+	r.putsUntil(t, false, func(_, busy, _, _ int) bool { return busy > 0 })
+	value := strings.Repeat("v", 128<<10)
+	var refused atomic.Int64
+	for round := range 8 {
+		var wg sync.WaitGroup
+		for i := range 32 {
+			wg.Go(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*requestTimeout)
+				defer cancel()
+				_, err := r.c.Put(ctx, fmt.Sprintf("/room/burst/%d/%02d", round, i), value)
+				switch {
+				case err == nil:
+				case errors.Is(err, rpctypes.ErrTooManyRequests):
+					refused.Add(1)
+				default:
+					t.Errorf("a put of 128 KiB in round %d: %v", round, err)
+				}
+			})
+		}
+		wg.Wait()
+	}
+	t.Logf("8 rounds of 32 puts of 128 KiB at once: %d refused", refused.Load())
+	if refused.Load() == 0 {
+		t.Fatal("no put refused: the test tests nothing")
+	}
+	r.nudgesBounded(t, "after the bursts")
+}
+
 // TestAnOldFollowerWaitsAsBefore writes through a follower that acts as a
 // release before the refusal frame (#814's rolling upgrade): it marks no
 // proposal, so the leader drops the one it has no room for and tells it
@@ -544,5 +581,131 @@ func onLoop(l *loop, fn func()) bool {
 		return true
 	case <-time.After(5 * time.Second):
 		return false
+	}
+}
+
+// TestAFullLogRingRaisesNOSPACEThroughAFollower is TestAFullLogRingRaisesNOSPACE
+// with its puts through a follower, which forwards them to the leader: a
+// ring whose cut is held fills, and once it is short with no checkpoint to
+// free it, the leader refuses the forwarded puts, as its own clients' (the
+// reserve is for deletes), and raises NOSPACE, whose alarm, once it
+// applies, makes the follower refuse puts with NOSPACE itself. Taken into
+// the reserve, they let a delete wait on a segment for good; refused as
+// busy only, they were refused so for good (#818's review).
+func TestAFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T) {
+	was := segSize
+	segSize = 64 << 10
+	ringHoldCut.Store(true)
+	t.Cleanup(func() { waitStrays(t); segSize = was; ringHoldCut.Store(false) })
+	const segs = 8
+	loopOf := watchLoops(t)
+	// The followers' rings are four times the leader's, node 1's, so that
+	// only the leader's is short: the follower's own refusals do not stand
+	// in for the leader's.
+	tc := newTestClusterWith(t, func(tc *testCluster) {
+		tc.logRing = segs * segSize
+		tc.config = func(c *Config) {
+			if c.Name != "n1" {
+				c.LogRing = 4 * segs * segSize
+			}
+		}
+	})
+	all := tc.clientOf(t, tc.endpoints[:3]...)
+	if at := tc.leaderEndpoint(t, all); at != tc.endpoints[0] {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_, err := tc.clientOf(t, at).MoveLeader(ctx, tc.ids[0])
+		cancel()
+		if err != nil {
+			t.Fatalf("move the leadership to node 1: %v", err)
+		}
+	}
+	for deadline := time.Now().Add(30 * time.Second); tc.leaderEndpoint(t, all) != tc.endpoints[0]; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("node 1 does not lead 30 s after it was asked to")
+		}
+	}
+	c := tc.clientOf(t, tc.endpoints[1])
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	value := strings.Repeat("v", 900)
+	var err error
+	puts, busy := 0, 0
+	for {
+		if _, err = c.Put(ctx, fmt.Sprintf("/full/%04d", puts%256), value); err == nil {
+			puts++
+			continue
+		}
+		if errors.Is(err, rpctypes.ErrTooManyRequests) {
+			busy++
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
+		break
+	}
+	if !errors.Is(err, rpctypes.ErrNoSpace) {
+		t.Fatalf("after %d puts through a follower and %d refused as busy: %v, want NOSPACE; the leader's ring: %s", puts, busy, err, ringState(loopOf(tc.ids[0])))
+	}
+	t.Logf("%d puts of about 1 KiB through a follower filled a ring of %d segments of %d bytes; %d were refused as busy", puts, segs, segSize, busy)
+	for {
+		alarms, err := c.AlarmList(ctx)
+		if err == nil && slices.ContainsFunc(alarms.Alarms, func(a *etcdpb.AlarmMember) bool { return a.Alarm == etcdpb.AlarmType_NOSPACE }) {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("alarms after the full ring: %v %v", alarms, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// While NOSPACE is up, what frees a full cluster goes on, as etcd's
+	// capped applier lets it: a delete and a compaction through the
+	// follower are taken. A put is refused with NOSPACE.
+	if _, err := c.Delete(ctx, "/full/0000"); err != nil {
+		t.Fatalf("a delete while NOSPACE is up: %v", err)
+	}
+	rev := int64(0)
+	if r, err := c.Get(ctx, "/full/0001"); err != nil {
+		t.Fatalf("a read while NOSPACE is up: %v", err)
+	} else {
+		rev = r.Header.Revision
+	}
+	if _, err := c.Compact(ctx, rev); err != nil {
+		t.Fatalf("a compaction while NOSPACE is up: %v", err)
+	}
+	if _, err := c.Put(ctx, "/full/k", "x"); !errors.Is(err, rpctypes.ErrNoSpace) {
+		t.Fatalf("a put while NOSPACE is up: %v, want NOSPACE", err)
+	}
+	// The cut may go on, the alarm is disarmed, and a put is taken again.
+	ringHoldCut.Store(false)
+	alarms, err := c.AlarmList(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range alarms.Alarms {
+		if _, err := c.AlarmDisarm(ctx, &clientv3.AlarmMember{MemberID: a.MemberID, Alarm: a.Alarm}); err != nil {
+			t.Fatalf("disarm %v: %v", a, err)
+		}
+	}
+	for {
+		_, err := c.Put(ctx, "/full/k", "after")
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil || !errors.Is(err, rpctypes.ErrTooManyRequests) && !errors.Is(err, rpctypes.ErrNoSpace) {
+			t.Fatalf("a put once the cut may go on and the alarm is disarmed: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// waitStrays waits, at most 30 s, for the goroutines nodes started that may
+// outlive them (strays) to end: the test's cluster stopped, its cleanups
+// run in turn, and one that sets segSize back would race with them.
+func waitStrays(t testing.TB) {
+	t.Helper()
+	for deadline := time.Now().Add(30 * time.Second); strays.Load() != 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Errorf("%d goroutines of stopped nodes still run 30 s after the test", strays.Load())
+			return
+		}
 	}
 }

@@ -604,10 +604,18 @@ func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args..
 // offLoop runs work in a goroutine of its own, and what it returns on the
 // loop.
 func (l *loop) offLoop(work func() func() error) {
+	strays.Add(1)
 	go func() {
+		defer strays.Add(-1)
 		l.post(work())
 	}()
 }
+
+// strays counts the goroutines a node starts that may go on after it
+// stops, reading its log (offLoop, sendSnapshot, prepareClientSnap): a
+// test that sets segSize waits for none before it sets it back
+// (waitStrays), which they read.
+var strays atomic.Int64
 
 // healthRead is the read of etcd's health checks, made on the loop as
 // etcd makes it in its server: a serializable one reads the store as it

@@ -186,6 +186,12 @@ func (n *node) expireProposals() {
 			n.replyErrorH(h, codeUnavailable, msgTimeout)
 		}
 		f.handles = f.handles[:0]
+		if n.lead != n.id {
+			// A follower's batch lost on the way to its leader never
+			// comes to the log: the room its writes were taken for is
+			// free again (ringRefuses).
+			n.ringPledged = 0
+		}
 	}
 	if k > 0 {
 		n.proposed = append(n.proposed[:0], n.proposed[k:]...)

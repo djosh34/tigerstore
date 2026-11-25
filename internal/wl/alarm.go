@@ -261,6 +261,12 @@ func txnCost(msg []byte) int64 {
 // raises the node's own NOSPACE alarm unless it is raised.
 func (n *node) refuseNoSpace(c *client, s *stream) {
 	n.reject(c, s, requestErr(codeResourceExhausted, msgNoSpace))
+	n.raiseNoSpace()
+}
+
+// raiseNoSpace raises the node's own NOSPACE alarm unless it is raised or
+// asked for since the last apply.
+func (n *node) raiseNoSpace() {
 	if n.noSpaceRaised() || n.noSpaceAsked == n.applied {
 		return
 	}
@@ -290,17 +296,24 @@ func (n *node) alarmGate(kind uint8, req []byte) error {
 			}
 		}
 	}
-	if n.noSpace {
-		switch kind {
-		case kPut, kLeaseGrant:
-			return requestErr(codeResourceExhausted, msgNoSpace)
-		case kTxn:
-			if txnWrites(req, true) {
-				return requestErr(codeResourceExhausted, msgNoSpace)
-			}
-		}
+	if n.noSpace && noSpaceForbids(kind, req) {
+		return requestErr(codeResourceExhausted, msgNoSpace)
 	}
 	return nil
+}
+
+// noSpaceForbids reports whether a raised NOSPACE alarm forbids a write
+// of kind, as etcd's capped applier: a put, a lease grant, or a Txn that
+// puts. Deletes, compactions, lease revokes and the alarm's disarm go on,
+// which free a full cluster.
+func noSpaceForbids(kind uint8, req []byte) bool {
+	switch kind {
+	case kPut, kLeaseGrant:
+		return true
+	case kTxn:
+		return txnWrites(req, true)
+	}
+	return false
 }
 
 // txnWrites reports whether a Txn's branches, nested ones too, put, or

@@ -129,9 +129,13 @@ func (n *node) storageAppend(m *pb.Message) error {
 	// a change Raft holds is held for before the next goes (#689's
 	// area-2 review).
 	n.confAppended(m.GetEntries())
-	// The appends taken are in the log or wait for the stage now, which
-	// count them (followerDrops).
-	n.appendPledged = 0
+	// What Raft hands the log here holds every write and append taken so
+	// far, as the turn's batch is proposed before its Ready: it is in the
+	// log or waits for the stage now, which count it (ringTaken,
+	// followerDrops). An append written in the turn's input, as the stage
+	// drains, does not: the turn's writes taken before it are in no append
+	// yet.
+	n.ringPledged, n.appendPledged, n.appendLast = 0, 0, 0
 	w := n.wal
 	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
 		w.stats.waits++
@@ -186,11 +190,6 @@ func (n *node) appendNow(m *pb.Message) error {
 		n.turnReady.write += time.Since(t)
 		if err != nil {
 			return err
-		}
-		// The writes taken for the ring's room are in the log now, which
-		// counts them (ringRefuses).
-		if len(ents) > 0 {
-			n.ringPledged = 0
 		}
 	}
 	if err := n.storage.append(ents, n.wal.offs); err != nil {

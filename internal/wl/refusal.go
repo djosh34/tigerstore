@@ -2,7 +2,9 @@ package wl
 
 import (
 	"encoding/binary"
+	"slices"
 
+	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
@@ -49,26 +51,46 @@ func (n *node) propContext(m *pb.Message) []byte {
 
 // leaderDrops reports whether this leader drops proposal m, of peer from,
 // for want of room in its log's ring, and tells the peer if it knows the
-// refusal frame. A proposal may take the ring's reserve, as a client's
-// write here (ringRefuses): the deletes and compactions the reserve is
-// for go on while the ring is short.
+// refusal frame. As a client's write here (ringRefuses), a proposal may
+// take the ring's reserve while the ring is not short, and one that puts
+// is refused while it is: the deletes and compactions the reserve is for
+// go on.
 func (n *node) leaderDrops(m *pb.Message, from uint64) bool {
 	w := n.wal
-	if w == nil || w.ring == nil || n.lead != n.id || m.GetType() != pb.MsgProp {
+	// Raft's role now: a node elected in this turn's input steps a
+	// proposal as its leader before its Ready tells wl (n.lead).
+	if w == nil || w.ring == nil || m.GetType() != pb.MsgProp || n.rn.BasicStatus().RaftState != raft.StateLeader {
 		return false
 	}
 	var need int64
+	puts := false
 	for _, e := range m.GetEntries() {
 		need += int64(len(e.GetData())) + walEntHdr + ringRecordSlack
+		puts = puts || batchPuts(e.GetData())
 	}
-	if need+n.ringPledged <= w.ringRoom() {
+	switch {
+	case w.ringShort() && puts:
+		// A short ring refuses a client's put here (ringRefuses), and a
+		// follower's the same: the reserve is for the deletes and
+		// compactions that free space. With no checkpoint to free it, it
+		// raises NOSPACE, as for a client's put here: else a cluster whose
+		// clients all write through followers refused them as busy for
+		// good. Once the alarm applies, the followers refuse puts with
+		// NOSPACE themselves (alarmGate).
+		if n.ckpt == nil && !n.ringDue() {
+			n.raiseNoSpace()
+		}
+	case need+n.ringTaken() <= w.ringRoom():
 		n.ringPledged += need
 		return false
+	default:
+		w.wanted = max(w.wanted, need)
+		n.nudgeRing()
 	}
-	w.wanted = max(w.wanted, need)
-	n.nudgeRing()
 	n.stats.propsDropped++
-	if string(m.GetContext()) != string(refusalMark) {
+	// Only a node that knows the frame sends it: the rolling upgrade's old
+	// build sends none, as a release before this one.
+	if string(m.GetContext()) != string(refusalMark) || !n.refusals() {
 		return true
 	}
 	p := n.peersOut[from]
@@ -114,7 +136,10 @@ func (n *node) refused(f []byte) {
 	// The batch never comes to the log, so the room its writes were taken
 	// for is free again (ringRefuses): kept, it refused every write the
 	// size of the one refused for good (#814's test, through a follower).
-	n.ringPledged = 0
+	// A node that leads since holds its own writes' pledges, which stay.
+	if n.lead != n.id {
+		n.ringPledged = 0
+	}
 	n.stats.refusalsGot++
 }
 
@@ -138,9 +163,17 @@ func (n *node) followerDrops(m *pb.Message) bool {
 	if w == nil || w.ring == nil || m.GetType() != pb.MsgApp || len(m.GetEntries()) == 0 {
 		return false
 	}
-	room := w.ringRoom() - n.appendPledged - w.waitingBytes() - appendMargin
 	ents := m.GetEntries()
-	keep, took, wanted := fitEntries(ents, n.storage.lastIndex(), room)
+	last := max(n.storage.lastIndex(), w.waitingLast(), n.appendLast)
+	if m.GetIndex() > last {
+		// The entry before them is not here: Raft rejects the append and
+		// writes none of it, and its answer tells the leader where this
+		// node's log ends, so that it sends what is missing, or a
+		// snapshot. Dropped, the leader, probing, sent it again for good.
+		return false
+	}
+	room := w.ringRoom() - n.appendPledged - w.waitingBytes() - appendMargin
+	keep, took, wanted := fitEntries(ents, last, room)
 	if wanted > 0 {
 		// The room it wants makes the ring low, so that a checkpoint is
 		// due once the node applied past its newest: a ring with more
@@ -159,7 +192,20 @@ func (n *node) followerDrops(m *pb.Message) bool {
 		n.stats.appendsTrimmed++
 	}
 	n.appendPledged += took
+	if keep > 0 {
+		n.appendLast = max(n.appendLast, ents[keep-1].GetIndex())
+	}
 	return false
+}
+
+// waitingLast is the last index of the appends that wait for the stage.
+func (w *wal) waitingLast() uint64 {
+	for _, m := range slices.Backward(w.waiting) {
+		if ents := m.GetEntries(); len(ents) > 0 {
+			return ents[len(ents)-1].GetIndex()
+		}
+	}
+	return 0
 }
 
 // fitEntries picks the entries of an append that a follower's log, whose
@@ -195,4 +241,30 @@ func (w *wal) waitingBytes() int64 {
 		}
 	}
 	return k
+}
+
+// batchPuts reports whether batch data holds an op that a short ring
+// refuses (ringRefuses): a put, a lease grant, or a Txn that puts.
+func batchPuts(data []byte) bool {
+	if !isBatch(data) {
+		return false
+	}
+	for p := batchHdr; p+opHdr <= len(data); {
+		kind := data[p]
+		l := int(binary.LittleEndian.Uint32(data[p+1:]))
+		if p+opHdr+l > len(data) {
+			return true // not a batch this node reads: as if it put
+		}
+		msg := data[p+opHdr : p+opHdr+l]
+		switch kind {
+		case kPut, kLeaseGrant:
+			return true
+		case kTxn:
+			if txnCost(msg) != 0 {
+				return true
+			}
+		}
+		p += opHdr + l
+	}
+	return false
 }
