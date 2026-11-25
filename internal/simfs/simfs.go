@@ -886,6 +886,16 @@ func (d *Disk) Erase() {
 	d.dirOps = nil
 }
 
+// Size returns the bytes of the files' contents, as Files copies them,
+// without copying them.
+func (d *Disk) Size() int {
+	n := 0
+	for _, f := range d.names {
+		n += f.size
+	}
+	return n
+}
+
 // Bytes returns the room the files take: each its size, or as far as
 // its space is allocated if further (Handle.Allocate).
 func (d *Disk) Bytes() int {
