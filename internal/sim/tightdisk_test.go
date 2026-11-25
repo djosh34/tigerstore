@@ -1,8 +1,12 @@
 package sim
 
 import (
+	"errors"
+	"math"
 	"slices"
 	"testing"
+
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -33,6 +37,26 @@ func TestATightDiskHoldsItsCheckpointsAndRecovers(t *testing.T) {
 		if st.NoRoom == 0 || st.DiskGrowths != 1 || st.Disarms == 0 || st.OutOfSpace != 0 {
 			t.Fatalf("seed %d: %d checkpoints held for room, %d growths, %d disarms, %d nodes out of space: the disk must fill, the nodes stay up, and the operator grow it and disarm",
 				seed, st.NoRoom, st.DiskGrowths, st.Disarms, st.OutOfSpace)
+		}
+		// While NOSPACE was up, from the first call it refused to the
+		// disarm, every call got an answer, a success or the alarm's
+		// refusal, never a timeout: a node whose log ring wedged behind the
+		// checkpoints it could not take would leave calls unanswered
+		// (Opus's review of #846). The run has no fault that delays an
+		// answer otherwise.
+		from := int64(math.MaxInt64)
+		for _, r := range res.History {
+			if errors.Is(r.Err, rpctypes.ErrGRPCNoSpace) {
+				from = min(from, r.Call)
+			}
+		}
+		if from == math.MaxInt64 {
+			t.Fatalf("seed %d: no call was refused with NOSPACE", seed)
+		}
+		for _, r := range res.History {
+			if r.Call >= from && r.Return <= st.DisarmedAt && errors.Is(r.Err, errClientTimeout) {
+				t.Fatalf("seed %d: client %d's call at %s timed out while NOSPACE was up (%s to %s)", seed, r.Client, seconds(r.Call), seconds(from), seconds(st.DisarmedAt))
+			}
 		}
 		// NOSPACE's refusals count for the liveness rule as answers; the
 		// writes must be taken again once the alarm is disarmed.
