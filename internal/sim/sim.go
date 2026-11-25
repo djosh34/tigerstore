@@ -470,11 +470,9 @@ type node struct {
 	// again from its log, after a snapshot install or a failed fetch, as
 	// on a restart; the client tries again. fromLog are the times it did.
 	reloads, fromLog []int64
-	// installs are the snapshots the node installed: when each reached it
-	// (the first stream to it, snapFrom, or else when its loop began the
-	// install), and when the install was done, 0 while it goes on. The
-	// node can answer no client in between (#775).
-	installs [][2]int64
+	// installs are the snapshots the node took, and snapFrom the first
+	// stream of one to it since its process started (#775).
+	installs []installSpan
 	snapFrom int64
 	// hs is the term and vote the node holds durable: what its process
 	// recovered or later reported durable. mustLast and mustHS are what
@@ -2348,6 +2346,16 @@ func (s *Sim) loseUnsyncedAs(n *node, img simfs.Image) {
 // must leave a quorum whole count such a node as damaged. The lock is
 // held.
 func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
+
+// installSpan is a snapshot a node took (#775's rulings): from when it
+// reached the node (its first stream, or else the install's start), the
+// install's success, and when the node applied the leader's commit as of
+// that success, target, 0 for what has not happened. The node can answer
+// no client from the first to the last.
+type installSpan struct {
+	from, installed, caughtUp int64
+	target                    uint64
+}
 
 // spare is how many voters may be out of the cluster for good while a
 // quorum of its voters stays whole: one of three, two of five, none of
