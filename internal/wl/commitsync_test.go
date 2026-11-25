@@ -7,6 +7,7 @@ import (
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	pb "go.etcd.io/raft/v3/raftpb"
 )
 
 // TestASurvivorOfARemovalRecoversItsCommit is #821's review: of two voters
@@ -74,5 +75,46 @@ func TestASurvivorOfARemovalRecoversItsCommit(t *testing.T) {
 	}
 	if len(r.Members) != 1 || r.Members[0].ID != tc.ids[lead] {
 		t.Fatalf("after the restart the members are %v, want the survivor alone", r.Members)
+	}
+}
+
+// TestAProtectedCommitIsNeitherSkippedNorHeld checks commitMove, which
+// decides both whether a commit's sync is skipped (owing no response) and
+// whether it is held (owing some): a commit that moves over a change of
+// members, an auth op, or an entry the node recovered at its start is
+// neither, so its sync starts at once, as every append's did before
+// (#821's ruling). The window between such an entry's apply and its
+// commit's sync is no wider than before; the apply does not wait for it.
+func TestAProtectedCommitIsNeitherSkippedNorHeld(t *testing.T) {
+	durable := &pb.HardState{Term: new(uint64(2)), Vote: new(uint64(1)), Commit: new(uint64(5))}
+	moveTo := func(commit uint64) (*pb.Message, *pb.HardState) {
+		st := &pb.HardState{Term: new(uint64(2)), Vote: new(uint64(1)), Commit: new(commit)}
+		return &pb.Message{Type: pb.MsgStorageAppend.Enum(), Term: st.Term, Vote: st.Vote, Commit: st.Commit}, st
+	}
+	auth := make([]byte, batchHdr, batchHdr+opHdr+1)
+	copy(auth[17:], magic)
+	auth = append(auth, kAuthOp, 1, 0, 0, 0, 'x')
+	put := make([]byte, batchHdr, batchHdr+opHdr+1)
+	copy(put[17:], magic)
+	put = append(put, kPut, 1, 0, 0, 0, 'x')
+	for _, c := range []struct {
+		name      string
+		ents      []*pb.Entry
+		recovered uint64
+		move      bool
+	}{
+		{"over a put", []*pb.Entry{{Index: new(uint64(6)), Type: pb.EntryNormal.Enum(), Data: put}}, 0, true},
+		{"over a change of members", []*pb.Entry{{Index: new(uint64(6)), Type: pb.EntryConfChange.Enum()}}, 0, false},
+		{"over a change of members, v2", []*pb.Entry{{Index: new(uint64(7)), Type: pb.EntryConfChangeV2.Enum()}}, 0, false},
+		{"over an auth op", []*pb.Entry{{Index: new(uint64(6)), Type: pb.EntryNormal.Enum(), Data: auth}}, 0, false},
+		{"over an entry recovered at the start", nil, 6, false},
+		{"over a change of members past it", []*pb.Entry{{Index: new(uint64(9)), Type: pb.EntryConfChange.Enum()}}, 0, true},
+	} {
+		n := &node{wal: &wal{durableHS: durable}, recoveredLast: c.recovered}
+		n.noteMustSync(c.ents)
+		m, st := moveTo(7)
+		if got := n.commitMove(m, st); got != c.move {
+			t.Errorf("a commit from 5 to 7 %s: commitMove %v, want %v", c.name, got, c.move)
+		}
 	}
 }

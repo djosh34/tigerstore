@@ -12,11 +12,12 @@ import (
 )
 
 // walCounts is a node's log counts: its syncs, its idle marks' syncs, the
-// syncs for hard states alone, and the commits it skipped the sync of.
-type walCounts struct{ all, marks, stateOnly, skipped uint64 }
+// syncs for hard states alone, the commits it skipped the sync of, and the
+// syncs that took those once commitHold passed with no other.
+type walCounts struct{ all, marks, stateOnly, skipped, flushes uint64 }
 
 func (a walCounts) minus(b walCounts) walCounts {
-	return walCounts{a.all - b.all, a.marks - b.marks, a.stateOnly - b.stateOnly, a.skipped - b.skipped}
+	return walCounts{a.all - b.all, a.marks - b.marks, a.stateOnly - b.stateOnly, a.skipped - b.skipped, a.flushes - b.flushes}
 }
 
 // walSyncs is node l's log counts.
@@ -25,7 +26,7 @@ func walSyncs(t *testing.T, l *loop) walCounts {
 	got := make(chan walCounts, 1)
 	l.post(func() error {
 		s := l.n.wal.stats
-		got <- walCounts{s.syncs, s.marks, s.stateOnly, s.skipped}
+		got <- walCounts{s.syncs, s.marks, s.stateOnly, s.skipped, s.flushes}
 		return nil
 	})
 	select {
@@ -85,9 +86,12 @@ func TestSyncsPerWrite(t *testing.T) {
 			if i == lead {
 				role = "leader"
 			}
-			t.Logf("%s, node %d (%s): %.2f syncs per write (%.2f idle marks, %.2f for hard states alone), %.2f commits skipped per write; writes took %v on average, %v at most",
-				name, i+1, role, float64(d.all)/float64(w), float64(d.marks)/float64(w), float64(d.stateOnly)/float64(w), float64(d.skipped)/float64(w), total/time.Duration(writes), worst)
-			entries := d.all - d.marks - d.stateOnly
+			t.Logf("%s, node %d (%s): %.2f syncs per write (%.2f idle marks, %.2f for hard states alone, %.2f taking skipped commits), %.2f commits skipped per write; writes took %v on average, %v at most",
+				name, i+1, role, float64(d.all)/float64(w), float64(d.marks)/float64(w), float64(d.stateOnly)/float64(w), float64(d.flushes)/float64(w), float64(d.skipped)/float64(w), total/time.Duration(writes), worst)
+			entries := d.all - d.marks - d.stateOnly - d.flushes
+			if d.flushes > d.skipped {
+				t.Errorf("%s, node %d: %d syncs taking skipped commits, for %d skipped", name, i+1, d.flushes, d.skipped)
+			}
 			if entries > w+w/10 {
 				t.Errorf("%s, node %d: %d syncs for entries in %d writes, want about one a write", name, i+1, entries, w)
 			}
@@ -156,6 +160,12 @@ func TestAHeldCommitSyncsWithinItsBound(t *testing.T) {
 		w.pending = append(w.pending, walJob{end: w.off, at: at, held: true})
 		return at
 	}
+	// Right after a large sync, whose gap to the next is loadGap, longer
+	// than the hold: the hold's end comes first (#821's re-review).
+	w.lastKick, w.lastBytes = time.Now(), loadBytes
+	if w.gap() <= commitHold {
+		t.Fatalf("the gap after a large sync is %v, not past the hold's %v: the test tests nothing", w.gap(), commitHold)
+	}
 	at := hold()
 	w.kick()
 	if w.inflight || !w.deferred {
@@ -172,6 +182,46 @@ func TestAHeldCommitSyncsWithinItsBound(t *testing.T) {
 	}
 	if w.deferred {
 		t.Fatal("the sync of a commit held past commitHold is still deferred")
+	}
+}
+
+// TestASkippedCommitSyncsWithinItsBound is a leader's commit whose sync was
+// skipped (appendNow): written, owing no response, with no job pending.
+// No sync takes it while commitHold lasts, the loop wakes at its end, and
+// then one does, though no append came: a commit stays unsynced that long
+// at most, past which a clean stop keeps it (#821's re-review).
+func TestASkippedCommitSyncsWithinItsBound(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, 8*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	hs, err := proto.Marshal(&pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.write(nil, hs); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now()
+	w.skippedAt = at
+	w.kick()
+	if w.inflight || !w.deferred {
+		t.Fatalf("a skipped commit's sync started at once: in flight %v, deferred %v", w.inflight, w.deferred)
+	}
+	if until := w.deferUntil(); until.After(at.Add(commitHold)) || until.Before(at) {
+		t.Fatalf("the loop wakes for the skipped commit %v after it, want within %v", until.Sub(at), commitHold)
+	}
+	w.skippedAt = at.Add(-commitHold - time.Millisecond)
+	w.kick()
+	if !w.inflight || w.want.Load() != w.off {
+		t.Fatalf("a commit skipped past commitHold was not synced: in flight %v, the sync up to %d of %d", w.inflight, w.want.Load(), w.off)
+	}
+	if !w.skippedAt.IsZero() || w.stats.flushes != 1 {
+		t.Fatalf("after its sync: skipped at %v, flushes %d; want none left, 1", w.skippedAt, w.stats.flushes)
 	}
 }
 

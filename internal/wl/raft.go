@@ -216,6 +216,12 @@ func (n *node) appendNow(m *pb.Message) error {
 		// mark need claim it (dataEnd).
 		n.wal.dataEnd = dataEnd
 		n.wal.stats.skipped++
+		// A sync takes it commitHold later at most, if none came before
+		// (kick): the loop wakes for it.
+		if n.wal.skippedAt.IsZero() {
+			n.wal.skippedAt = time.Now()
+		}
+		n.wal.kick()
 		return nil
 	}
 	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st, at: time.Now(), ents: len(ents) > 0, held: move})
@@ -355,7 +361,12 @@ func (n *node) fsyncDone() error {
 		n.logf("slow log flush: %d bytes in %v", n.wal.lastBytes, d)
 	}
 	n.synced()
-	return n.unwait()
+	// The appends let in may leave records no sync takes, and appends
+	// waiting for the stage behind them: a kick after them starts the sync
+	// that lets those in (#821's re-review).
+	err := n.unwait()
+	n.wal.kick()
+	return err
 }
 
 // slowSync is the least time a sync of the log takes for the node to

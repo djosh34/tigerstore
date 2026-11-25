@@ -270,6 +270,7 @@ func (w *wal) markIdle(now time.Time) {
 	w.stats.syncs++
 	w.stats.marks++
 	w.want.Store(w.off)
+	w.skippedAt = time.Time{}
 	w.inflight = true
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)

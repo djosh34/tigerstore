@@ -135,6 +135,10 @@ type wal struct {
 	lastKick  time.Time
 	lastBytes int64
 	deferred  bool
+	// skippedAt is when the first record no sync took was written, a
+	// leader's commit skipped (appendNow): one syncs it commitHold later
+	// at most (kick).
+	skippedAt time.Time
 	// failed is the helper's error; it stops writing then.
 	failed atomic.Pointer[error]
 
@@ -193,10 +197,11 @@ type walStats struct {
 	writes uint64
 	bytes  uint64
 	// marks are the syncs of a mark alone (markIdle), stateOnly the syncs
-	// for appends that carried no entry, a hard state only, and skipped
-	// the appends that only moved the commit and owed no response, which
-	// took no sync (appendNow).
-	marks, stateOnly, skipped uint64
+	// for appends that carried no entry, a hard state only, skipped the
+	// appends that only moved the commit and owed no response, which took
+	// no sync of their own (appendNow), and flushes the syncs that took
+	// them once commitHold passed with no other (kick).
+	marks, stateOnly, skipped, flushes uint64
 }
 
 type walJob struct {
@@ -938,23 +943,34 @@ func (w *wal) plantedUnsyncedWrite(from, n, pos int64) error {
 // sync's end would ever let the waiting appends in (#821's review).
 // While every job pending is a commit held (walJob.held), none starts
 // before the first's commitHold ends: the next append's sync covers them.
+// With no job pending and records written that no sync took, as a
+// leader's commits skipped (appendNow), one starts once commitHold passed
+// since the first: a commit stays unsynced that long at most, past which
+// a clean stop, or a crash, kept it (#821's re-review). The hold's end
+// comes before the gap between syncs: it bounds the wait, the gap only
+// gathers more appends to a sync.
 func (w *wal) kick() {
-	if w.inflight || len(w.pending) == 0 && (len(w.waiting) == 0 || w.want.Load() >= w.off) {
+	if w.inflight || len(w.pending) == 0 && w.want.Load() >= w.off {
 		return
 	}
 	now := time.Now()
-	if d := now.Sub(w.lastKick); d < w.gap() {
-		w.deferred = true
-		return
-	}
-	if until := w.heldUntil(); now.Before(until) {
+	if until := w.holdUntil(); !until.IsZero() {
+		if now.Before(until) {
+			w.deferred = true
+			return
+		}
+	} else if d := now.Sub(w.lastKick); d < w.gap() {
 		w.deferred = true
 		return
 	}
 	w.deferred = false
+	w.skippedAt = time.Time{}
 	w.lastKick = now
 	w.stats.syncs++
-	if !slices.ContainsFunc(w.pending, func(j walJob) bool { return j.ents }) {
+	switch {
+	case len(w.pending) == 0:
+		w.stats.flushes++
+	case !slices.ContainsFunc(w.pending, func(j walJob) bool { return j.ents }):
 		w.stats.stateOnly++
 	}
 	if w.ring != nil {
@@ -972,12 +988,21 @@ func (w *wal) kick() {
 // (walJob.held).
 const commitHold = 3 * time.Millisecond
 
-// heldUntil is when the sync of the commits held ends its wait: the first
-// one's start and commitHold, or the zero time when a job pending is not
-// held, or appends wait for the stage.
-func (w *wal) heldUntil() time.Time {
-	if len(w.pending) == 0 || len(w.waiting) > 0 {
+// holdUntil is when the sync of commits that wait for the next append's
+// ends its wait, commitHold past the first: the commits held, when every
+// job pending is one (walJob.held), or the records written and taken by
+// no sync, when no job is pending (wal.skippedAt). It is the zero time
+// when a job pending is not held, or appends wait for the stage, whose
+// sync starts at once.
+func (w *wal) holdUntil() time.Time {
+	if len(w.waiting) > 0 {
 		return time.Time{}
+	}
+	if len(w.pending) == 0 {
+		if w.skippedAt.IsZero() {
+			return time.Time{}
+		}
+		return w.skippedAt.Add(commitHold)
 	}
 	for _, j := range w.pending {
 		if !j.held {
@@ -987,14 +1012,13 @@ func (w *wal) heldUntil() time.Time {
 	return w.pending[0].at.Add(commitHold)
 }
 
-// deferUntil is when a deferred sync may start (kick): gap() past the
-// last, and past the commits' hold.
+// deferUntil is when a deferred sync may start (kick): the hold's end, or
+// else gap() past the last.
 func (w *wal) deferUntil() time.Time {
-	t := w.lastKick.Add(w.gap())
-	if h := w.heldUntil(); h.After(t) {
-		t = h
+	if h := w.holdUntil(); !h.IsZero() {
+		return h
 	}
-	return t
+	return w.lastKick.Add(w.gap())
 }
 
 // gap is the least time between the starts of two syncs: syncGap, or
