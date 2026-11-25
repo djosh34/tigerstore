@@ -2,9 +2,11 @@ package sim
 
 import (
 	"context"
+	"math"
 	"sync"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/grpc"
 )
 
 // watchStream is a client's watch stream on a node: main's in-process
@@ -38,10 +40,12 @@ type wlStream struct {
 }
 
 // openWLStream opens a Watch call on p's node. The call ends with the
-// process.
+// process. It takes responses of any size, as clientv3's watches do
+// (defaultMaxCallRecvMsgSize, client/v3 options.go): a catch-up response
+// of large values passes gRPC's 4 MiB default (#820).
 func openWLStream(p *proc) (*wlStream, error) {
 	ctx, cancel := context.WithCancel(p.ctx)
-	call, err := pb.NewWatchClient(p.wl.conn).Watch(ctx)
+	call, err := pb.NewWatchClient(p.wl.conn).Watch(ctx, grpc.MaxCallRecvMsgSize(math.MaxInt32))
 	if err != nil {
 		cancel()
 		return nil, err
