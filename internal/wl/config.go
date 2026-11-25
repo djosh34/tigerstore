@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/url"
 	"sync/atomic"
@@ -124,6 +125,22 @@ type Member struct {
 
 var errConfig = errors.New("a node's configuration")
 
+// ErrMemberID is a member ID wl cannot use: 0, or one of 2^32 or more.
+// wl's member IDs have 32 bits: those it makes (newMemberID), and the
+// proposer a batch names (batch.go). A larger one, such as the 64-bit IDs
+// etcd makes, it would take, but never answer that member's writes, and
+// one with bit 62 or 63 set the peers would misread in their hello
+// (snapMark, beatMark) (#841).
+var ErrMemberID = errors.New("a member ID must be from 1 to 2^32-1: tigerstore's member IDs have 32 bits, so etcd's 64-bit ones cannot be used")
+
+// CheckMemberID returns ErrMemberID, naming id, for an ID wl cannot use.
+func CheckMemberID(id uint64) error {
+	if id == 0 || id > math.MaxUint32 {
+		return fmt.Errorf("%w: member %d (%#x)", ErrMemberID, id, id)
+	}
+	return nil
+}
+
 func (c *Config) check() error {
 	least := ringMinSegs * segSize
 	switch {
@@ -138,8 +155,8 @@ func (c *Config) check() error {
 		}
 		return fmt.Errorf("%w: a memory budget of %d bytes is too small for %d members%s: it needs at least %d bytes (#760)",
 			errConfig, c.MemoryBudget, len(c.Members), learner, leastBudget(startFollowers(len(c.Members), c.Join)))
-	case c.ID == 0:
-		return fmt.Errorf("%w: no member ID", errConfig)
+	case CheckMemberID(c.ID) != nil:
+		return fmt.Errorf("%w: %w", errConfig, CheckMemberID(c.ID))
 	case c.PeerServerTLS == nil || c.PeerClientTLS == nil:
 		return fmt.Errorf("%w: the peer URLs must be https", errConfig)
 	case c.ClientTLS == nil && len(c.ClientListeners) > 0:
@@ -148,6 +165,11 @@ func (c *Config) check() error {
 		return fmt.Errorf("%w: no client or peer listener", errConfig)
 	case c.Logger == nil:
 		return fmt.Errorf("%w: no logger", errConfig)
+	}
+	for _, m := range c.Members {
+		if err := CheckMemberID(m.ID); err != nil {
+			return fmt.Errorf("%w: %w", errConfig, err)
+		}
 	}
 	for _, m := range c.Members {
 		if m.ID == c.ID {
@@ -159,6 +181,9 @@ func (c *Config) check() error {
 
 // member is m as the node keeps it.
 func (m Member) member() (member, error) {
+	if err := CheckMemberID(m.ID); err != nil {
+		return member{}, fmt.Errorf("%w: %w", errConfig, err)
+	}
 	if len(m.PeerURLs) == 0 {
 		return member{}, fmt.Errorf("%w: member %d has no peer URL", errConfig, m.ID)
 	}

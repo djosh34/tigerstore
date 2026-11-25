@@ -93,6 +93,13 @@ func newIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (ident
 	if id.id == 0 {
 		return id, fmt.Errorf("the cluster has no member with peer URLs %v; add it with MemberAdd first", self.urls)
 	}
+	// Checked before the identity is saved: a saved one is read again at
+	// every start, in place of asking the cluster (#841).
+	for _, m := range ms {
+		if err := wl.CheckMemberID(m.ID); err != nil {
+			return id, fmt.Errorf("the cluster's member %q: %w", m.Name, err)
+		}
+	}
 	return id, saveIdentity(ec.Dir, id)
 }
 

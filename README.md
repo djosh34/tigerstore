@@ -213,6 +213,7 @@ tigerstore answers as etcd v3.7.2 does except for these points, from [Research: 
 - Peers speak tigerstore's own protocol, not etcd's Raft over HTTP, so etcd and tigerstore nodes cannot be in one cluster.
 - Peer URLs must be https, with TLS 1.3 and certificates checked on both ends; `--tls-max-version TLS1.2` is refused.
 - A member with several peer URLs is dialed at the first.
+- Member IDs have 32 bits, from 1 to 2^32-1; etcd's are 64-bit. tigerstore gives the members of `--initial-cluster`, and those `snapshot restore` writes, their positions in the list as IDs, and an added member a 32-bit one; it keeps no ID from an etcd cluster, and refuses a member ID past 2^32-1.
 - A client address serves http or https, not both.
 - The feature gate `SetMemberLocalAddr` is accepted but does not bind the address of outgoing peer connections.
 - With DNS SRV discovery over https and no peer CA file, a peer's certificate is checked for the host of its URL, not for the discovery domain.
