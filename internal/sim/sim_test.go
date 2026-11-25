@@ -325,28 +325,42 @@ func runFilesWithin(dir, cmd string, res *Result, withHistory bool, room *saveRo
 	// checks dropped (saveBounds).
 	callsMax, historyMax := res.saveBounds()
 	wantCalls := !res.long || !res.logged
-	callsOK := wantCalls && room.take("calls.txt", callsMax)
-	historyOK := res.logged && room.take("history.json", historyMax)
+	var callsOK, historyOK bool
+	if wantCalls {
+		callsOK = room.take("calls.txt", callsMax)
+		historyOK = res.logged && room.take("history.json", historyMax)
+	} else {
+		// A long run's calls go only in place of its history.
+		if historyOK = room.take("history.json", historyMax); !historyOK {
+			callsOK = room.take("calls.txt", callsMax)
+		}
+	}
 	if (callsOK || historyOK) && res.History == nil {
-		calls, err := res.history()
+		decoded, err := res.history()
 		if err != nil {
 			files["replay.txt"] += fmt.Sprintf("decoding the history again: %v\n", err)
 		}
-		res.History = calls
+		res.History = decoded
 	}
 	var h *history.History
 	var err error
 	if historyOK {
-		if h, err = res.Checkable(); err != nil && !wantCalls {
-			callsOK = room.take("calls.txt", callsMax)
+		if h, err = res.Checkable(); err != nil {
+			// No history.json after all: its room goes to the calls.
+			room.give("history.json", historyMax)
+			if !callsOK {
+				callsOK = room.take("calls.txt", callsMax)
+			}
 		}
 	}
 	if callsOK {
 		files["calls.txt"] = calls(res)
 	}
 	switch {
-	case !res.logged:
+	case !res.logged && callsOK:
 		files["replay.txt"] += "no history.json: the run failed before its checks built the committed log, which the checkers need; calls.txt has the calls\n"
+	case !res.logged:
+		files["replay.txt"] += "no history.json: the run failed before its checks built the committed log, which the checkers need\n"
 	case !historyOK:
 	case err != nil:
 		files["replay.txt"] += fmt.Sprintf("no history.json: %v\n", err)
@@ -377,7 +391,9 @@ func runFilesWithin(dir, cmd string, res *Result, withHistory bool, room *saveRo
 //   - the messages' other bytes take at most 24 each: a field's tag and
 //     its smallest value are 2 bytes, and print as its name and the value
 //     in decimal;
-//   - each call's own fields (client, node, times, error) at most 512;
+//   - a call's error, as often as it comes, at most 6 a byte;
+//   - each message's own fields (client, node, times, a watch response's
+//     time) at most 512;
 //   - history.json holds the committed log's requests too, and a fork's
 //     image's store (history.Start), at 24 a byte.
 //
@@ -388,8 +404,8 @@ func (r *Result) saveBounds() (calls, history int64) {
 	if r.records == nil {
 		return 0, 0
 	}
-	values, messages, n := r.records.sizes()
-	calls = 6*values + 24*messages + 512*int64(n)
+	values, messages, n, errs := r.records.sizes()
+	calls = 6*values + 24*messages + 512*int64(n) + 6*errs
 	log := int64(0)
 	for _, m := range r.Log {
 		log += int64(proto.Size(m))
@@ -440,6 +456,15 @@ func (r *saveRoom) take(name string, n int64) bool {
 	r.left -= n
 	r.saved[name] = true
 	return true
+}
+
+// give hands back the n bytes taken for a file that was not made after
+// all.
+func (r *saveRoom) give(name string, n int64) {
+	if r.saved[name] {
+		delete(r.saved, name)
+		r.left += n
+	}
 }
 
 // note says in replay.txt which files the budget left out.

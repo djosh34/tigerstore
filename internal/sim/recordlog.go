@@ -39,6 +39,11 @@ type recordLog struct {
 	// and errIndex finds them by the hash of their kind.
 	errs     []error
 	errIndex hashTable
+	// encoded counts the messages encoded, the calls' and the watches'
+	// responses alike, and encodedBytes their bytes without their values
+	// (sizes).
+	encoded      int
+	encodedBytes int64
 	// scratch holds the values of the message being encoded, and buf its
 	// bytes, before data copies them.
 	scratch [][]byte
@@ -146,6 +151,7 @@ func (l *recordLog) encode(m proto.Message) (loggedMessage, error) {
 	if m == nil {
 		return loggedMessage{}, nil
 	}
+	l.encoded++
 	t := m.ProtoReflect().Type()
 	typ := uint8(slices.Index(l.types, t) + 1)
 	if typ == 0 {
@@ -165,6 +171,7 @@ func (l *recordLog) encode(m proto.Message) (loggedMessage, error) {
 		return loggedMessage{}, err
 	}
 	l.buf = b
+	l.encodedBytes += int64(len(b))
 	ids0 := uint32(len(l.ids))
 	for _, v := range l.scratch {
 		l.ids = append(l.ids, l.vals.add(v))
@@ -198,18 +205,21 @@ func (l *recordLog) decode(m loggedMessage) (proto.Message, error) {
 	return out, nil
 }
 
-// sizes are the bytes of the values the calls carry, each as often as it
-// comes, the bytes of their messages without the values, and how many
-// calls there are: what bounds a run's history.json and calls.txt
-// (saveBounds).
-func (l *recordLog) sizes() (values, messages int64, calls int) {
+// sizes are the bytes of the values the messages carry, each as often as
+// it comes; the bytes of the messages, the calls' and the watches'
+// responses, without their values; how many messages there are; and the
+// bytes of the calls' errors, each as often as it comes: what bounds a
+// run's history.json and calls.txt (saveBounds).
+func (l *recordLog) sizes() (values, messages int64, n int, errs int64) {
 	for _, id := range l.ids {
 		values += int64(l.vals.spans[id].n)
 	}
 	for _, r := range l.recs {
-		messages += int64(r.req.at.n) + int64(r.resp.at.n)
+		if r.err >= 0 {
+			errs += int64(len(l.errs[r.err].Error()))
+		}
 	}
-	return values, messages, len(l.recs)
+	return values, l.encodedBytes, l.encoded, errs
 }
 
 // records returns the calls.
