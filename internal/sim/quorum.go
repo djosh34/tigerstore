@@ -1,7 +1,7 @@
 package sim
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -42,7 +42,7 @@ func (s *Sim) lostQuorum() error {
 		var voters []string
 		for _, m := range t.Members {
 			if !m.Learner {
-				voters = append(voters, fmt.Sprint(m.ID))
+				voters = append(voters, strconv.FormatUint(m.ID, 10))
 			}
 		}
 		s.tracef("node %d: applied %d, commit %d, voters [%s]", n.id, t.Applied, t.Commit, strings.Join(voters, " "))
