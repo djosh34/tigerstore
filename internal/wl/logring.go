@@ -556,6 +556,10 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 	}
 	need := int64(len(msg)) + walEntHdr + ringRecordSlack + n.callerBytes(c, s)
 	if need+n.ringTaken() <= w.ringRoom() {
+		// The write's batch first, which its pledge goes with: charged to
+		// the batch before, its room was given back with that batch's,
+		// dropped by the leader, while it was still owed (#827's re-check).
+		n.alarmApart(s.kind, msg)
 		n.ringPledged += need
 		n.batchPledge += need
 		w.wanted = 0

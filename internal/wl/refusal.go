@@ -120,24 +120,26 @@ func (n *node) isRefusal(f []byte) bool {
 }
 
 // refused answers the writes of the batch the leader dropped, which never
-// apply, as too many requests: its clients may send them again. Writes an
-// alarm forbade as they came (fwdBatch.alarm) get the alarm's error
-// instead, while an alarm is still up: a put through a follower whose
-// leader's ring is short is refused with NOSPACE once the alarm is up, not
-// as busy for good (#818's review). The batch's bytes may be gone by then,
-// the ring's span taken back (dropForward).
+// apply, as too many requests: its clients may send them again. A write
+// that the alarms still up forbid gets their error instead, CORRUPT first
+// (fwdBatch.flags, alarmErr): a put through a follower whose leader's ring
+// is short is refused with NOSPACE once the alarm is up, not as busy for
+// good (#818's review). The batch's bytes may be gone by then, the ring's
+// span taken back (dropForward), so its ops' flags were kept as it came.
 func (n *node) refused(f []byte) {
 	seq := binary.LittleEndian.Uint64(f[1:])
 	b := &n.fwd[seq&(fwdSlots-1)]
 	if b.seq != seq {
 		return
 	}
-	err := errTooManyRequests
-	if b.alarm != nil && (n.noSpace || n.corrupt) {
-		err = b.alarm
-	}
-	for _, h := range b.handles {
+	for i, h := range b.handles {
 		if c, s := n.clientOf(h); c != nil {
+			err := errTooManyRequests
+			if i < len(b.flags) {
+				if e := n.alarmErr(b.flags[i]); e != nil {
+					err = e
+				}
+			}
 			n.reject(c, s, err)
 		}
 	}

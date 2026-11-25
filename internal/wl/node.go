@@ -127,8 +127,10 @@ type node struct {
 	batchOwn    []handle
 	// batchAlarm is the error the alarms up gave the open batch's writes
 	// as they came, nil if they allow them: a batch never holds writes of
-	// both (alarmApart).
+	// both (alarmApart). batchFlags are its ops' alarmFlags, by batchOwn,
+	// taken while an alarm is up, else 0.
 	batchAlarm error
+	batchFlags []uint8
 
 	// Linearizable reads wait for a ReadIndex: reads not yet asked about,
 	// and the batches that wait for their index or the apply.
@@ -322,10 +324,10 @@ type fwdBatch struct {
 	// never comes to the log (releasePledge).
 	pledged     int64
 	pledgeEpoch uint64
-	// alarm is the error the alarms up gave the batch's writes as they
-	// came (batchAlarm): refused answers them with it, if an alarm is
-	// still up, once the leader drops the batch.
-	alarm error
+	// flags are the batch's ops' alarmFlags, by handles (batchFlags):
+	// once the leader drops the batch, refused answers each write with
+	// the error the alarms still up give it.
+	flags []uint8
 }
 
 const fwdSlots = 1 << 14

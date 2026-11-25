@@ -694,6 +694,9 @@ func aFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T, followerRing int64)
 	// must not be in the put's batch (alarmApart, #827's review). The
 	// follower's loop is held while both come; testAdmit shows whether it
 	// took them in one turn, and a try that did not tests nothing.
+	if followerRing > 0 {
+		pledgesApart(t, loopOf(tc.ids[1]))
+	}
 	fid.Store(tc.ids[1])
 	mixed := false
 	for attempt := 0; attempt < 5 && !mixed; attempt++ {

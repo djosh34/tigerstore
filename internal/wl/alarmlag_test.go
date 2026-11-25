@@ -13,6 +13,7 @@ import (
 	etcdpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/protobuf/proto"
 )
 
 // admission is what a node held as it took a write from a client
@@ -100,6 +101,99 @@ func holdLoop(t *testing.T, l *loop) (release func()) {
 		t.Fatal("the loop was not held within 5 s")
 	}
 	return release
+}
+
+// pledgesApart checks, on follower l's loop while NOSPACE is up in its
+// view and its own ring has room, that a put and then a delete go in
+// batches apart, each with the ring room of its own write pledged
+// (alarmApart before the pledge, #827's re-check): the leader drops the
+// put's batch, and the room given back with it must not be the delete's,
+// which is still owed.
+func pledgesApart(t *testing.T, l *loop) {
+	t.Helper()
+	put, err := proto.Marshal(&etcdpb.PutRequest{Key: []byte("/pledge/put"), Value: []byte("x")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	del, err := proto.Marshal(&etcdpb.DeleteRangeRequest{Key: []byte("/pledge/del")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var noSpace, putRefused, delRefused bool
+	var putBatch, open int64
+	if !onLoop(l, func() {
+		n := l.n
+		noSpace = n.noSpace
+		if !noSpace {
+			return
+		}
+		n.proposeBatch(n.now)
+		if putRefused = n.ringRefuses(nil, &stream{kind: kPut}, put); putRefused {
+			return
+		}
+		n.addOp(noHandle, kPut, put)
+		seq := n.fwdSeq
+		if delRefused = n.ringRefuses(nil, &stream{kind: kDel}, del); delRefused {
+			return
+		}
+		n.addOp(noHandle, kDel, del)
+		putBatch, open = n.fwd[seq&(fwdSlots-1)].pledged, n.batchPledge
+		n.proposeBatch(n.now)
+	}) {
+		t.Fatal("the follower's loop did not run the check")
+	}
+	switch {
+	case !noSpace:
+		t.Fatal("NOSPACE is not up in the follower's view")
+	case putRefused || delRefused:
+		t.Fatalf("the follower's ring refused the put (%v) or the delete (%v)", putRefused, delRefused)
+	}
+	putNeed, delNeed := int64(len(put))+walEntHdr+ringRecordSlack, int64(len(del))+walEntHdr+ringRecordSlack
+	if putBatch != putNeed || open != delNeed {
+		t.Fatalf("pledged: the put's batch %d, the delete's %d; want %d and %d, each its own write's", putBatch, open, putNeed, delNeed)
+	}
+}
+
+// TestAWriteDroppedByTheLeaderGetsTheErrorOfTheAlarmsStillUp is #827's
+// re-check: a forwarded batch keeps each write's alarmFlags as it came,
+// and refused answers each with the error the alarms up at the refusal
+// give it, CORRUPT first, not the error of the alarms up as it came.
+func TestAWriteDroppedByTheLeaderGetsTheErrorOfTheAlarmsStillUp(t *testing.T) {
+	put, err := proto.Marshal(&etcdpb.PutRequest{Key: []byte("/k"), Value: []byte("x")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	del, err := proto.Marshal(&etcdpb.DeleteRangeRequest{Key: []byte("/k")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf, df := alarmFlags(kPut, put), alarmFlags(kDel, del)
+	n := &node{}
+	for _, c := range []struct {
+		name             string
+		corrupt, noSpace bool
+		put, del         string
+	}{
+		{"both up", true, true, msgCorrupt, msgCorrupt},
+		{"CORRUPT disarmed since", false, true, msgNoSpace, ""},
+		{"NOSPACE disarmed since", true, false, msgCorrupt, msgCorrupt},
+		{"none up", false, false, "", ""},
+	} {
+		n.corrupt, n.noSpace = c.corrupt, c.noSpace
+		for _, w := range []struct {
+			what string
+			f    uint8
+			want string
+		}{{"a put", pf, c.put}, {"a delete", df, c.del}} {
+			got := ""
+			if e := n.alarmErr(w.f); e != nil {
+				got = e.Error()
+			}
+			if !strings.Contains(got, w.want) || (w.want == "") != (got == "") {
+				t.Errorf("%s: %s gets %q, want %q", c.name, w.what, got, w.want)
+			}
+		}
+	}
 }
 
 // TestAPutAfterADisarmIsTakenByAFollowerThatLags is #825: a put sent once
