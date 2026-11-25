@@ -663,9 +663,14 @@ func (h *wlHooks) NoRoom() {
 	if !n.diskFull && !short {
 		n.noRoomAt = s.now()
 	}
-	if !n.disarming && (n.diskFull || short) {
+	switch {
+	case n.disarming:
+	case n.diskFull || short:
 		n.disarming = true
 		s.wg.Go(func() { s.disarmNoSpace(n) })
+	case s.cfg.Faults.GrowDisk && !s.growing:
+		s.growing, n.disarming = true, true
+		s.wg.Go(func() { s.growDisk(n) })
 	}
 }
 

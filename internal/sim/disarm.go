@@ -6,6 +6,35 @@ import (
 	"github.com/djosh34/tigerstore/internal/wl"
 )
 
+// growDisk is the operator of Faults.GrowDisk for a node whose disk is too
+// small for its store, with no fault on it (wlHooks.NoRoom): 2 to 5 s
+// later it grows every disk eight times, as an operator adds room, and
+// then disarms the node's NOSPACE as disarmNoSpace does, once the node had
+// the time to try its checkpoint again. It does so once a run: a test of a
+// tight disk that recovers (#769, #846's ruling).
+func (s *Sim) growDisk(n *node) {
+	s.mu.Lock()
+	wait := 2*Second + s.rng.Int64N(3*Second)
+	s.mu.Unlock()
+	if !s.sleep(wait) {
+		s.mu.Lock()
+		n.disarming = false
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Lock()
+	// The run's capacity grows, so that a start, a heal or a replacement,
+	// which each set a disk's capacity from it, keep the room.
+	s.cfg.Faults.DiskCapacity *= 8
+	for _, m := range s.nodes {
+		m.disk.Capacity = s.diskCapacity()
+	}
+	s.stats.DiskGrowths++
+	s.tracef("node %d: no room for a checkpoint on its disk: an operator grows every disk to %d bytes", n.id, s.diskCapacity())
+	s.mu.Unlock()
+	s.disarmNoSpace(n)
+}
+
 // disarmNoSpace disarms the NOSPACE alarm n raised when a disk fault left
 // it no room for a checkpoint (wlHooks.NoRoom), the way an operator
 // would, as etcd's runbook has one do once there is room again: once the
@@ -61,6 +90,7 @@ func (s *Sim) disarmNoSpace(n *node) {
 			s.tracef("node %d: an operator disarms its NOSPACE: %v", id, err)
 			if err == nil {
 				s.stats.Disarms++
+				s.stats.DisarmedAt = s.now()
 			}
 			s.mu.Unlock()
 			if err == nil {

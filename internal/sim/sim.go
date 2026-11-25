@@ -272,9 +272,13 @@ type Faults struct {
 	// DiskBudget is each node's disk budget (node.Config.DiskBudget): the
 	// node cleans to stay below it, and refuses writes with the NOSPACE
 	// alarm at it. DiskCapacity is how many bytes its disk holds; a write
-	// past it fails with ENOSPC. Zero turns either off.
+	// past it fails with ENOSPC. Zero turns either off. GrowDisk has an
+	// operator who finds a node with no room for a checkpoint, and no
+	// fault on its disk, grow every disk eight times and disarm its
+	// NOSPACE (growDisk, #769).
 	DiskBudget   int64
 	DiskCapacity int
+	GrowDisk     bool
 	// Corrupt damages one node's synced bytes at a crash, once per run
 	// and only sometimes; that node must refuse to start.
 	Corrupt bool
@@ -661,6 +665,9 @@ type Sim struct {
 	// loses its quorum, its first write (writeFirst), by which its windows
 	// moved.
 	firstWritten int64
+	// growing is set once an operator is on the way to grow the disks
+	// (Faults.GrowDisk), which it does once.
+	growing bool
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), 0 while a quorum stays.
 	quorumLostAt int64
@@ -872,9 +879,12 @@ type Stats struct {
 	// checkpoint, NoSpace the calls the NOSPACE alarm refused,
 	// OutOfSpace the nodes that stopped on a write that ran out of space,
 	// NoRoom the checkpoints a node held or dropped for lack of room,
-	// raising NOSPACE and staying up (#769), and Disarms the NOSPACE
-	// alarms an operator disarmed after (disarmNoSpace).
-	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms int
+	// raising NOSPACE and staying up (#769), Disarms the NOSPACE alarms
+	// an operator disarmed after (disarmNoSpace), and DiskGrowths the
+	// times an operator grew the disks (Faults.GrowDisk); DisarmedAt is
+	// when the last disarm was answered.
+	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms, DiskGrowths int
+	DisarmedAt                                                 int64
 	// Netem counts the writes each kind of link fault hit (netemKind),
 	// Resets the resets of the connections between two nodes,
 	// and BlockedWrites the writes that waited for room in a connection's
