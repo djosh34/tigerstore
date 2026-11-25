@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"math"
 	"math/rand/v2"
 	"net"
 	"os"
@@ -265,19 +267,24 @@ func (n *node) env() []string {
 	return append(nodeEnv(os.Environ(), n.args), fmt.Sprintf("GOMAXPROCS=%d", n.procs))
 }
 
-// startExpectingstarts the process of n; with exit, its exit is expected,
+// startExpecting starts the process of n; with exit, its exit is expected,
 // as of a restart that must refuse its log.
 func (c *cluster) startExpecting(n *node, exit bool) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.starts++
 	_, _ = fmt.Fprintf(n.log, "chaos: start incarnation %d at %s, GOMAXPROCS %d\n", n.starts, time.Now().UTC().Format(time.RFC3339Nano), n.procs)
+	from := int64(0)
+	if st, err := n.log.Stat(); err == nil {
+		from = st.Size()
+	}
 	cmd := exec.Command(c.bin, n.args...)
 	cmd.Stdout, cmd.Stderr = n.log, n.log
-	cmd.Env = n.env()
+	cmd.Env = append(n.env(), "TIGERSTORE_STACKS_ON_SIGUSR1=1")
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	go n.stacksIfSlow(cmd, from, n.starts, slowStart)
 	if c.started != nil {
 		if err := c.started(n.i, cmd.Process.Pid); err != nil {
 			return errors.Join(err, cmd.Process.Kill())
@@ -318,6 +325,48 @@ func drawProcs(seed uint64, cpus int) [3]int {
 		p[i] = minProcs + rng.IntN(top-minProcs+1)
 	}
 	return p
+}
+
+// slowStart is how long a node's start may go without its "up" line
+// before stacksIfSlow has it write its goroutines' stacks. Starts take 3
+// to 6 s in the race build; #780's stalled for 22.7 s and for good.
+const slowStart = 10 * time.Second
+
+// stacksReady is the line cmd/tigerstore's stacksOnSignal writes once it
+// handles SIGUSR1: only a process that wrote it is signaled, not a binary
+// without the handler, as an earlier release's in TestReleaseUpgrade.
+const stacksReady = "tigerstore: SIGUSR1 writes the goroutines' stacks"
+
+// stacksIfSlow has incarnation inc of n, the process of cmd, write every
+// goroutine's stack into its log (SIGUSR1, cmd/tigerstore's stacksOnSignal)
+// once, if after passes with no "up" line in its log past offset from, the
+// process still running and the handler's line there: the stacks show
+// where a start stalls while it still does, which SIGQUIT's dump at the
+// test's end, after the stall or with the node killed, does not (#780).
+// The log is read without the lock, which the routers' dials take.
+func (n *node) stacksIfSlow(cmd *exec.Cmd, from int64, inc int, after time.Duration) {
+	time.Sleep(after)
+	// The node's log is open for writing only: read it anew, from from.
+	f, err := os.Open(n.log.Name())
+	if err != nil {
+		return
+	}
+	b, err := io.ReadAll(io.NewSectionReader(f, from, math.MaxInt64-from))
+	_ = f.Close()
+	if err != nil {
+		return
+	}
+	since := string(b)
+	if strings.Contains(since, ") up: clients") || !strings.Contains(since, stacksReady) {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.cmd != cmd || n.exitedNow {
+		return
+	}
+	_, _ = fmt.Fprintf(n.log, "chaos: incarnation %d is not up %v after its start: its goroutines' stacks follow (SIGUSR1)\n", inc, after)
+	_ = cmd.Process.Signal(syscall.SIGUSR1)
 }
 
 // signal sends sig to n's process. For SIGKILL, SIGTERM and SIGQUIT, whose
