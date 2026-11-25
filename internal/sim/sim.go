@@ -1188,6 +1188,17 @@ func (s *Sim) run() error {
 			return err
 		}
 	}
+	if s.cfg.LoseQuorum {
+		begin := s.now()
+		if err := s.writeFirst(); err != nil {
+			return err
+		}
+		// The faults' and the clients' windows start after the write.
+		s.mu.Lock()
+		d := s.now() - begin
+		s.healAt, s.stopAt, s.endAt = s.healAt+d, s.stopAt+d, s.endAt+d
+		s.mu.Unlock()
+	}
 	s.schedule()
 	s.wg.Go(s.watchWall)
 	// The end can move while the run goes on (extendLiveness).
@@ -1509,6 +1520,48 @@ func (s *Sim) holdBack() {
 		// with its links down it cannot catch up before then.
 		s.restartLater(lagged, 0)
 	})
+}
+
+// firstWriteClient is the client of the history whose call is a run's
+// first write (writeFirst).
+const firstWriteClient = 1<<20 + 1
+
+// firstWriteKey is the key of writeFirst's write, which no client uses.
+var firstWriteKey = []byte("first-write")
+
+// writeFirst is a run that loses its quorum (Config.LoseQuorum): before
+// the faults and the clients start, it puts a key until a put succeeds,
+// so that the run has committed a write before the faults may damage a
+// majority of the voters (spare, maybeCorrupt), and its checks have a
+// log. Under the race detector, with the
+// host's timing, the faults from the run's start let seed 1 of
+// TestLoseQuorum commit nothing until they healed (main's ci run
+// 45509039905). Each try puts a value of its own and is a call of the
+// history; one follows the last.
+func (s *Sim) writeFirst() error {
+	c := &client{id: firstWriteClient, sim: s}
+	for try := 0; ; try++ {
+		s.mu.Lock()
+		if s.now() >= s.cfg.Duration {
+			s.mu.Unlock()
+			return fmt.Errorf("LoseQuorum: no write succeeded in %s, before the faults", seconds(s.cfg.Duration))
+		}
+		n := s.upNode()
+		s.mu.Unlock()
+		if n != nil {
+			r := &Record{Client: c.id, Node: n.idx, Call: s.now(), req: &pb.PutRequest{Key: firstWriteKey, Value: fmt.Appendf(nil, "first-write-%d", try)}}
+			resp, err := s.call(n, r.req, s.cfg.ClientTimeout)
+			s.mu.Lock()
+			c.done(r, resp, err)
+			s.mu.Unlock()
+			if err == nil {
+				return nil
+			}
+		}
+		if !s.sleep(100 * Millisecond) {
+			return errors.New("sim: the run ended before its first write")
+		}
+	}
 }
 
 // linksWithout is the mask of setLinks with every link of node i down
