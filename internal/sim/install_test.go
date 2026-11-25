@@ -77,7 +77,9 @@ func TestLivenessExcusesOnlyAnEndedInstall(t *testing.T) {
 func pinnedToAnInstall(t *testing.T, seed uint64, wait int64) (s *Sim, behind *node, history []*Record, failed int) {
 	t.Helper()
 	cfg := DefaultConfig(seed)
-	cfg.Faults = Faults{DiskBudget: 1 << 20}
+	// A ring of 2 MiB: the 4 entries of 128 KiB the leader keeps for the
+	// stopped follower fit it, which a ring of 512 KiB did not (#814).
+	cfg.Faults = Faults{DiskBudget: 4 << 20}
 	cfg.Catchup = 4
 	cfg.installWait = wait
 	s, err := newSim(cfg)
