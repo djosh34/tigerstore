@@ -141,7 +141,11 @@ func TestPeriodicAutoCompactionCompactsWhatItsRetentionLeaves(t *testing.T) {
 // while it is on, and CANCEL brings the version back.
 func TestADowngradeLowersTheVersionUntilCanceled(t *testing.T) {
 	tc := newTestCluster(t)
-	c := tc.client(t)
+	// Every call goes to the node whose status is read: a downgrade
+	// answers once the node that took it applied it, and another node's
+	// status, read from what it applied, could still be the version
+	// before (#835).
+	c := tc.clientOf(t, tc.endpoints[0])
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	storage := func() string {
