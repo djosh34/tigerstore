@@ -154,7 +154,9 @@ func synthForks(t *testing.T, seed uint64, base Config, keys, forks int, fork fu
 // TestSyntheticForks restores a synthetic image for each of $SIM_SEEDS
 // seeds from $SIM_SEED (syntheticSpec), of 200 to 5,000 keys, and runs
 // forksPerImage forks of it (forkConfig), years after it, every checker
-// on each (#502). $SIM_FORK=k runs only fork k. It skips unless
+// on each (#502). Each fork runs from the image's file in a gosim run of
+// its own, and $SIM_FORK=k runs only fork k, as for TestAgedForks. It
+// skips unless
 // $SIM_SEEDS is set, as TestAgedForks does.
 func TestSyntheticForks(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {

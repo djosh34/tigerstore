@@ -391,25 +391,10 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 	}
 	env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return strings.HasPrefix(v, "SIM_FORK=") })
 	r.Env = append(slices.Clone(env), "SIM_FORK=image")
-	img := part(t, r, double)
-	if img.Failed {
+	path, hash, ok := saveImageFile(t, part(t, r, double), r.Seed)
+	if !ok {
 		return false
 	}
-	b := img.Artifacts["image"]
-	if len(b) == 0 {
-		t.Fatalf("seed %d saved no image", r.Seed)
-	}
-	sum := sha256.Sum256(b)
-	hash := hex.EncodeToString(sum[:])
-	t.Logf("image of seed %d: %d bytes, SHA-256 %s", r.Seed, len(b), hash)
-	if want := os.Getenv("SIM_IMAGE_SHA256"); want != "" && want != hash {
-		t.Fatalf("the image of seed %d has SHA-256 %s, not %s: it is not the image the fork ran from", r.Seed, hash, want)
-	}
-	path := filepath.Join(t.TempDir(), "image")
-	if err := os.WriteFile(path, b, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	b, img = nil, nil
 	stop := false
 	for k := range forks {
 		if only >= 0 && k != only {
@@ -429,6 +414,32 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 		stop = add(r.Seed, v) || stop
 	}
 	return stop
+}
+
+// saveImageFile writes the image that run img of seed saved to a file of
+// t's, and returns its path and SHA-256, which it checks against
+// $SIM_IMAGE_SHA256 if set. It reports false if the run failed. The
+// caller keeps no copy of the image's bytes in memory.
+func saveImageFile(t *testing.T, img *Result, seed uint64) (path, hash string, ok bool) {
+	t.Helper()
+	if img.Failed {
+		return "", "", false
+	}
+	b := img.Artifacts["image"]
+	if len(b) == 0 {
+		t.Fatalf("seed %d saved no image", seed)
+	}
+	sum := sha256.Sum256(b)
+	hash = hex.EncodeToString(sum[:])
+	t.Logf("image of seed %d: %d bytes, SHA-256 %s", seed, len(b), hash)
+	if want := os.Getenv("SIM_IMAGE_SHA256"); want != "" && want != hash {
+		t.Fatalf("the image of seed %d has SHA-256 %s, not %s: it is not the image the fork ran from", seed, hash, want)
+	}
+	path = filepath.Join(t.TempDir(), "image")
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, hash, true
 }
 
 // twoRuns runs r twice, and fails t unless both give the same hashes.

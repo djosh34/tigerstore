@@ -58,9 +58,10 @@ func forkConfig(aging Config, seed uint64) Config {
 }
 
 // forkStart is when fork i of image starts, after the image was taken:
-// at a time fixed by the image's seed, whatever ran before it, so that
-// with gosim's random stream reseeded from its seed it plays out the
-// same alone as after the forks before it. Between forks the whole
+// at a time fixed by the image's seed, whatever ran before it. Under
+// gosim each fork starts in a run of its own from the image's file
+// (#794); in one process, under the race detector, gosim's random stream
+// is reseeded from the fork's seed. Between forks the whole
 // cluster is down for 3 hours and more: a few hours, days to months, or
 // one to ten years, an idle stretch after which the clock has jumped
 // ahead for the time-driven paths (#474). Nothing runs meanwhile, so
@@ -89,10 +90,12 @@ const forksPerImage = 4
 // TestAgedForks ages a cluster for each of $SIM_SEEDS seeds from
 // $SIM_SEED (agingConfig), then runs forksPerImage forks of it
 // (forkConfig), every checker on each, starting from the image's store
-// (history.Start). $SIM_FORK=k runs only fork k after the aging, as its
-// replay command does: the gosim run keeps its image's seed, from which
-// the aging plays out the same. It skips unless $SIM_SEEDS is set: an
-// image takes minutes to build.
+// (history.Start). Under gosim the aging saves the image to a file, and
+// each fork runs from it in a gosim run of its own (simrun.ImageSeeds),
+// so a fork replays alone: $SIM_FORK=k ages the image again, checks it is
+// the same by its SHA-256 ($SIM_IMAGE_SHA256, which the fork's replay
+// line names), and runs only fork k from it (#794). It skips unless
+// $SIM_SEEDS is set: an image takes minutes to build.
 func TestAgedForks(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: an image takes minutes to build")
