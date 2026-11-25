@@ -265,6 +265,13 @@ func TestReadsKeepTheSlabWithinItsLimit(t *testing.T) {
 	}
 }
 
+// The deadlines of TestFetchedValuesStayWithinTheirShare's puts and of its
+// ranges, each its own (#832). One of 2 minutes for both was passed twice
+// in CI's test job. Measured under -race here, with every fsync made 5 ms
+// slower, the puts took 13 to 20 s and the ranges 7 to 35 s: one range of
+// 100 values can take about 10 s (#833). CI's runner is slower still.
+const fetchSharePuts, fetchShareReads = 3 * time.Minute, 3 * time.Minute
+
 // What the loop keeps of values read off the loop stays within its share
 // of the budget (fetchedMax), however fast reads fetch them: kept a
 // second each with no bound, past-ram's verify held 359 MB of them live
@@ -275,17 +282,19 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	const budget = 96 << 20
 	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
 	c := tc.clientOf(t, tc.endpoints[0])
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
 	// 131 MB, past the about 52 MB of records a node of one keeps at
 	// this budget (#760).
 	const keys = 8000
 	value := func(i int) string { return fmt.Sprintf("%04d", i) + strings.Repeat("v", 16<<10) }
+	puts, cancelPuts := context.WithTimeout(context.Background(), fetchSharePuts)
+	defer cancelPuts()
+	started := time.Now()
 	for i := range keys {
-		if _, err := c.Put(ctx, fmt.Sprintf("/f/%04d", i), value(i)); err != nil {
-			t.Fatal(err)
+		if _, err := c.Put(puts, fmt.Sprintf("/f/%04d", i), value(i)); err != nil {
+			t.Fatalf("put %d of %d, %v into the puts' %v: %v", i+1, keys, time.Since(started).Round(time.Millisecond), fetchSharePuts, err)
 		}
 	}
+	t.Logf("the %d puts took %v", keys, time.Since(started).Round(time.Millisecond))
 	l := loopOf(tc.ids[0])
 	fetched := func() (bytes int64, n int) {
 		got := make(chan [2]int64, 1)
@@ -317,16 +326,19 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 			time.Sleep(2 * time.Millisecond)
 		}
 	}()
+	reads, cancelReads := context.WithTimeout(context.Background(), fetchShareReads)
+	defer cancelReads()
+	started = time.Now()
 	errs := make(chan error, keys/100)
 	for first := 0; first < keys; first += 100 {
 		go func() {
-			r, err := c.Get(ctx, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			r, err := c.Get(reads, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
 			// Eighty replies of 1.6 MB at once pass the connection's
 			// share of a 96 MiB budget: the node refuses the next as etcd
 			// does, and the client tries again (CI's coverage run).
-			for err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) && ctx.Err() == nil {
+			for err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) && reads.Err() == nil {
 				time.Sleep(20 * time.Millisecond)
-				r, err = c.Get(ctx, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+				r, err = c.Get(reads, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
 			}
 			if err == nil && len(r.Kvs) != 100 {
 				err = fmt.Errorf("the range from /f/%04d read %d keys, want 100", first, len(r.Kvs))
@@ -344,9 +356,10 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	}
 	for range keys / 100 {
 		if err := <-errs; err != nil {
-			t.Fatal(err)
+			t.Fatalf("the ranges, %v into their %v: %v", time.Since(started).Round(time.Millisecond), fetchShareReads, err)
 		}
 	}
+	t.Logf("the %d ranges took %v", keys/100, time.Since(started).Round(time.Millisecond))
 	close(stop)
 	<-watched
 	b, after := fetched()
