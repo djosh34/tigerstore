@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,7 +73,12 @@ func runEtcd(t *testing.T, bin, client, peer string) (string, int, bool) {
 		t.Fatal(err)
 	}
 	cmd.Stdout, cmd.Stderr = log, log
-	if err := cmd.Start(); err != nil {
+	err = cmd.Start()
+	// etcd has its own descriptor; a retry would leave this one open.
+	if cerr := log.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	exited := make(chan struct{})
@@ -87,24 +94,37 @@ func runEtcd(t *testing.T, bin, client, peer string) (string, int, bool) {
 			t.Logf("etcd log:\n%s", b)
 		}
 	})
-	for range 100 {
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
 		select {
 		case <-exited:
 			b, _ := os.ReadFile(log.Name())
 			if strings.Contains(string(b), "address already in use") {
 				return "", 0, true
 			}
-			t.Fatalf("etcd exited before it listened:\n%s", b)
+			t.Fatalf("etcd exited before it served:\n%s", b)
 		default:
 		}
-		if c, err := net.Dial("tcp", client); err == nil {
-			_ = c.Close()
+		if servesAs(client, peer) {
 			return client, cmd.Process.Pid, false
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatal("etcd did not listen within 10s")
+	t.Fatal("etcd did not serve within 20s")
 	return "", 0, false
+}
+
+// servesAs reports whether the etcd at client is the one whose peer URL is
+// peer: its member list names it. A connection alone may reach another
+// process that holds the port, which etcd then found taken (#847's
+// review).
+func servesAs(client, peer string) bool {
+	c := &http.Client{Timeout: time.Second}
+	resp, err := c.Post("http://"+client+"/v3/cluster/member/list", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, err := io.ReadAll(resp.Body)
+	return err == nil && resp.StatusCode == http.StatusOK && strings.Contains(string(b), `"http://`+peer+`"`)
 }
 
 // freePort picks a free loopback port below the ephemeral range, where
@@ -123,31 +143,35 @@ func freePort(t *testing.T) string {
 
 // A port taken between its pick and etcd's bind makes etcd exit with
 // "address already in use": it starts again on new ports (#847). Before,
-// the test waited out 10 s and failed.
+// the test waited out 10 s and failed. With the client port taken, the
+// process that holds it answers a connection: the etcd started must be
+// the one that serves.
 func TestEtcdStartsAgainWhenItsPortIsTaken(t *testing.T) {
-	taken, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	for _, which := range []string{"client", "peer"} {
+		t.Run(which, func(t *testing.T) {
+			taken, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = taken.Close() }()
+			picks := 0
+			ep, _ := startEtcdOn(t, func(t *testing.T) (string, string) {
+				picks++
+				switch {
+				case picks > 1:
+					return freePort(t), freePort(t)
+				case which == "client":
+					return taken.Addr().String(), freePort(t)
+				default:
+					return freePort(t), taken.Addr().String()
+				}
+			})
+			// Two picks may draw the same port, which takes a third.
+			if picks < 2 || ep == taken.Addr().String() {
+				t.Fatalf("etcd started on pick %d of ports at %s; the taken port is %s", picks, ep, taken.Addr())
+			}
+		})
 	}
-	defer func() { _ = taken.Close() }()
-	picks := 0
-	ep, _ := startEtcdOn(t, func(t *testing.T) (string, string) {
-		picks++
-		if picks == 1 {
-			// The peer port: the client port taken would answer the
-			// test's dial itself.
-			return freePort(t), taken.Addr().String()
-		}
-		return freePort(t), freePort(t)
-	})
-	if picks != 2 {
-		t.Fatalf("etcd started on its %d pick of ports, want its 2nd", picks)
-	}
-	c, err := net.Dial("tcp", ep)
-	if err != nil {
-		t.Fatalf("etcd started again does not listen on %s: %v", ep, err)
-	}
-	_ = c.Close()
 }
 
 func TestEtcdWorkloads(t *testing.T) {
