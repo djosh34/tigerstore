@@ -143,6 +143,7 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 		target = simfs.OpTruncate
 	case 2:
 		d.ShortWrite(s.rng)
+		n.shortArmed = true
 		s.tracef("node %d: disk fault armed: the next write is short", n.id)
 		return
 	case 3:
@@ -232,12 +233,16 @@ func (s *Sim) diskFull() {
 	s.stats.DiskFulls++
 	d := n.disk
 	d.Capacity = d.Bytes()
+	n.diskFull = true
 	s.tracef("node %d: disk full at %d bytes", n.id, d.Capacity)
 	s.after(1500*Millisecond+s.rng.Int64N(2000*Millisecond), func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.healed {
 			d.Capacity = s.diskCapacity()
+			if n.disk == d {
+				n.diskFull = false
+			}
 			s.tracef("node %d: disk no longer full", n.id)
 		}
 	})

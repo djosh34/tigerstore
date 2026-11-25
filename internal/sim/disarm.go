@@ -4,23 +4,34 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-// disarmNoSpace disarms the NOSPACE alarm n raised when its disk had no
-// room for a checkpoint (wlHooks.NoRoom), the way an operator would, as
-// etcd's runbook has one do once there is room again: after 1 to 20 s it
-// disarms n's NOSPACE through the leader, going again until a call is
-// answered or the run stops. A disk that still has too little room makes
-// n raise it again at its next checkpoint, and an operator comes again.
-// Without one, a full disk that passed in seconds refused every write for
-// the rest of the run (#769).
+// disarmNoSpace disarms the NOSPACE alarm n raised when a disk fault left
+// it no room for a checkpoint (wlHooks.NoRoom), the way an operator
+// would, as etcd's runbook has one do once there is room again: once the
+// fault is over, and 1 to 20 s later, it disarms n's NOSPACE through the
+// leader, going again until a call is answered or the run stops. A disk
+// that stays full keeps the alarm up, its refusals counted as such.
+// Without an operator, a full disk that passed in seconds refused every
+// write for the rest of the run (#769).
 func (s *Sim) disarmNoSpace(n *node) {
-	s.mu.Lock()
-	wait, id := Second+s.rng.Int64N(19*Second), n.id
-	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		n.disarming = false
 		s.mu.Unlock()
 	}()
+	for {
+		s.mu.Lock()
+		full := n.diskFull
+		s.mu.Unlock()
+		if !full {
+			break
+		}
+		if !s.sleep(100 * Millisecond) {
+			return
+		}
+	}
+	s.mu.Lock()
+	wait, id := Second+s.rng.Int64N(19*Second), n.id
+	s.mu.Unlock()
 	if !s.sleep(wait) {
 		return
 	}

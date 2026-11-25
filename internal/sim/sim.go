@@ -457,8 +457,11 @@ type node struct {
 	// graySync makes its fsyncs slow while it is gray.
 	graySync bool
 	// disarming is set while an operator is on the way to disarm the
-	// NOSPACE the node raised for lack of room (disarmNoSpace).
-	disarming bool
+	// NOSPACE the node raised for lack of room (disarmNoSpace). diskFull
+	// is set while a fault holds its disk full (Sim.diskFull), and
+	// shortArmed from a short write armed on it until the node's NoRoom
+	// sees it happened.
+	disarming, diskFull, shortArmed bool
 	// pausedUntil holds the process back; frozen holds it for good, for
 	// the checks at the end. wake is closed and replaced when either
 	// changes, or the stall ends.
@@ -2564,6 +2567,7 @@ func (s *Sim) heal() {
 		n.disk.ClearFaults()
 		s.remount(n)
 		n.disk.Capacity = s.diskCapacity()
+		n.diskFull, n.shortArmed = false, false
 		if n.proc == nil && !n.fenced {
 			down = append(down, n)
 		}

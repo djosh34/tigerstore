@@ -644,7 +644,9 @@ func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
 
 // NoRoom counts a checkpoint the node held or dropped for lack of room on
 // its disk, with NOSPACE raised: a full disk's effect on a node that
-// stays up (#769). An operator comes to disarm the alarm.
+// stays up (#769). When a disk fault made it, a full disk or a short
+// write, an operator comes to disarm the alarm once the fault is over; a
+// disk too small for the store keeps it up.
 func (h *wlHooks) NoRoom() {
 	s, p := h.s, h.p
 	s.mu.Lock()
@@ -654,7 +656,11 @@ func (h *wlHooks) NoRoom() {
 		return
 	}
 	s.stats.NoRoom++
-	if !n.disarming {
+	short := n.shortArmed && !n.disk.ShortPending()
+	if short {
+		n.shortArmed = false
+	}
+	if !n.disarming && (n.diskFull || short) {
 		n.disarming = true
 		s.wg.Go(func() { s.disarmNoSpace(n) })
 	}
