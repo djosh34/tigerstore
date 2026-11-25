@@ -352,6 +352,10 @@ func checkLog(res *Result) error {
 				return fmt.Errorf("the write of %q is in the log twice, again at write %d", v, i)
 			}
 			committed[v] = true
+			if i < res.base {
+				// A fork's image wrote it, before the fork's calls.
+				continue
+			}
 			r, ok := calls[v]
 			if !ok {
 				return fmt.Errorf("write %d of the log puts %q, which no call wrote", i, v)
@@ -491,7 +495,10 @@ func revokesKeepPromises(history []*Record, revokedAt map[int64]int64, driftPerM
 		if !revoked || ttl <= 0 {
 			continue
 		}
-		if keepAlive && r.Call > at && granted[id] < at {
+		// A lease never granted in this history was not granted again
+		// after its revoke: an aged image's, revoked before the fork
+		// (beforeFork), has no grant here.
+		if g, ok := granted[id]; keepAlive && r.Call > at && (!ok || g < at) {
 			return fmt.Errorf("lease %d answered a keepalive called at %d ms with TTL %d s, after a node applied its revoke at %d ms",
 				id, r.Call/Millisecond, ttl, at/Millisecond)
 		}
