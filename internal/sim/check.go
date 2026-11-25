@@ -47,10 +47,33 @@ func (s *Sim) checkLive(res *Result) error {
 		}
 		live++
 	}
-	if live < 50 {
-		return fmt.Errorf("liveness: only %d calls completed after healing", live)
+	need := liveNeed(s.cfg.Heal-s.cfg.LiveAfter, s.stopAt-liveFrom)
+	if int64(live) < need {
+		return fmt.Errorf("liveness: only %d calls completed after healing, of the %d that %d ms of load from %d ms need",
+			live, need, (s.stopAt-liveFrom)/Millisecond, liveFrom/Millisecond)
 	}
 	return nil
+}
+
+// liveCalls is how many calls the liveness rule asks of a whole window.
+const liveCalls = 50
+
+// liveNeed is how many calls the liveness rule asks of a window of load
+// of window, from the rule's start to the clients' stop, when the run's
+// healing leaves a whole window of full: all liveCalls of a whole one,
+// and its share of a window cut short, as a fenced node, a node that
+// stopped late or a gray fsync after healing cut it. Seed 519 of
+// TestCampaign had 4 s of its 6, with a replacement joining in them, and
+// 37 calls of the 50 then asked (#851). A run with no whole window to
+// scale by asks all of them.
+func liveNeed(full, window int64) int64 {
+	if full <= 0 || window >= full {
+		return liveCalls
+	}
+	if window <= 0 {
+		return 0
+	}
+	return (liveCalls*window + full - 1) / full
 }
 
 // live returns active members whose disks have not been fenced, but a
