@@ -461,7 +461,7 @@ type node struct {
 	// is set while a fault holds its disk full (Sim.diskFull), and
 	// shortArmed from a short write armed on it until the node's NoRoom
 	// sees it happened. noRoomAt is when the node last found no room
-	// for a checkpoint.
+	// for a checkpoint with no disk fault on it.
 	disarming, diskFull, shortArmed bool
 	noRoomAt                        int64
 	// pausedUntil holds the process back; frozen holds it for good, for

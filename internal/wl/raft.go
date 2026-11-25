@@ -463,7 +463,7 @@ func (n *node) maybeCkpt() error {
 	if err != nil {
 		return err
 	}
-	if n.now.Before(n.ckptRoomAt) {
+	if !n.ckptRetry() {
 		// The last found no room (dropCkpt).
 		return nil
 	}

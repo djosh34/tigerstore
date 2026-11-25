@@ -26,8 +26,29 @@ import (
 // way (ckptNoSpace).
 
 // ckptRoomRetry is how long a node that found no room for a checkpoint
-// waits before it tries again; each try scans the store.
-const ckptRoomRetry = 5 * time.Second
+// waits before it looks again. It scans the store again only once the
+// disk has more room or the store got smaller (ckptRetry): a full log
+// ring needs the checkpoint as soon as there is room.
+const ckptRoomRetry = time.Second
+
+// ckptRetry reports whether the checkpoint that found no room may be
+// tried again now: once ckptRoomRetry passed, and the disk has more free
+// space than it had then, or the store is smaller.
+func (n *node) ckptRetry() bool {
+	if n.now.Before(n.ckptRoomAt) {
+		return false
+	}
+	if !n.ckptShort {
+		return true
+	}
+	free, err := n.sys.freeSpace(n.ckptDir)
+	if err == nil && free <= n.ckptShortFree && n.st.quotaSize() >= n.ckptShortSize {
+		n.ckptRoomAt = n.now.Add(ckptRoomRetry)
+		return false
+	}
+	n.ckptShort = false
+	return true
+}
 
 // CheckpointRoomRetry is ckptRoomRetry, for the simulator's operator, who
 // waits for a node to try again before it disarms its NOSPACE.
@@ -139,6 +160,9 @@ func (n *node) dropCkpt(why error) {
 	n.snapWaiters = append(waiters, n.snapWaiters...)
 	n.storage.wantCkpt = true
 	n.ckptRoomAt = n.now.Add(ckptRoomRetry)
+	if free, err := n.sys.freeSpace(n.ckptDir); err == nil {
+		n.ckptShort, n.ckptShortFree, n.ckptShortSize = true, free, n.st.quotaSize()
+	}
 	n.logf("checkpoint at index %d: %v: dropped, NOSPACE, and no checkpoint until there is room", r.meta.index, why)
 	n.raiseNoSpace()
 	n.simNoRoom()
