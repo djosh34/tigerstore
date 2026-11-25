@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -297,21 +299,37 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 // to 6 s in the race build; #780's stalled for 22.7 s and for good.
 const slowStart = 10 * time.Second
 
+// stacksReady is the line cmd/tigerstore's stacksOnSignal writes once it
+// handles SIGUSR1: only a process that wrote it is signaled, not a binary
+// without the handler, as an earlier release's in TestReleaseUpgrade.
+const stacksReady = "tigerstore: SIGUSR1 writes the goroutines' stacks"
+
 // stacksIfSlow has incarnation inc of n, the process of cmd, write every
 // goroutine's stack into its log (SIGUSR1, cmd/tigerstore's stacksOnSignal)
-// once, if after passes with no "up" line in its log past offset from and
-// the process still running: the stacks show where a start stalls while
-// it still does, which SIGQUIT's dump at the test's end, after the stall
-// or with the node killed, does not (#780).
+// once, if after passes with no "up" line in its log past offset from, the
+// process still running and the handler's line there: the stacks show
+// where a start stalls while it still does, which SIGQUIT's dump at the
+// test's end, after the stall or with the node killed, does not (#780).
+// The log is read without the lock, which the routers' dials take.
 func (n *node) stacksIfSlow(cmd *exec.Cmd, from int64, inc int, after time.Duration) {
 	time.Sleep(after)
+	// The node's log is open for writing only: read it anew, from from.
+	f, err := os.Open(n.log.Name())
+	if err != nil {
+		return
+	}
+	b, err := io.ReadAll(io.NewSectionReader(f, from, math.MaxInt64-from))
+	_ = f.Close()
+	if err != nil {
+		return
+	}
+	since := string(b)
+	if strings.Contains(since, ") up: clients") || !strings.Contains(since, stacksReady) {
+		return
+	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.cmd != cmd || n.exitedNow {
-		return
-	}
-	b, err := os.ReadFile(n.log.Name())
-	if err != nil || int64(len(b)) < from || strings.Contains(string(b[from:]), ") up: clients") {
 		return
 	}
 	_, _ = fmt.Fprintf(n.log, "chaos: incarnation %d is not up %v after its start: its goroutines' stacks follow (SIGUSR1)\n", inc, after)

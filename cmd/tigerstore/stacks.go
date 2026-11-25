@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime/pprof"
@@ -14,9 +15,15 @@ import (
 // (#780).
 const stacksEnv = "TIGERSTORE_STACKS_ON_SIGUSR1"
 
+// stacksReady is the line stacksOnSignal writes to stderr once it
+// handles SIGUSR1: the chaos harness signals only a process that wrote
+// it, not a binary without the handler, as an earlier release's, nor one
+// whose variable it misspelled.
+const stacksReady = "tigerstore: SIGUSR1 writes the goroutines' stacks"
+
 // stacksOnSignal writes every goroutine's stack to stderr at each
-// SIGUSR1, when stacksEnv asks for it; with it unset, SIGUSR1 keeps Go's
-// default, which ends the process.
+// SIGUSR1, when stacksEnv asks for it. With it unset, the process's
+// signal handling is as before.
 func stacksOnSignal() {
 	if os.Getenv(stacksEnv) != "1" {
 		return
@@ -28,4 +35,5 @@ func stacksOnSignal() {
 			_ = pprof.Lookup("goroutine").WriteTo(os.Stderr, 2)
 		}
 	}()
+	_, _ = fmt.Fprintln(os.Stderr, stacksReady)
 }
