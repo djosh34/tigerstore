@@ -416,7 +416,40 @@ func (h *wlHooks) Loaded(index, state uint64) {
 	if p.n.proc != p {
 		return
 	}
+	// Only the install this process began ends here: one a crash cut
+	// short never ends, and a start's load is not an install.
+	if k := len(p.n.installs) - 1; p.installing && k >= 0 {
+		p.installing = false
+		p.n.installs[k][1] = s.now()
+		s.tracef("node %d: installed the snapshot at index %d in %s", p.n.id, index, seconds(s.now()-p.n.installs[k][0]))
+	}
 	s.sameState(p.n, index, state, "loaded a checkpoint at")
+}
+
+// Installing notes when the node's loop began to install a snapshot: it
+// answers no client until the store is loaded from it (Loaded), and the
+// liveness rule excuses its calls in between (installingDuring). With
+// Config.installWait, the loop waits here that long.
+func (h *wlHooks) Installing(index uint64) {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	if p.n.proc != p {
+		s.mu.Unlock()
+		return
+	}
+	p.n.installs = append(p.n.installs, [2]int64{s.now(), 0})
+	p.installing = true
+	s.tracef("node %d: installing a snapshot at index %d", p.n.id, index)
+	wait := s.cfg.installWait
+	s.mu.Unlock()
+	if wait > 0 {
+		t := time.NewTimer(time.Duration(wait))
+		select {
+		case <-t.C:
+		case <-p.ctx.Done():
+			t.Stop()
+		}
+	}
 }
 
 // CheckpointDone checks that the checkpoint a node finished holds, as its

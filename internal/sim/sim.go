@@ -186,6 +186,10 @@ type Config struct {
 	// long before it is served, the cold restarts' too: a slow snapshot
 	// (TestColdRestartWaitsOnASlowSnapshot).
 	snapshotWait int64
+	// installWait, if set, holds a node's loop this long as it begins to
+	// install a snapshot: a slow install
+	// (TestLivenessExcusesASlowInstall).
+	installWait int64
 	// ckptCreateFaults makes every disk fault EIO on the next creation of
 	// a checkpoint file, and every such creation take 50 ms; killLosses
 	// makes every crash a kill followed by a power loss; syncFaultExits
@@ -466,6 +470,10 @@ type node struct {
 	// again from its log, after a snapshot install or a failed fetch, as
 	// on a restart; the client tries again. fromLog are the times it did.
 	reloads, fromLog []int64
+	// installs are the snapshots the node installed: when its loop began
+	// each, and when the store was loaded from it, 0 while it goes on.
+	// The node answers no client in between (#775).
+	installs [][2]int64
 	// hs is the term and vote the node holds durable: what its process
 	// recovered or later reported durable. mustLast and mustHS are what
 	// recovery must give after its process went down: the floor and hs
@@ -561,6 +569,9 @@ type proc struct {
 	parked chan struct{}
 	// wl is the node's process (wlnode.go).
 	wl *wlProc
+	// installing is set while the process installs a snapshot
+	// (wlHooks.Installing). The lock.
+	installing bool
 }
 
 func (p *proc) dead() bool { return p.ctx.Err() != nil }
