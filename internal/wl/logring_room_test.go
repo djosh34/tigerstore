@@ -589,10 +589,20 @@ func onLoop(l *loop, fn func()) bool {
 // ring whose cut is held fills, and once it is short with no checkpoint to
 // free it, the leader refuses the forwarded puts, as its own clients' (the
 // reserve is for deletes), and raises NOSPACE, whose alarm, once it
-// applies, makes the follower refuse puts with NOSPACE itself. Taken into
-// the reserve, they let a delete wait on a segment for good; refused as
-// busy only, they were refused so for good (#818's review).
+// applies, makes the follower refuse puts with NOSPACE itself, a follower
+// with no ring of its own too. Taken into the reserve, they let a delete
+// wait on a segment for good; refused as busy only, they were refused so
+// for good (#818's review and re-check).
 func TestAFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T) {
+	for _, followers := range []struct {
+		name string
+		ring int64
+	}{{"followers' rings four times the leader's", 4}, {"followers with no ring", -1}} {
+		t.Run(followers.name, func(t *testing.T) { aFullLogRingRaisesNOSPACEThroughAFollower(t, followers.ring) })
+	}
+}
+
+func aFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T, followerRing int64) {
 	was := segSize
 	segSize = 64 << 10
 	ringHoldCut.Store(true)
@@ -606,7 +616,10 @@ func TestAFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T) {
 		tc.logRing = segs * segSize
 		tc.config = func(c *Config) {
 			if c.Name != "n1" {
-				c.LogRing = 4 * segs * segSize
+				c.LogRing = followerRing * segs * segSize
+				if followerRing < 0 {
+					c.LogRing = -1
+				}
 			}
 		}
 	})

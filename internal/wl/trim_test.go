@@ -3,6 +3,7 @@ package wl
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
@@ -232,25 +233,43 @@ func TestAFollowerTrimsDropsOrPassesAnAppend(t *testing.T) {
 		t.Fatalf("the ring's room is %d, want %d", room, 12*segSize)
 	}
 	n := &node{wal: w, storage: newLogStorage(nil)}
-	n.storage.snapIndex = 5
+	n.storage.snapIndex, n.storage.snapTerm = 5, 2
+	n.storage.hs = &pb.HardState{Term: new(uint64(2)), Commit: new(uint64(5))}
+	rn, err := raft.NewRawNode(&raft.Config{ID: 2, ElectionTick: 10, HeartbeatTick: 1, Storage: n.storage, Applied: 5, MaxSizePerMsg: 1 << 20, MaxInflightMsgs: 256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.rn = rn
 	app := func(prev uint64, size, k int) *pb.Message {
-		m := &pb.Message{Type: pb.MsgApp.Enum(), Index: new(prev)}
+		m := &pb.Message{Type: pb.MsgApp.Enum(), Term: new(uint64(2)), Index: new(prev), LogTerm: new(uint64(2))}
 		for i := range k {
-			m.Entries = append(m.Entries, &pb.Entry{Index: new(prev + 1 + uint64(i)), Data: make([]byte, size)})
+			m.Entries = append(m.Entries, &pb.Entry{Term: new(uint64(2)), Index: new(prev + 1 + uint64(i)), Data: make([]byte, size)})
 		}
 		return m
 	}
+	// An append whose predecessor is of another term, and one of a leader
+	// before, go to Raft untouched, and count as taken nothing.
+	m := app(5, 60000, 4)
+	m.LogTerm = new(uint64(1))
+	if n.followerDrops(m) || len(m.Entries) != 4 || n.appendPledged != 0 || n.appendLast != 0 {
+		t.Fatalf("an append after an entry of another term: %d entries kept, pledged %d, last %d; want it untouched and nothing taken", len(m.Entries), n.appendPledged, n.appendLast)
+	}
+	m = app(5, 60000, 4)
+	m.Term = new(uint64(1))
+	if n.followerDrops(m) || len(m.Entries) != 4 || n.appendPledged != 0 || n.appendLast != 0 {
+		t.Fatalf("an append of a leader before: %d entries kept, pledged %d, last %d; want it untouched and nothing taken", len(m.Entries), n.appendPledged, n.appendLast)
+	}
 	one := int64(60000 + walEntHdr)
 
-	m := app(5, 60000, 4)
+	m = app(5, 60000, 4)
 	if n.followerDrops(m) {
 		t.Fatal("an append whose first three entries fit was dropped")
 	}
 	if len(m.Entries) != 3 || m.Entries[2].GetIndex() != 8 {
 		t.Fatalf("the append kept %d entries, want the 3 that fit, 6 to 8", len(m.Entries))
 	}
-	if n.appendPledged != 3*one || n.appendLast != 8 || n.stats.appendsTrimmed != 1 || w.wanted != one+appendMargin {
-		t.Fatalf("after the trim: pledged %d, last %d, trimmed %d, wanted %d; want %d, 8, 1, %d", n.appendPledged, n.appendLast, n.stats.appendsTrimmed, w.wanted, 3*one, one+appendMargin)
+	if n.appendPledged != 3*one || n.appendLast != 8 || n.appendLastTerm != 2 || n.stats.appendsTrimmed != 1 || w.wanted != 4*one+appendMargin {
+		t.Fatalf("after the trim: pledged %d, last %d of term %d, trimmed %d, wanted %d; want %d, 8 of term 2, 1, %d", n.appendPledged, n.appendLast, n.appendLastTerm, n.stats.appendsTrimmed, w.wanted, 3*one, 4*one+appendMargin)
 	}
 
 	// The next append, after the three, has room for none.
@@ -271,5 +290,61 @@ func TestAFollowerTrimsDropsOrPassesAnAppend(t *testing.T) {
 	m = app(5, 100, 2)
 	if n.followerDrops(m) || len(m.Entries) != 2 || w.wanted != 0 {
 		t.Fatalf("an append that fits: %d entries kept, wanted %d; want both, 0", len(m.Entries), w.wanted)
+	}
+}
+
+// TestNudgeRingProposesOneAtATime is nudgeRing's bound: a leader whose ring
+// a checkpoint cannot free (it applied every entry, its newest checkpoint
+// at the last) and that refuses five writes in one turn, before its Ready
+// hands Raft's storage the first empty entry, proposes one, not five
+// (#818's re-check); one lost is sent again once requestTimeout passed.
+func TestNudgeRingProposesOneAtATime(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, 8*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	n := &node{id: 1, wal: w, storage: newLogStorage(nil), applied: 5, lead: 1}
+	n.storage.snapIndex, n.storage.snapTerm = 5, 1
+	n.storage.snap = &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(5)), Term: new(uint64(1)), ConfState: &pb.ConfState{Voters: []uint64{1}}}}
+	n.storage.hs = &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(5))}
+	n.storage.cs = &pb.ConfState{Voters: []uint64{1}}
+	if n.ringDue() {
+		t.Fatal("a checkpoint is due at the newest checkpoint's own index")
+	}
+	rn, err := raft.NewRawNode(&raft.Config{ID: 1, ElectionTick: 10, HeartbeatTick: 1, Storage: n.storage, Applied: 5, MaxSizePerMsg: 1 << 20, MaxInflightMsgs: 256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rn.Campaign(); err != nil {
+		t.Fatal(err)
+	}
+	// Its vote for itself counts once the Ready that holds it is handled.
+	for i := 0; i < 4 && rn.HasReady() && rn.BasicStatus().RaftState != raft.StateLeader; i++ {
+		rn.Advance(rn.Ready())
+	}
+	if rn.BasicStatus().RaftState != raft.StateLeader {
+		t.Fatalf("the lone voter is %v after its campaign", rn.BasicStatus().RaftState)
+	}
+	n.rn = rn
+	n.now = time.Now()
+	for range 5 {
+		n.nudgeRing()
+	}
+	if got := n.stats.ringNudges; got != 1 {
+		t.Fatalf("five refusals in one turn proposed %d empty entries, want 1", got)
+	}
+	n.now = n.now.Add(requestTimeout / 2)
+	n.nudgeRing()
+	if got := n.stats.ringNudges; got != 1 {
+		t.Fatalf("a refusal before requestTimeout passed proposed another empty entry: %d", got)
+	}
+	n.now = n.now.Add(requestTimeout)
+	n.nudgeRing()
+	if got := n.stats.ringNudges; got != 2 {
+		t.Fatalf("once requestTimeout passed, the empty entry was not sent again: %d proposed, want 2", got)
 	}
 }

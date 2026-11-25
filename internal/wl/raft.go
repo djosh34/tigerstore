@@ -130,12 +130,14 @@ func (n *node) storageAppend(m *pb.Message) error {
 	// area-2 review).
 	n.confAppended(m.GetEntries())
 	// What Raft hands the log here holds every write and append taken so
-	// far, as the turn's batch is proposed before its Ready: it is in the
-	// log or waits for the stage now, which count it (ringTaken,
-	// followerDrops). An append written in the turn's input, as the stage
-	// drains, does not: the turn's writes taken before it are in no append
-	// yet.
-	n.ringPledged, n.appendPledged, n.appendLast = 0, 0, 0
+	// far but the open batch's, as the turn's batch is proposed before its
+	// Ready: it is in the log or waits for the stage now, which count it
+	// (ringTaken, followerDrops). An append written in the turn's input,
+	// as the stage drains, does not: the turn's writes taken before it are
+	// in no append yet. A new pledge epoch begins: a batch of the one
+	// before releases nothing (releasePledge).
+	n.ringPledged, n.appendPledged, n.appendLast = n.batchPledge, 0, 0
+	n.pledgeEpoch++
 	w := n.wal
 	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
 		w.stats.waits++

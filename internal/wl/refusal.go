@@ -84,7 +84,7 @@ func (n *node) leaderDrops(m *pb.Message, from uint64) bool {
 		n.ringPledged += need
 		return false
 	default:
-		w.wanted = max(w.wanted, need)
+		w.wanted = max(w.wanted, need+n.ringTaken())
 		n.nudgeRing()
 	}
 	n.stats.propsDropped++
@@ -136,10 +136,7 @@ func (n *node) refused(f []byte) {
 	// The batch never comes to the log, so the room its writes were taken
 	// for is free again (ringRefuses): kept, it refused every write the
 	// size of the one refused for good (#814's test, through a follower).
-	// A node that leads since holds its own writes' pledges, which stay.
-	if n.lead != n.id {
-		n.ringPledged = 0
-	}
+	n.releasePledge(b)
 	n.stats.refusalsGot++
 }
 
@@ -163,23 +160,29 @@ func (n *node) followerDrops(m *pb.Message) bool {
 	if w == nil || w.ring == nil || m.GetType() != pb.MsgApp || len(m.GetEntries()) == 0 {
 		return false
 	}
+	if m.GetTerm() < n.rn.BasicStatus().GetTerm() {
+		// Of a leader before: Raft ignores it and writes none of it.
+		return false
+	}
 	ents := m.GetEntries()
 	last := max(n.storage.lastIndex(), w.waitingLast(), n.appendLast)
-	if m.GetIndex() > last {
-		// The entry before them is not here: Raft rejects the append and
-		// writes none of it, and its answer tells the leader where this
-		// node's log ends, so that it sends what is missing, or a
-		// snapshot. Dropped, the leader, probing, sent it again for good.
+	if m.GetIndex() > last || !n.holdsAt(m.GetIndex(), m.GetLogTerm()) {
+		// The entry before them is not here, or is of another term: Raft
+		// rejects the append and writes none of it, and its answer tells
+		// the leader where this node's log parts from its own, so that it
+		// sends what is missing, or a snapshot. Dropped, the leader,
+		// probing, sent it again for good.
 		return false
 	}
 	room := w.ringRoom() - n.appendPledged - w.waitingBytes() - appendMargin
 	keep, took, wanted := fitEntries(ents, last, room)
 	if wanted > 0 {
-		// The room it wants makes the ring low, so that a checkpoint is
-		// due once the node applied past its newest: a ring with more
-		// free segments than ringLow counts, and too few for the entry,
-		// made none, and dropped the leader's appends for good.
-		w.wanted = max(w.wanted, wanted+appendMargin)
+		// The room it wants, with what the ring holds besides, makes the
+		// ring low, so that a checkpoint is due once the node applied past
+		// its newest: a ring with more free segments than ringLow counts,
+		// and too few for the entry, made none, and dropped the leader's
+		// appends for good.
+		w.wanted = max(w.wanted, took+wanted+n.appendPledged+w.waitingBytes()+appendMargin)
 	} else if took > 0 {
 		w.wanted = 0
 	}
@@ -192,10 +195,33 @@ func (n *node) followerDrops(m *pb.Message) bool {
 		n.stats.appendsTrimmed++
 	}
 	n.appendPledged += took
-	if keep > 0 {
-		n.appendLast = max(n.appendLast, ents[keep-1].GetIndex())
+	// Raft takes the entries kept: they follow an entry it holds, of
+	// their leader's term or later.
+	if e := ents[keep-1]; e.GetIndex() > n.appendLast {
+		n.appendLast, n.appendLastTerm = e.GetIndex(), e.GetTerm()
 	}
 	return false
+}
+
+// holdsAt reports whether this follower's log holds an entry at index i
+// of term t, as Raft checks an append's predecessor: index 0 always; one
+// Raft's storage no longer holds, at or before its snapshot, does not,
+// and Raft answers such an append with its commit, writing none of it.
+// One taken in this turn and not handed to the log yet (appendLast), or
+// waiting for the stage, is held at the term it was taken at, or, past
+// that, taken as held.
+func (n *node) holdsAt(i, t uint64) bool {
+	if i == 0 {
+		return true
+	}
+	if i == n.appendLast && n.appendLast > n.storage.lastIndex() {
+		return n.appendLastTerm == t
+	}
+	if i > n.storage.lastIndex() {
+		return true
+	}
+	held, err := n.storage.Term(i)
+	return err == nil && held == t
 }
 
 // waitingLast is the last index of the appends that wait for the stage.

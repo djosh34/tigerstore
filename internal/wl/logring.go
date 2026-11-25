@@ -526,6 +526,19 @@ var ckptHold atomic.Bool
 // (nudgeRing). A write that fits but takes the reserve goes on, as before:
 // then the ring is short.
 func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
+	if n.noSpace || n.corrupt {
+		// An alarm is up: the apply refuses what it forbids (alarmGate),
+		// and so does this node, before the log takes it, with the same
+		// error, CORRUPT first; deletes and compactions go on. A put
+		// through a follower whose leader's ring is short never comes to
+		// the apply: the leader drops it (leaderDrops), and its client was
+		// refused as busy for good (#818's review). A node with no ring of
+		// its own checks it too.
+		if err := n.alarmGate(s.kind, msg); err != nil {
+			n.reject(c, s, err)
+			return true
+		}
+	}
 	w := n.wal
 	if w.ring == nil {
 		return false
@@ -536,16 +549,6 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 		puts = true
 	case kTxn:
 		puts = txnCost(msg) != 0
-	}
-	if n.noSpace && noSpaceForbids(s.kind, msg) {
-		// A NOSPACE alarm is up: the apply refuses this write with NOSPACE
-		// (alarmGate), and so does this node, before the log takes it,
-		// exactly what the apply would; deletes and compactions go on. A
-		// put through a follower whose leader's ring is short never comes
-		// to the apply: the leader drops it (leaderDrops), and its client
-		// was refused as busy for good (#818's review).
-		n.reject(c, s, requestErr(codeResourceExhausted, msgNoSpace))
-		return true
 	}
 	if puts && w.ringShort() {
 		if (n.ckpt != nil || n.ringDue()) && !n.noSpaceRaised() {
@@ -558,10 +561,14 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 	need := int64(len(msg)) + walEntHdr + ringRecordSlack + n.callerBytes(c, s)
 	if need+n.ringTaken() <= w.ringRoom() {
 		n.ringPledged += need
+		n.batchPledge += need
 		w.wanted = 0
 		return false
 	}
-	w.wanted = max(w.wanted, need)
+	// The room the write needs, with what the ring holds besides, is what
+	// it wants: the ring is low until it has that, so that a checkpoint
+	// can be due (ringDue).
+	w.wanted = max(w.wanted, need+n.ringTaken())
 	n.nudgeRing()
 	n.reject(c, s, errTooManyRequests)
 	return true

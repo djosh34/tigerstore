@@ -119,6 +119,8 @@ func (n *node) proposeBatch(now time.Time) {
 	f := &n.fwd[seq&(fwdSlots-1)]
 	f.seq, f.data = seq, data
 	f.handles = append(f.handles[:0], n.batchOwn...)
+	f.pledged, f.pledgeEpoch = n.batchPledge, n.pledgeEpoch
+	n.batchPledge = 0
 	n.proposed = append(n.proposed, proposal{seq: seq, at: now})
 	if n.batchInRing {
 		// A leader's Raft copies the proposal as it takes it, so only the
@@ -145,7 +147,7 @@ func (n *node) proposeBatch(now time.Time) {
 		f.handles = f.handles[:0]
 		// The batch never comes to the log: the room its writes were
 		// taken for is free again (ringRefuses).
-		n.ringPledged = 0
+		n.releasePledge(f)
 	}
 }
 
@@ -186,12 +188,10 @@ func (n *node) expireProposals() {
 			n.replyErrorH(h, codeUnavailable, msgTimeout)
 		}
 		f.handles = f.handles[:0]
-		if n.lead != n.id {
-			// A follower's batch lost on the way to its leader never
-			// comes to the log: the room its writes were taken for is
-			// free again (ringRefuses).
-			n.ringPledged = 0
-		}
+		// A batch lost on the way to the log, as a follower's to its
+		// leader, never comes there: the room its writes were taken for
+		// is free again (ringRefuses).
+		n.releasePledge(f)
 	}
 	if k > 0 {
 		n.proposed = append(n.proposed[:0], n.proposed[k:]...)
@@ -199,3 +199,13 @@ func (n *node) expireProposals() {
 }
 
 const msgTimeout = "etcdserver: request timed out"
+
+// releasePledge frees the ring room batch f's writes were taken for, which
+// never come to the log: only f's, and only if Raft handed the log no
+// append since, at which ringPledged started again without it.
+func (n *node) releasePledge(f *fwdBatch) {
+	if f.pledgeEpoch == n.pledgeEpoch {
+		n.ringPledged = max(0, n.ringPledged-f.pledged)
+	}
+	f.pledged = 0
+}
