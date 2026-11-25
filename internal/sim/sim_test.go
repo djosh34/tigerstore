@@ -378,7 +378,8 @@ func runFilesWithin(dir, cmd string, res *Result, withHistory bool, room *saveRo
 //     its smallest value are 2 bytes, and print as its name and the value
 //     in decimal;
 //   - each call's own fields (client, node, times, error) at most 512;
-//   - history.json holds the committed log's requests too, at 24 a byte.
+//   - history.json holds the committed log's requests too, and a fork's
+//     image's store (history.Start), at 24 a byte.
 //
 // Values are most of a bulk run; the messages most of a run of small
 // values. TestSaveRunKeepsDisks checks both bounds against its run's
@@ -392,6 +393,15 @@ func (r *Result) saveBounds() (calls, history int64) {
 	log := int64(0)
 	for _, m := range r.Log {
 		log += int64(proto.Size(m))
+	}
+	// A fork's history starts from its image's store (history.Start):
+	// its keys and values with 64 bytes a key for their fields, and 32 a
+	// lease, counted as the log is.
+	if st := r.start; st != nil {
+		for _, kv := range st.KVs {
+			log += int64(len(kv.Key)+len(kv.Value)) + 64
+		}
+		log += 32 * int64(len(st.Leases))
 	}
 	return calls, calls + 24*log
 }
