@@ -15,6 +15,7 @@ TestScenarios 61 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 78 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 81 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 83 https://github.com/djosh34/tigerstore/issues/769
+TestScenarios 422 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 436 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 448 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 452 https://github.com/djosh34/tigerstore/issues/769
@@ -48,3 +49,4 @@ TestScenarios 1238 https://github.com/djosh34/tigerstore/issues/785
 TestScenarios 38 https://github.com/djosh34/tigerstore/issues/770
 TestScenarios 48 https://github.com/djosh34/tigerstore/issues/798
 TestScenarios 492 https://github.com/djosh34/tigerstore/issues/799
+TestScenarios 27 https://github.com/djosh34/tigerstore/issues/770
