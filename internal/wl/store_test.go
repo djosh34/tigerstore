@@ -142,6 +142,125 @@ func TestStoreBudgetLetsRecordsGoAndBuildsThemAgain(t *testing.T) {
 	}
 }
 
+// A read of more records the budget let go than the slab's limit holds,
+// with no apply in between to let any go, keeps them only up to the limit
+// and builds the rest for its caller (#805). A range over every key kept
+// each one it read: past the budget, and under the simulator, whose slab
+// is fixed, the slab filled and the node closed the client ("the store's
+// slab is full", TestAgedBulk's final reads).
+func TestStoreReadKeepsRecordsOnlyWithinTheLimit(t *testing.T) {
+	st, l := newTestStore(t)
+	t.Cleanup(func() { _ = st.close() })
+	st.setBudget(1, 0)
+	value := strings.Repeat("v", 4000)
+	for i := range 64 {
+		putValue(t, st, l, fmt.Sprintf("/k/%03d", i), value)
+	}
+	if st.slab.used != 0 {
+		t.Fatalf("the slab holds %d bytes after every apply let its records go", st.slab.used)
+	}
+	// Room for three records.
+	_, slot := classOf(kvSize(len("/k/000"), len(value), 2, 2, 1, 0))
+	st.limit = int64(3 * slot)
+	top := int64(st.slab.top)
+	for i := range 64 {
+		key := fmt.Appendf(nil, "/k/%03d", i)
+		id, _ := st.find(key)
+		rec, err := st.at(id, 0)
+		if err != nil {
+			t.Fatalf("key %d: %v", i, err)
+		}
+		if want := appendKV(nil, key, []byte(value), int64(i+2), int64(i+2), 1, 0); !bytes.Equal(rec, want) {
+			t.Fatalf("key %d read as %d bytes, want %d", i, len(rec), len(want))
+		}
+		if st.slab.used > st.limit {
+			t.Fatalf("after %d reads the slab holds %d bytes, past its limit of %d", i+1, st.slab.used, st.limit)
+		}
+		// Its top, whose pages stay resident, grows no further than
+		// topMax either.
+		if t2 := int64(st.slab.top); t2 > max(top, st.topMax()) {
+			t.Fatalf("after %d reads the slab's top is %d, past %d", i+1, t2, max(top, st.topMax()))
+		}
+	}
+	kept := 0
+	for i := range st.keys[:st.nkeys] {
+		if st.keys[i].rec != 0 {
+			kept++
+		}
+	}
+	if st.loads != 64 || kept == 0 || kept > 3 || st.unkept != uint64(64-kept) {
+		t.Fatalf("%d loads, %d kept, %d not kept; want 64 loads, 1 to 3 kept within the limit, the rest not", st.loads, kept, st.unkept)
+	}
+}
+
+// A read keeps what it loads up to topMax, the room past the limit the
+// next apply takes back (fit): a key read again and again is loaded once,
+// not read from the log each time, though writes left the slab at its
+// limit (the review of #807).
+func TestStoreReadKeepsRecordsUpToTopMax(t *testing.T) {
+	st, l := newTestStore(t)
+	t.Cleanup(func() { _ = st.close() })
+	st.setBudget(1, 0)
+	value := strings.Repeat("v", 4000)
+	for i := range 16 {
+		putValue(t, st, l, fmt.Sprintf("/k/%03d", i), value)
+	}
+	_, slot := classOf(kvSize(len("/k/000"), len(value), 2, 2, 1, 0))
+	// A limit of four slots, and room for four more past it.
+	st.budget, st.limit = int64(32*4*slot), int64(4*slot)
+	read := func(i int) {
+		t.Helper()
+		id, _ := st.find(fmt.Appendf(nil, "/k/%03d", i))
+		if _, err := st.at(id, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 4 {
+		read(i)
+	}
+	loads := st.loads
+	for range 20 {
+		read(10)
+	}
+	if st.loads != loads+1 {
+		t.Fatalf("a key read 20 times past the limit was loaded %d times, want once", st.loads-loads)
+	}
+}
+
+// A store whose slab has no room left, as the simulator's fixed one past
+// what it holds, builds what a read loads for its caller instead of
+// failing it (#805): the node closed the client on errSlabFull.
+func TestStoreReadWithAFullSlab(t *testing.T) {
+	st, l := newTestStore(t)
+	t.Cleanup(func() { _ = st.close() })
+	st.setBudget(1, 0)
+	value := strings.Repeat("v", 4000)
+	for i := range 16 {
+		putValue(t, st, l, fmt.Sprintf("/k/%03d", i), value)
+	}
+	// No budget, and a slab of room for two records.
+	_, slot := classOf(kvSize(len("/k/000"), len(value), 2, 2, 1, 0))
+	small, err := newSlab(minClass + 2*slot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.budget, st.slab = 0, small
+	for i := range 16 {
+		key := fmt.Appendf(nil, "/k/%03d", i)
+		id, _ := st.find(key)
+		rec, err := st.at(id, 0)
+		if err != nil {
+			t.Fatalf("key %d: %v", i, err)
+		}
+		if want := appendKV(nil, key, []byte(value), int64(i+2), int64(i+2), 1, 0); !bytes.Equal(rec, want) {
+			t.Fatalf("key %d read as %d bytes, want %d", i, len(rec), len(want))
+		}
+	}
+	if st.unkept != 14 {
+		t.Fatalf("%d records built and not kept, want 14 past the two the slab holds", st.unkept)
+	}
+}
+
 func TestStoreWithoutABudgetKeepsEveryRecord(t *testing.T) {
 	st, l := newTestStore(t)
 	for i := range 100 {
