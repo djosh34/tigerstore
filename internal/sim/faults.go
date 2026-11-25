@@ -727,19 +727,26 @@ type snapProgress struct {
 func (p *snapProgress) chunk(to uint64, first bool, n int) (bool, int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.at == nil {
-		p.at, p.top = map[uint64]int64{}, map[uint64]int64{}
-	}
-	if first {
-		p.at[to] = 0
-	}
-	before := p.at[to]
-	p.at[to] += int64(n)
-	if p.at[to] > p.top[to] {
-		p.total += p.at[to] - p.top[to]
-		p.top[to] = p.at[to]
-	}
-	return before>>24 != p.at[to]>>24, p.at[to]
+	var passed bool
+	var at int64
+	// Aside: a map that grows draws from gosim's random stream, which
+	// would move the run's draws.
+	simrun.Aside(func() {
+		if p.at == nil {
+			p.at, p.top = map[uint64]int64{}, map[uint64]int64{}
+		}
+		if first {
+			p.at[to] = 0
+		}
+		before := p.at[to]
+		p.at[to] += int64(n)
+		if p.at[to] > p.top[to] {
+			p.total += p.at[to] - p.top[to]
+			p.top[to] = p.at[to]
+		}
+		passed, at = before>>24 != p.at[to]>>24, p.at[to]
+	})
+	return passed, at
 }
 
 // served is how far the streams got, summed over the nodes they went to.
@@ -1047,6 +1054,9 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 			idle = 0
 		}
 	}
+	s.mu.Lock()
+	s.coldSnapsServed += r.snaps.served()
+	s.mu.Unlock()
 	if why != "" {
 		s.mu.Lock()
 		s.tracef("cold restart at %d ms %s: waited %s for the nodes to catch up, %d MiB of snapshots served, until %s", c.at/Millisecond, erasing(erased), seconds(waited), r.snaps.served()>>20, why)

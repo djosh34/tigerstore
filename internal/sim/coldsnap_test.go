@@ -74,9 +74,13 @@ func TestColdRestartWaitsOnASlowSnapshot(t *testing.T) {
 		if err := s.coldRestart(c, erased); err != nil {
 			t.Fatalf("erasing node %d: %v", s.nodes[erased].id, err)
 		}
-		// The snapshot outlasted the old window, so the test tested it.
-		if d := s.now() - begin; d < 10*Second {
-			t.Fatalf("the cold restart agreed in %s: no snapshot slow enough to test the wait", seconds(d))
+		// A snapshot of the puts was served, and outlasted the old
+		// window: the test tested the wait.
+		s.mu.Lock()
+		served := s.coldSnapsServed
+		s.mu.Unlock()
+		if d := s.now() - begin; d < 10*Second || served < 4<<20 {
+			t.Fatalf("the cold restart caught up in %s, with %d bytes of snapshots served: no snapshot slow enough to test the wait", seconds(d), served)
 		}
 	})
 }

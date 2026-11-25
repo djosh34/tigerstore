@@ -742,10 +742,11 @@ type Sim struct {
 	// streams (SnapshotChunk).
 	inColdRestart bool
 	// coldWaited is how long the run's cold restarts waited for a node
-	// to catch up past their first seconds (coldWaitMax). The lock.
-	coldWaited int64
-	membership membershipWork
-	err        error
+	// to catch up past their first seconds (coldWaitMax), and
+	// coldSnapsServed how far their snapshot streams got. The lock.
+	coldWaited, coldSnapsServed int64
+	membership                  membershipWork
+	err                         error
 	// loadFrom is the process's CPU time when the clients started, and
 	// loadCPU the CPU time from then until the last client stopped
 	// (markLoad); firedFrom and loadFired count the timers that fired, and
