@@ -259,12 +259,17 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 	defer n.mu.Unlock()
 	n.starts++
 	_, _ = fmt.Fprintf(n.log, "chaos: start incarnation %d at %s\n", n.starts, time.Now().UTC().Format(time.RFC3339Nano))
+	from := int64(0)
+	if st, err := n.log.Stat(); err == nil {
+		from = st.Size()
+	}
 	cmd := exec.Command(c.bin, n.args...)
 	cmd.Stdout, cmd.Stderr = n.log, n.log
-	cmd.Env = nodeEnv(os.Environ(), n.args)
+	cmd.Env = append(nodeEnv(os.Environ(), n.args), "TIGERSTORE_STACKS_ON_SIGUSR1=1")
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	go n.stacksIfSlow(cmd, from, n.starts, slowStart)
 	if c.started != nil {
 		if err := c.started(n.i, cmd.Process.Pid); err != nil {
 			return errors.Join(err, cmd.Process.Kill())
@@ -285,6 +290,32 @@ func (c *cluster) startExpecting(n *node, exit bool) error {
 		exited <- cmd.ProcessState
 	}()
 	return nil
+}
+
+// slowStart is how long a node's start may go without its "up" line
+// before stacksIfSlow has it write its goroutines' stacks. Starts take 3
+// to 6 s in the race build; #780's stalled for 22.7 s and for good.
+const slowStart = 10 * time.Second
+
+// stacksIfSlow has incarnation inc of n, the process of cmd, write every
+// goroutine's stack into its log (SIGUSR1, cmd/tigerstore's stacksOnSignal)
+// once, if after passes with no "up" line in its log past offset from and
+// the process still running: the stacks show where a start stalls while
+// it still does, which SIGQUIT's dump at the test's end, after the stall
+// or with the node killed, does not (#780).
+func (n *node) stacksIfSlow(cmd *exec.Cmd, from int64, inc int, after time.Duration) {
+	time.Sleep(after)
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.cmd != cmd || n.exitedNow {
+		return
+	}
+	b, err := os.ReadFile(n.log.Name())
+	if err != nil || int64(len(b)) < from || strings.Contains(string(b[from:]), ") up: clients") {
+		return
+	}
+	_, _ = fmt.Fprintf(n.log, "chaos: incarnation %d is not up %v after its start: its goroutines' stacks follow (SIGUSR1)\n", inc, after)
+	_ = cmd.Process.Signal(syscall.SIGUSR1)
 }
 
 // signal sends sig to n's process. For SIGKILL, SIGTERM and SIGQUIT, whose
