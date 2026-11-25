@@ -134,7 +134,10 @@ jobs:
             echo "internal/wl/slow-tests.txt (<) and the tests of internal/wl it names (>) differ"
             exit 1
           fi
-          go test -race -run "$slow" ./internal/wl 2>&1 | tee "$RUNNER_TEMP/test.log"
+          # 13 minutes, past go's 10: a test's own deadline, such as
+          # TestFetchedValuesStayWithinTheirShare's per phase (#832), ends
+          # it first, with its message, not the package's panic.
+          go test -race -timeout 13m -run "$slow" ./internal/wl 2>&1 | tee "$RUNNER_TEMP/test.log"
       - if: failure()
         run: |
           if [ -f "$RUNNER_TEMP/test.log" ]; then
