@@ -158,16 +158,6 @@ func (n *node) unwait() error {
 // Raft's storage with where the log holds their data. A snapshot it
 // carries is installed first.
 func (n *node) appendNow(m *pb.Message) error {
-	n.simAppend(m)
-	if sn := m.GetSnapshot(); sn != nil && sn.GetMetadata().GetIndex() > 0 {
-		t := time.Now()
-		err := n.installSnapshot(sn)
-		n.turnReady.install += time.Since(t)
-		if err != nil {
-			return err
-		}
-	}
-	ents := m.GetEntries()
 	var hs []byte
 	var st *pb.HardState
 	if m.Term != nil {
@@ -177,6 +167,27 @@ func (n *node) appendNow(m *pb.Message) error {
 			return err
 		}
 	}
+	// An append that only moves the commit (commitMove) and owes no
+	// response is written and not synced: Raft asks no durability of an
+	// append that carries no response (Config.AsyncStorageWrites), as a
+	// leader's commit's. It is no job the log, or the simulator, waits
+	// on. One that owes responses, a follower's, is held: its sync waits,
+	// at most commitHold, for the next append's, which covers it (#802).
+	move := n.commitMove(m, st)
+	skip := move && len(m.Responses) == 0
+	if !skip {
+		n.simAppend(m)
+	}
+	if sn := m.GetSnapshot(); sn != nil && sn.GetMetadata().GetIndex() > 0 {
+		t := time.Now()
+		err := n.installSnapshot(sn)
+		n.turnReady.install += time.Since(t)
+		if err != nil {
+			return err
+		}
+	}
+	ents := m.GetEntries()
+	n.noteMustSync(ents)
 	dataEnd := n.wal.dataEnd
 	if len(ents) > 0 || len(hs) > 0 {
 		t := time.Now()
@@ -195,21 +206,19 @@ func (n *node) appendNow(m *pb.Message) error {
 		n.commit = st.GetCommit()
 		n.storage.setHardState(st)
 	}
-	if n.commitOnly(m, st) {
-		// Only the commit moved: its record is written, and goes durable
-		// with the next sync or the idle mark (markIdle), but nothing
-		// waits for that, as etcd syncs no hard state whose term and vote
-		// stand (raft.MustSync). A commit lost to a crash is learned
-		// again from the leader. Synced, it took a sync of its own on
-		// every node at every commit, which the next write's sync waited
-		// behind (#802). Nothing relies on the record being durable, so
-		// no mark need claim it: the idle mark claims the records before
-		// it, which were synced and answered, as it did (dataEnd).
+	if skip {
+		// Its record goes durable with the next sync or the idle mark
+		// (markIdle). Synced, it took a sync of its own at every commit,
+		// which the next write's sync waited behind (#802). A commit lost
+		// to a crash is learned again from the leader; one whose range
+		// holds what the replay of the log must keep is never skipped
+		// (commitMove). Nothing relies on the record being durable, so no
+		// mark need claim it (dataEnd).
 		n.wal.dataEnd = dataEnd
-		n.deliver(m.Responses)
+		n.wal.stats.skipped++
 		return nil
 	}
-	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st, at: n.now, ents: len(ents) > 0})
+	n.wal.pending = append(n.wal.pending, walJob{end: n.wal.off, resps: m.Responses, hs: st, at: time.Now(), ents: len(ents) > 0, held: move})
 	if !n.wal.inflight && n.wal.done.Load() >= n.wal.off || n.plantedEarlyDurable() {
 		n.synced()
 		return nil
@@ -218,17 +227,69 @@ func (n *node) appendNow(m *pb.Message) error {
 	return nil
 }
 
-// commitOnly reports whether append m, which wrote hard state st, needs
-// no sync: it carries no entry and no snapshot, its hard state's term and
-// vote are the durable one's, and no append before it waits for a sync,
-// whose responses must go first.
-func (n *node) commitOnly(m *pb.Message, st *pb.HardState) bool {
-	w := n.wal
-	d := w.durableHS
-	if len(m.GetEntries()) > 0 || m.GetSnapshot().GetMetadata().GetIndex() > 0 || st == nil || d == nil || len(w.pending) > 0 {
+// commitMove reports whether append m, which writes hard state st, only
+// moves the commit: it carries no entry and no snapshot, its hard
+// state's term and vote are the durable one's, and the range it commits
+// past the durable commit holds no entry the log's replay must keep
+// (mustSyncCommit). Such an append's sync may be skipped or held
+// (appendNow).
+func (n *node) commitMove(m *pb.Message, st *pb.HardState) bool {
+	d := n.wal.durableHS
+	if len(m.GetEntries()) > 0 || m.GetSnapshot().GetMetadata().GetIndex() > 0 || st == nil || d == nil {
 		return false
 	}
-	return st.GetTerm() == d.GetTerm() && st.GetVote() == d.GetVote()
+	return st.GetTerm() == d.GetTerm() && st.GetVote() == d.GetVote() && !n.mustSyncCommit(d.GetCommit(), st.GetCommit())
+}
+
+// A node rebuilds what it applied from its newest checkpoint and the log's
+// entries up to the durable commit. An entry whose apply a node answers
+// for, and that no replay to a lower commit may leave out, is one whose
+// commit is synced: a change of members, whose replay to a commit before
+// it leaves a survivor of a removal waiting for the removed member's vote,
+// and an auth op, whose replay before it serves reads with the auth of
+// before (#821's review). So are the entries a node found in its log at
+// its start, whose kind it did not read (recoveredLast).
+
+// noteMustSync notes the entries of ents whose commit is synced
+// (mustSyncCommit).
+func (n *node) noteMustSync(ents []*pb.Entry) {
+	for _, e := range ents {
+		if t := e.GetType(); t == pb.EntryConfChange || t == pb.EntryConfChangeV2 || batchHasAuth(e.GetData()) {
+			n.mustSync = append(n.mustSync, e.GetIndex())
+		}
+	}
+}
+
+// mustSyncCommit reports whether a commit moved from from to to covers an
+// entry whose commit is synced.
+func (n *node) mustSyncCommit(from, to uint64) bool {
+	if to <= from {
+		return false
+	}
+	if from < n.recoveredLast {
+		return true
+	}
+	for _, i := range n.mustSync {
+		if i > from && i <= to {
+			return true
+		}
+	}
+	return false
+}
+
+// batchHasAuth reports whether batch data holds an auth op.
+func batchHasAuth(data []byte) bool {
+	if !isBatch(data) {
+		return false
+	}
+	for p := batchHdr; p+opHdr <= len(data); {
+		l := int(binary.LittleEndian.Uint32(data[p+1:]))
+		if data[p] == kAuthOp {
+			return true
+		}
+		p += opHdr + l
+	}
+	return false
 }
 
 // deliver steps or sends an append's responses.
@@ -261,6 +322,10 @@ func (n *node) synced() {
 	}
 	if k > 0 {
 		w.progressAt = n.now
+		// What the durable commit covers needs its sync no more.
+		if c := w.durableHS.GetCommit(); len(n.mustSync) > 0 {
+			n.mustSync = slices.DeleteFunc(n.mustSync, func(i uint64) bool { return i <= c })
+		}
 	}
 	w.pending = append(w.pending[:0], w.pending[k:]...)
 	w.kick()

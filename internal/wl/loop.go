@@ -248,6 +248,9 @@ func run(ctx context.Context, cfg Config) error {
 		hs.Commit = new(n.storage.snapIndex)
 	}
 	n.term, n.commit = n.storage.hs.GetTerm(), n.storage.hs.GetCommit()
+	// Every entry the log holds past the commit has its commit synced
+	// (mustSyncCommit): the start did not read their kinds.
+	n.recoveredLast = n.storage.lastIndex()
 	if planted.On("B23") && n.commit > n.applied {
 		n.plantedSkip = n.commit
 	}
@@ -997,7 +1000,7 @@ func (l *loop) run() error {
 		timeout := 0
 		wake := l.next
 		if n.wal.deferred {
-			if t := n.wal.lastKick.Add(n.wal.gap()); t.Before(wake) {
+			if t := n.wal.deferUntil(); t.Before(wake) {
 				wake = t
 			}
 		}

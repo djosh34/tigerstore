@@ -3,38 +3,56 @@ package wl
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
+
+	pb "go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 )
 
-// walSyncs is node l's log sync counts: all, idle marks, and those for
-// hard states alone.
-func walSyncs(t *testing.T, l *loop) (all, marks, stateOnly uint64) {
+// walCounts is a node's log counts: its syncs, its idle marks' syncs, the
+// syncs for hard states alone, and the commits it skipped the sync of.
+type walCounts struct{ all, marks, stateOnly, skipped uint64 }
+
+func (a walCounts) minus(b walCounts) walCounts {
+	return walCounts{a.all - b.all, a.marks - b.marks, a.stateOnly - b.stateOnly, a.skipped - b.skipped}
+}
+
+// walSyncs is node l's log counts.
+func walSyncs(t *testing.T, l *loop) walCounts {
 	t.Helper()
-	done := make(chan struct{})
+	got := make(chan walCounts, 1)
 	l.post(func() error {
 		s := l.n.wal.stats
-		all, marks, stateOnly = s.syncs, s.marks, s.stateOnly
-		close(done)
+		got <- walCounts{s.syncs, s.marks, s.stateOnly, s.skipped}
 		return nil
 	})
 	select {
-	case <-done:
+	case c := <-got:
+		return c
 	case <-time.After(5 * time.Second):
 		t.Fatal("a node's loop runs nothing posted to it in 5 s")
 	}
-	return all, marks, stateOnly
+	return walCounts{}
 }
 
 // TestSyncsPerWrite counts each node's log syncs per write, as the
 // apiserver's compactor writes: puts apart, and pairs back to back (#802).
-// Each write takes one sync for its entry on every node, as etcd's, and
-// none for the hard state alone when only the commit moved (commitOnly):
-// that took a sync of its own on every node, which the next write's sync
-// waited behind, three syncs to a write in all, and the apiserver's
-// TestCompact, whose compaction of two writes must end within 100 ms,
-// failed on CI's disks. The ring's idle mark (markIdle) is apart: it
-// syncs once the log goes idle, off the path of a write.
+// Every append synced, the commit's too: each write took three syncs on
+// every node (its entry, the commit, the ring's idle mark), and the next
+// write's sync waited behind the commit's, so the apiserver's TestCompact,
+// whose compaction of two writes must end within 100 ms, failed on CI's
+// disks. Now:
+//   - the leader's commit owes no response, and takes no sync: each write
+//     skips one, but for one that comes while its own entries' sync runs,
+//     which owes their ack and is held;
+//   - a follower's commit owes its ack, and is held until the next
+//     append's sync, or commitHold: at most one sync of its own a write;
+//   - each write's entry takes about one sync on every node.
+//
+// The idle mark is apart: it syncs once the log goes idle, off the path
+// of a write.
 func TestSyncsPerWrite(t *testing.T) {
 	loopOf := watchLoops(t)
 	was := segSize
@@ -45,9 +63,10 @@ func TestSyncsPerWrite(t *testing.T) {
 	ctx := context.Background()
 	measure := func(name string, writes int, do func(i int) time.Duration) {
 		time.Sleep(time.Second)
-		var before [3][3]uint64
+		lead := slices.Index(tc.endpoints[:3], tc.leaderEndpoint(t, c))
+		var before [3]walCounts
 		for i := range 3 {
-			before[i][0], before[i][1], before[i][2] = walSyncs(t, loopOf(tc.ids[i]))
+			before[i] = walSyncs(t, loopOf(tc.ids[i]))
 		}
 		var worst, total time.Duration
 		for i := range writes {
@@ -56,18 +75,37 @@ func TestSyncsPerWrite(t *testing.T) {
 			worst = max(worst, d)
 		}
 		time.Sleep(time.Second)
+		if l := slices.Index(tc.endpoints[:3], tc.leaderEndpoint(t, c)); l != lead {
+			t.Fatalf("%s: the leader moved from node %d to node %d", name, lead+1, l+1)
+		}
+		w := uint64(writes)
 		for i := range 3 {
-			a, m, s := walSyncs(t, loopOf(tc.ids[i]))
-			a, m, s = a-before[i][0], m-before[i][1], s-before[i][2]
-			t.Logf("%s, node %d: %.2f syncs per write (%.2f idle marks, %.2f for hard states alone); writes took %v on average, %v at most",
-				name, i+1, float64(a)/float64(writes), float64(m)/float64(writes), float64(s)/float64(writes), total/time.Duration(writes), worst)
-			// A hard state alone still syncs when its term or vote moved,
-			// or an append before it waits for a sync: rarely, here.
-			if s*10 > uint64(writes) {
-				t.Errorf("%s, node %d: %d syncs for hard states alone in %d writes", name, i+1, s, writes)
+			d := walSyncs(t, loopOf(tc.ids[i])).minus(before[i])
+			role := "follower"
+			if i == lead {
+				role = "leader"
 			}
-			if a-m > uint64(writes)+uint64(writes)/10 {
-				t.Errorf("%s, node %d: %d syncs but idle marks in %d writes, want about one a write", name, i+1, a-m, writes)
+			t.Logf("%s, node %d (%s): %.2f syncs per write (%.2f idle marks, %.2f for hard states alone), %.2f commits skipped per write; writes took %v on average, %v at most",
+				name, i+1, role, float64(d.all)/float64(w), float64(d.marks)/float64(w), float64(d.stateOnly)/float64(w), float64(d.skipped)/float64(w), total/time.Duration(writes), worst)
+			entries := d.all - d.marks - d.stateOnly
+			if entries > w+w/10 {
+				t.Errorf("%s, node %d: %d syncs for entries in %d writes, want about one a write", name, i+1, entries, w)
+			}
+			if i == lead {
+				// A leader's commit that comes while its own entries' sync
+				// runs owes Raft the ack of those entries, and is held, not
+				// skipped: more often the slower its syncs. Before, each of
+				// its writes took a sync for the commit alone.
+				if d.stateOnly*4 > w {
+					t.Errorf("%s, the leader: %d syncs for hard states alone in %d writes, want a quarter at most", name, d.stateOnly, w)
+				}
+				if d.skipped*4 < 3*w {
+					t.Errorf("%s, the leader: %d commits skipped in %d writes, want three quarters at least", name, d.skipped, w)
+				}
+				continue
+			}
+			if d.stateOnly > w {
+				t.Errorf("%s, node %d: %d syncs for hard states alone in %d writes, want one a write at most", name, i+1, d.stateOnly, w)
 			}
 		}
 	}
@@ -90,4 +128,84 @@ func TestSyncsPerWrite(t *testing.T) {
 		}
 		return d
 	})
+}
+
+// TestAHeldCommitSyncsWithinItsBound is a follower's commit held with no
+// append after it (walJob.held, #821's ruling): its sync does not start
+// while the hold lasts, the loop is set to wake at its end, and once
+// commitHold passed it starts, though no append came. An append that
+// carries entries starts the sync at once, the held commit with it.
+func TestAHeldCommitSyncsWithinItsBound(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, 8*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	hold := func() time.Time {
+		hs, err := proto.Marshal(&pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.write(nil, hs); err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now()
+		w.pending = append(w.pending, walJob{end: w.off, at: at, held: true})
+		return at
+	}
+	at := hold()
+	w.kick()
+	if w.inflight || !w.deferred {
+		t.Fatalf("a commit held started its sync at once: in flight %v, deferred %v", w.inflight, w.deferred)
+	}
+	if until := w.deferUntil(); until.After(at.Add(commitHold)) || until.Before(at) {
+		t.Fatalf("the loop wakes for the held commit %v after its hold began, want within %v", until.Sub(at), commitHold)
+	}
+	// The hold over, with no append after it, the sync starts.
+	w.pending[0].at = at.Add(-commitHold - time.Millisecond)
+	w.kick()
+	if !w.inflight {
+		t.Fatal("a commit held past commitHold did not start its sync")
+	}
+	if w.deferred {
+		t.Fatal("the sync of a commit held past commitHold is still deferred")
+	}
+}
+
+// TestAnAppendSyncsAHeldCommitAtOnce is the hold's other end: an append
+// with entries after a held commit starts the sync at once, which covers
+// both.
+func TestAnAppendSyncsAHeldCommitAtOnce(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { segSize = was })
+	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, 8*(16<<10), 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.close)
+	hs, err := proto.Marshal(&pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.write(nil, hs); err != nil {
+		t.Fatal(err)
+	}
+	w.pending = append(w.pending, walJob{end: w.off, at: time.Now(), held: true})
+	w.kick()
+	if w.inflight {
+		t.Fatal("a commit held started its sync at once")
+	}
+	ents := []*pb.Entry{{Term: new(uint64(1)), Index: new(uint64(2)), Data: []byte("x")}}
+	if err := w.write(ents, hs); err != nil {
+		t.Fatal(err)
+	}
+	w.pending = append(w.pending, walJob{end: w.off, at: time.Now(), ents: true})
+	w.kick()
+	if !w.inflight || w.want.Load() != w.off {
+		t.Fatalf("an append after a held commit did not start the sync of both: in flight %v, the sync up to %d of %d", w.inflight, w.want.Load(), w.off)
+	}
 }

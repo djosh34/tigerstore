@@ -282,6 +282,11 @@ type node struct {
 	// are the requests of those whose client has not ended its side.
 	sideCalls map[handle]context.CancelFunc
 	sideReqs  map[handle][]byte
+	// mustSync are the indexes of the entries past the durable commit
+	// whose commit is synced, and recoveredLast the log's last index at
+	// the start, through which every entry's is (mustSyncCommit).
+	mustSync      []uint64
+	recoveredLast uint64
 }
 
 type fwdBatch struct {
