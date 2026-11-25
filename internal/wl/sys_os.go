@@ -5,6 +5,7 @@ package wl
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"net"
 	"os"
@@ -39,6 +40,16 @@ func newSysEnv(cfg *Config) (sysEnv, error) {
 
 // envOf is the system for sys, which the real binary leaves nil.
 func envOf(Sys) sysEnv { return sysEnv{} }
+
+// RestoreSys is Restore of the snapshot of size bytes in snap, its files
+// written through sys, the simulator's seam: this build has none, so it
+// takes only a nil sys, and writes to the real system.
+func RestoreSys(sys Sys, snap io.ReaderAt, size int64, dataDir string, members []Member, skipHash bool) (index, term uint64, rev int64, err error) {
+	if sys != nil {
+		return 0, 0, 0, errSimInRealBuild
+	}
+	return restore(sysEnv{}, snap, size, dataDir, members, skipHash)
+}
 
 // lockOSThread keeps the calling goroutine on its thread, as the loop
 // and the log's helper each run on one of their own.

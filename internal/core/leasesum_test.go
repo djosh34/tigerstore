@@ -18,6 +18,39 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
+// TestStateAtHoldsItsLeasesKeys starts a state at a revision near the
+// store's bound, with a lease near the largest ID: its revoke deletes the
+// key that names it at the next revision, the lease sum matches a walk of
+// the leases, and a key that names a lease it lacks fails the start
+// (#502).
+func TestStateAtHoldsItsLeasesKeys(t *testing.T) {
+	const at, id = int64(1<<62 - 10), int64(1<<63 - 1)
+	seeds := []mvcc.Seed{
+		{Key: []byte("held"), Value: []byte("v"), Create: at - 3, Mod: at - 3, Version: 1, Lease: id},
+		{Key: []byte("kept"), Value: []byte("w"), Create: at, Mod: at, Version: 1},
+	}
+	st, err := NewStateAt(2, &mvcc.Heap{}, at, seeds, map[int64]int64{id: 60, id - 1: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := st.leaseSum, st.sumLeases(); got != want {
+		t.Fatalf("lease sum %x, the leases add up to %x", got, want)
+	}
+	if _, err := st.Apply(&pb.LeaseRevokeRequest{ID: id}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := st.Store().Range(&pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Store().Rev() != at+1 || len(all.Kvs) != 1 || string(all.Kvs[0].Key) != "kept" {
+		t.Fatalf("after the revoke: revision %d, keys %v; want %d and only kept", st.Store().Rev(), all.Kvs, at+1)
+	}
+	if _, err := NewStateAt(2, &mvcc.Heap{}, at, seeds, nil); err == nil {
+		t.Fatal("a key naming a lease the state lacks started")
+	}
+}
+
 // TestLeaseSumKept checks that the running sum of the leases' hashes
 // matches a walk of them after every write that touches a lease, and
 // after a checkpoint reload.
