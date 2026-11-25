@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,7 +73,8 @@ func TestLivenessExcusesOnlyAnEndedInstall(t *testing.T) {
 // pinnedToAnInstall runs a cluster in which a follower stopped while the
 // leader compacted past it restarts and installs a snapshot, held wait
 // on its loop (Config.installWait), while a client pinned to it calls for
-// 15 s from when it is back. It returns the run, the node, the calls'
+// 15 s from when it is back, and on until 60 more completed once the
+// install caught up. It returns the run, the node, the calls'
 // history and how many failed; the caller shuts the run down.
 func pinnedToAnInstall(t *testing.T, seed uint64, wait int64) (s *Sim, behind *node, history []*Record, failed int) {
 	t.Helper()
@@ -135,12 +137,17 @@ func pinnedToAnInstall(t *testing.T, seed uint64, wait int64) (s *Sim, behind *n
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// The calls go on for 15 s, and, once the install caught up, until 60
+	// more completed: the rule counts 50 after healing, which a slow
+	// install, as under the race detector, left too few of in 15 s.
 	c := &client{id: 0, sim: s}
+	okAfter := 0
 	for i := 0; ; i++ {
 		s.mu.Lock()
 		now := s.now()
+		caughtUp := slices.ContainsFunc(behind.installs, func(sp installSpan) bool { return sp.caughtUp != 0 })
 		s.mu.Unlock()
-		if now >= s.cfg.LiveFrom+15*Second {
+		if now >= s.cfg.LiveFrom+15*Second && (okAfter >= 60 || !caughtUp) || now >= s.cfg.LiveFrom+120*Second {
 			break
 		}
 		r := &Record{Client: c.id, Node: behind.idx, Call: now, req: &pb.PutRequest{Key: fmt.Appendf(nil, "c%d", i), Value: []byte("v")}}
@@ -151,6 +158,8 @@ func pinnedToAnInstall(t *testing.T, seed uint64, wait int64) (s *Sim, behind *n
 		s.mu.Unlock()
 		if err != nil {
 			failed++
+		} else if caughtUp {
+			okAfter++
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
