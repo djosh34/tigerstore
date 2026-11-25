@@ -162,6 +162,9 @@ type store struct {
 	evictions uint64
 	shrinks   uint64 // the times shrinkSlab gave pages back
 	loads     uint64
+	// unkept counts the records load built without keeping them: the
+	// slab had no room within its limit (#805).
+	unkept uint64
 	// liveBytes and histBytes are the size of the live values and of the
 	// earlier ones the history keeps: what a checkpoint holds.
 	liveBytes, histBytes int64
@@ -344,38 +347,63 @@ func rehash(old, to []uint64) {
 func (st *store) exists(id uint32) bool { return st.keys[id].create != 0 }
 
 // live returns key id's record, or nil if it is not live. A record the
-// budget let go is built again from the log and held again. The record
-// stays valid until the end of the apply after the call.
+// budget let go is built again from the log and held again, if the slab
+// has room for it within its limit; if not, it is built for the caller
+// alone (load). The record stays valid until the end of the apply after
+// the call.
 func (st *store) live(id uint32) ([]byte, error) {
 	k := &st.keys[id]
 	if k.create == 0 {
 		return nil, nil
 	}
 	if k.rec == 0 {
-		if err := st.load(id); err != nil {
-			return nil, err
-		}
+		return st.load(id)
 	}
 	return st.slab.bytes(k.rec, int(k.rlen)), nil
 }
 
-// load builds key id's record from its value in the log.
-func (st *store) load(id uint32) error {
+// load builds key id's record from its value in the log, and keeps it in
+// the slab while the slab stays within topMax, the room past its limit an
+// apply then takes back (fit). A read kept every record it loaded before
+// (#805): nothing lets records go during a read, only after an apply, so
+// a range over more values than the limit kept every one it read, past
+// the budget, and under the simulator past its fixed slab, where it
+// failed with errSlabFull and the node closed the client. Past topMax,
+// or with the slab full, the record is built in Go's heap for its caller,
+// and a read of it again builds it again; a reply holds at most a piece
+// of them (bigRange). Records are not let go during a read: the reply
+// holds slab bytes until it is written.
+func (st *store) load(id uint32) ([]byte, error) {
 	k := &st.keys[id]
 	val, err := st.readValue(k.voff, k.vlen, k.vsum)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	key := st.key(id)
 	n := kvSize(len(key), len(val), k.create, k.mod, k.ver, k.lease)
+	st.loads++
+	// Up to topMax, the room the slab has past its limit until an apply
+	// lets records go (fit), as the writes do: kept only up to the limit
+	// itself, a read kept almost nothing once writes filled the slab, and
+	// read a key read again and again from the disk each time (the review
+	// of #807). Its top counts too, as its pages stay resident once handed
+	// out: a slot past it must come from the free slots.
+	if _, size := classOf(n); st.budget != 0 && (st.slab.used+int64(size) > st.topMax() ||
+		!st.slab.reuses(n) && int64(st.slab.top+size) > st.topMax()) {
+		st.unkept++
+		return appendKV(make([]byte, 0, n), key, val, k.create, k.mod, k.ver, k.lease), nil
+	}
 	off, err := st.slab.alloc(n)
+	if errors.Is(err, errSlabFull) {
+		st.unkept++
+		return appendKV(make([]byte, 0, n), key, val, k.create, k.mod, k.ver, k.lease), nil
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	appendKV(st.slab.mem[off:off:int(off)+n], key, val, k.create, k.mod, k.ver, k.lease)
 	k.rec, k.rlen = off, uint32(n)
-	st.loads++
-	return nil
+	return st.slab.bytes(off, n), nil
 }
 
 // ErrBadValue is a value read back from the log or a checkpoint that does
