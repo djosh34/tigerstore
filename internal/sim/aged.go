@@ -135,7 +135,7 @@ func (s *Sim) capture() (*image, error) {
 	if model.Rev() != rev {
 		return nil, fmt.Errorf("aging: the committed log ends at revision %d, the store was compacted at %d", model.Rev(), rev)
 	}
-	start := &history.Start{Rev: model.Rev(), Leases: aliveLeases(log)}
+	start := &history.Start{Rev: model.Rev(), Leases: aliveLeases(nil, log)}
 	for _, kv := range all.Kvs {
 		start.KVs = append(start.KVs, frometcd.KeyValue(kv))
 	}

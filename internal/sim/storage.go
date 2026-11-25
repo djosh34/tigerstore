@@ -100,9 +100,12 @@ func (s *Sim) record(n *node, a core.Applied) {
 func (s *Sim) committed(last uint64) ([]*raftpb.Entry, error) {
 	// A synthetic image's record starts after its snapshot, whose store
 	// the model starts from (replay).
-	first := s.log.from + 1
-	out := make([]*raftpb.Entry, 0, last-min(last, s.log.from))
-	for i := first; i <= last; i++ {
+	// It counts the entries, not the indexes, which may end at the
+	// largest uint64.
+	n := last - min(last, s.log.from)
+	out := make([]*raftpb.Entry, 0, n)
+	for k := range n {
+		i := s.log.from + 1 + k
 		r, ok := s.log.get(i)
 		if !ok || !r.known {
 			return nil, fmt.Errorf("the record of committed entries has no entry %d", i)

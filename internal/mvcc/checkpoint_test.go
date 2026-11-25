@@ -139,6 +139,9 @@ func TestStartAtNearTheBound(t *testing.T) {
 	if err := New(&Heap{}).StartAt(maxLoadRev, seeds); !errors.Is(err, ErrBadCheckpoint) {
 		t.Fatalf("a start at revision %d returned %v, want %v", int64(maxLoadRev), err, ErrBadCheckpoint)
 	}
+	if err := New(&Heap{}).StartAt(at, append([]Seed{{Create: 1, Mod: 1, Version: 1}}, seeds...)); !errors.Is(err, ErrBadCheckpoint) {
+		t.Fatalf("a start with an empty key returned %v, want %v", err, ErrBadCheckpoint)
+	}
 }
 
 // TestCheckpointChunkOfAHotKey copies a key with 20,000 versions in

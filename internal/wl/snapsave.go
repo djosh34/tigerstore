@@ -241,6 +241,25 @@ func restorable(sys sysEnv, dataDir string) error {
 	return nil
 }
 
+// missingDirs are the parents of the directories that a MkdirAll of
+// dataDir makes, outermost first: the directory each new one is in, whose
+// sync makes it durable.
+func missingDirs(sys sysEnv, dataDir string) []string {
+	var parents []string
+	for d := filepath.Clean(dataDir); ; {
+		if _, err := sys.readDir(d); !errors.Is(err, fs.ErrNotExist) {
+			break
+		}
+		p := filepath.Dir(d)
+		if p == d {
+			break
+		}
+		parents = append([]string{p}, parents...)
+		d = p
+	}
+	return parents
+}
+
 // restore is Restore of the snapshot of size bytes that f holds, written
 // through sys.
 func restore(sys sysEnv, f io.ReaderAt, size int64, dataDir string, members []Member, skipHash bool) (index, term uint64, rev int64, err error) {
@@ -286,6 +305,12 @@ func restore(sys sysEnv, f io.ReaderAt, size int64, dataDir string, members []Me
 		cm.members = append(cm.members, mem)
 		cs.Voters = append(cs.Voters, m.ID)
 	}
+	// The directories the restore makes are made durable, each by a sync
+	// of the one it is in: the data dir's two, and the data dir and its
+	// parents if it makes them too. Without that, a power loss after the
+	// restore could leave the data dir empty or gone, and the node would
+	// start a new cluster instead (#842).
+	made := missingDirs(sys, dataDir)
 	dir := filepath.Join(dataDir, "ckpt")
 	if err := sys.mkdirAll(dir); err != nil {
 		return 0, 0, 0, err
@@ -293,11 +318,10 @@ func restore(sys sysEnv, f io.ReaderAt, size int64, dataDir string, members []Me
 	if err := sys.mkdirAll(filepath.Join(dataDir, "wal")); err != nil {
 		return 0, 0, 0, err
 	}
-	// The data dir's sync makes its two directories durable: without it a
-	// power loss after the restore could leave the data dir empty, and
-	// the node would start a new cluster instead (#842).
-	if err := syncDir(sys, dataDir); err != nil {
-		return 0, 0, 0, err
+	for _, d := range append(made, dataDir) {
+		if err := syncDir(sys, d); err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	name := ckptName(index)
 	out, err := sys.openFile(filepath.Join(dir, name), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)

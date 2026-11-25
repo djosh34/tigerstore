@@ -2,6 +2,7 @@ package sim
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -50,6 +51,11 @@ func (s *Sim) restoreImage(spec *synthSpec) (*image, error) {
 	if len(spec.ids) != s.cfg.voters() {
 		return nil, fmt.Errorf("a synthetic image of %d members for %d voters", len(spec.ids), s.cfg.voters())
 	}
+	if s.cfg.Membership {
+		// Its forks take a disk for each of its voters only (fork), and
+		// the membership work's checks name the voters 1 to n.
+		return nil, errors.New("a synthetic image has no member for the membership work to add")
+	}
 	var snap bytes.Buffer
 	err := wl.WriteSnapshot(&snap, &wl.SnapStore{
 		Cluster: wlCluster, Index: spec.index, Term: spec.term, Rev: st.rev, CompactRev: st.rev,
@@ -68,13 +74,7 @@ func (s *Sim) restoreImage(spec *synthSpec) (*image, error) {
 		src: src, ids: spec.ids,
 		log: &entryLog{from: spec.index, data: arena{store: s.chunks}}, ckpts: map[uint64]ckptRec{},
 		maxLogged: spec.index, applied: spec.index, expiredAt: map[int64]int64{}, revokedAt: map[int64]int64{},
-		start: &history.Start{Rev: st.rev, Leases: slices.Sorted(maps.Keys(st.leases))},
-		synth: st,
-	}
-	for _, k := range st.seeds {
-		img.start.KVs = append(img.start.KVs, frometcd.KeyValue(&mvccpb.KeyValue{
-			Key: k.Key, Value: k.Value, CreateRevision: k.Create, ModRevision: k.Mod, Version: k.Version, Lease: k.Lease,
-		}))
+		start: st.start(), synth: st,
 	}
 	for i, n := range s.nodes[:s.cfg.voters()] {
 		sys := s.os.NewNode(wlDataDir, n.disk, nil)
@@ -84,6 +84,17 @@ func (s *Sim) restoreImage(spec *synthSpec) (*image, error) {
 		img.disks = append(img.disks, n.disk.Durable())
 	}
 	return img, nil
+}
+
+// start is st as the checkers' history starts from it.
+func (st *synthStore) start() *history.Start {
+	out := &history.Start{Rev: st.rev, Leases: slices.Sorted(maps.Keys(st.leases))}
+	for _, k := range st.seeds {
+		out.KVs = append(out.KVs, frometcd.KeyValue(&mvccpb.KeyValue{
+			Key: k.Key, Value: k.Value, CreateRevision: k.Create, ModRevision: k.Mod, Version: k.Version, Lease: k.Lease,
+		}))
+	}
+	return out
 }
 
 // snapKeys are seeds as a snapshot's keys, each the one state a read at

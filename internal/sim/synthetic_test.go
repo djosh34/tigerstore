@@ -8,9 +8,15 @@ import (
 	"math/rand/v2"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+
+	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -63,13 +69,20 @@ func syntheticSpec(seed uint64, voters, keys int) *synthSpec {
 			mod = st.rev - rng.Int64N(1<<30)
 		}
 		mods[mod] = true
-		create := mod - rng.Int64N(1<<40)
+		// A key written once has version 1 and was created where it was
+		// last written; one written again has a version from 2 to the
+		// revisions between its creation and its last write.
+		create, version := mod, int64(1)
+		if rng.IntN(4) != 0 {
+			create = mod - 1 - rng.Int64N(1<<40)
+			version = 2 + rng.Int64N(min(mod-create, 1<<20))
+		}
 		k := mvcc.Seed{
 			Key:     fmt.Appendf(nil, "/registry/%s/synth/obj-%05d", resources[rng.IntN(len(resources))], i),
 			Value:   fmt.Appendf(nil, "%0*d", 1+rng.IntN(2048), i),
 			Create:  create,
 			Mod:     mod,
-			Version: 1 + rng.Int64N(min(mod-create+1, 1<<20)),
+			Version: version,
 		}
 		if rng.IntN(4) == 0 {
 			k.Lease = ids[rng.IntN(len(ids))]
@@ -139,9 +152,107 @@ func TestSyntheticForks(t *testing.T) {
 		t.Skip("set SIM_SEEDS: the campaigns say how many images to restore")
 	}
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
-		keys := int(logUniform(rand.New(rand.NewPCG(seed, 0x6b657973)), 200, 5000))
+		keys := synthKeys(seed)
 		return synthForks(t, seed, synthConfig(seed, keys), keys, forksPerImage, forkConfig)
 	}, nil)
+}
+
+// synthKeys is how many keys TestSyntheticForks's image of seed has.
+func synthKeys(seed uint64) int {
+	return int(logUniform(rand.New(rand.NewPCG(seed, 0x6b657973)), 200, 5000))
+}
+
+// The stores TestSyntheticForks draws are ones the checkers take
+// (history.Start): a key of version 1 was created where it was last
+// written (seed 223 drew one that was not, #843's review).
+func TestSyntheticStoresAreValidStarts(t *testing.T) {
+	for seed := range uint64(400) {
+		spec := syntheticSpec(seed+1, 3, synthKeys(seed+1))
+		if err := (&history.History{Start: spec.store.start()}).Validate(); err != nil {
+			t.Fatalf("seed %d: %v", seed+1, err)
+		}
+	}
+}
+
+// A restore onto a simulated disk outlasts a power loss right after it:
+// the data dir keeps its checkpoint, its pointer and its log's directory
+// (#842).
+func TestARestoreOutlastsAPowerLoss(t *testing.T) {
+	spec := syntheticSpec(1, 3, 20)
+	cfg := synthConfig(1, 20)
+	var img *image
+	var err error
+	simrun.BubbleFor(t, time.Hour, func(*testing.T) {
+		var s *Sim
+		if s, err = newSim(cfg); err == nil {
+			img, err = s.restoreImage(spec)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, d := range img.disks {
+		names := d.DurableNames()
+		if !slices.Contains(names, "ckpt/CURRENT") || !slices.ContainsFunc(names, func(n string) bool { return strings.HasSuffix(n, ".ckpt") }) || !d.IsDir("wal") {
+			t.Errorf("member %d's disk after a power loss holds %v", spec.ids[i], names)
+		}
+	}
+}
+
+// The record of a synthetic image's forks starts at its index: it holds
+// no entry before it, takes the snapshot's own index, and lists the
+// committed entries from the one after it, to the largest index.
+func TestARecordStartsAtTheImage(t *testing.T) {
+	for _, from := range []uint64{1<<63 + 10, math.MaxUint64 - 2} {
+		s := &Sim{log: &entryLog{from: from}}
+		s.log.put(from-1, logRec{term: 1, known: true})
+		if _, ok := s.log.get(from - 1); ok {
+			t.Fatalf("from %d: an entry before the image was kept", from)
+		}
+		s.log.put(from, logRec{term: 1})
+		if _, ok := s.log.get(from); !ok {
+			t.Fatalf("from %d: the image's own index was not kept", from)
+		}
+		if ents, err := s.committed(from); err != nil || len(ents) != 0 {
+			t.Fatalf("from %d: committed up to the image: %v, %v", from, ents, err)
+		}
+		last := from + 2
+		for i := from + 1; i <= last && i != 0; i++ {
+			s.log.put(i, logRec{term: 2, known: true, data: s.log.data.add([]byte{byte(i)})})
+		}
+		ents, err := s.committed(last)
+		if err != nil || len(ents) != 2 || ents[1].GetIndex() != last {
+			t.Fatalf("from %d: committed to %d: %d entries, %v", from, last, len(ents), err)
+		}
+	}
+}
+
+// A model that starts from a synthetic store takes an empty serializable
+// read of the newest revision answered at revision 1, as a member added
+// with an empty disk gives, but no read that asks for revision 1, no
+// linearizable one, and none that found keys there.
+func TestAReadAtRevisionOneOfASyntheticModel(t *testing.T) {
+	st, err := core.NewStateAt(2, &mvcc.Heap{}, 1<<40, []mvcc.Seed{{Key: []byte("k"), Value: []byte("v"), Create: 1 << 40, Mod: 1 << 40, Version: 1}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := &pb.RangeResponse{Header: &pb.ResponseHeader{Revision: 1}}
+	found := &pb.RangeResponse{Header: &pb.ResponseHeader{Revision: 1}, Kvs: []*mvccpb.KeyValue{{Key: []byte("k")}}, Count: 1}
+	for _, c := range []struct {
+		name string
+		req  *pb.RangeRequest
+		got  *pb.RangeResponse
+		ok   bool
+	}{
+		{"serializable, empty", &pb.RangeRequest{Key: []byte("k"), Serializable: true}, empty, true},
+		{"serializable, keys", &pb.RangeRequest{Key: []byte("k"), Serializable: true}, found, false},
+		{"linearizable, empty", &pb.RangeRequest{Key: []byte("k")}, empty, false},
+		{"at revision 1, empty", &pb.RangeRequest{Key: []byte("k"), Revision: 1, Serializable: true}, empty, false},
+	} {
+		if err := sameRead(st.Store(), c.req, c.got); (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
 }
 
 // TestSyntheticFork restores a synthetic image of 300 keys and runs one

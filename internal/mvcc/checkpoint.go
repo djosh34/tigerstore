@@ -152,6 +152,10 @@ type Seed struct {
 func (s *Store) StartAt(at int64, seeds []Seed) error {
 	var b []byte
 	for _, k := range seeds {
+		if len(k.Key) == 0 {
+			// Its length, 0, would end the keys.
+			return fmt.Errorf("%w: an empty key", ErrBadCheckpoint)
+		}
 		var ref Ref
 		if len(k.Value) > 0 {
 			var err error
