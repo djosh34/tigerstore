@@ -30,6 +30,10 @@ type Run struct {
 	// reads its seeds and planted variant from, and whether it keeps its
 	// files. Do passes the others of runVars empty.
 	Env []string
+	// Inputs are files on this machine the run reads (Input), by their
+	// names: an image's file, for its forks (ImageSeeds). They leave the
+	// run's environment, and so every value it draws, as it is.
+	Inputs map[string]string
 }
 
 // Result is what a run left.

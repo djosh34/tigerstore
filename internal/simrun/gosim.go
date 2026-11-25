@@ -4,6 +4,7 @@ package simrun
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -83,7 +84,7 @@ func Do(t *testing.T, r Run) *Result {
 
 // each runs the seeds, which the driver gives one at a time, and saves
 // what body returned for it (Seeds). Then it runs what AfterSeed set.
-func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
+func each[T any](t *testing.T, seeds []uint64, _ []string, _ int, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
 	t.Helper()
 	for _, seed := range seeds {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
@@ -101,6 +102,26 @@ func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T,
 		})
 	}
 	return false
+}
+
+// Input returns the run's input name (Run.Inputs), whole: a file on the
+// machine that runs the simulation, which the driver named. Reading it
+// changes nothing in the run (gosim.OpenInput).
+func Input(name string) ([]byte, error) {
+	f, err := gosim.OpenInput(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	n, err := f.Size()
+	if err != nil {
+		return nil, err
+	}
+	b := make([]byte, n)
+	if k, err := f.ReadAt(b, 0); k != len(b) {
+		return nil, fmt.Errorf("simrun: input %q: read %d of %d bytes: %w", name, k, n, err)
+	}
+	return b, nil
 }
 
 // afterSeed is what runs after the seed's last simulation.

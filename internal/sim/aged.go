@@ -54,6 +54,9 @@ type image struct {
 	// snapshot holds, which no committed log leads to: the model starts
 	// from it (replay).
 	synth *synthStore
+	// at is when the image was taken, which its forks' idle gaps count
+	// from (runForks).
+	at time.Time
 }
 
 // capture compacts the aging run s at its last revision, once its nodes

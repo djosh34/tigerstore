@@ -4,7 +4,10 @@ package simrun
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -127,7 +130,7 @@ func Do(t *testing.T, r Run) *Result {
 	}
 	limit := wallLimit(t)
 	start := time.Now()
-	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace})
+	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace, Inputs: r.Inputs})
 	if err != nil {
 		t.Fatalf("running %s in gosim with seed %d: %v\nreplay: %s", r.Test, r.Seed, err, Replay(dir(t), Pattern(t.Name()), r.Env))
 	}
@@ -291,9 +294,9 @@ func keepQuiet(t *testing.T, artifacts map[string][]byte, suffix string) []strin
 }
 
 // each runs the seeds: here under the race detector, otherwise each as a
-// gosim run of its own (Seeds). set holds the variables that pick the
-// whole set again.
-func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
+// gosim run of its own (Seeds), or, with forks, as an image and its forks
+// (ImageSeeds). set holds the variables that pick the whole set again.
+func each[T any](t *testing.T, seeds []uint64, set []string, forks int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
 	t.Helper()
 	if add == nil {
 		add = func(uint64, T) bool { return false }
@@ -329,13 +332,12 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 				return
 			}
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
-			var r *Result
-			if twice > 0 && i%max(1, len(seeds)/twice) == 0 {
-				r = twoRuns(t, Run{Test: test, Seed: seed, Env: env})
-			} else {
-				r = Do(t, Run{Test: test, Seed: seed, Env: env})
-				keep(t, r.Artifacts, "")
+			double := twice > 0 && i%max(1, len(seeds)/twice) == 0
+			if forks > 0 {
+				stop = imageAndForks(t, Run{Test: test, Seed: seed, Env: env}, forks, double, add)
+				return
 			}
+			r := part(t, Run{Test: test, Seed: seed, Env: env}, double)
 			if r.Failed {
 				return
 			}
@@ -351,6 +353,82 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 		}
 	}
 	return true
+}
+
+// errNoInput is Input's error outside gosim, which gives a run no inputs.
+var errNoInput = errors.New("simrun: a run has inputs only under gosim")
+
+// Input returns the run's input name (Run.Inputs). Only a gosim run has
+// any.
+func Input(string) ([]byte, error) { return nil, errNoInput }
+
+// part runs r once, keeping its files, or twice if double (twoRuns).
+func part(t *testing.T, r Run, double bool) *Result {
+	t.Helper()
+	if double {
+		return twoRuns(t, r)
+	}
+	res := Do(t, r)
+	keep(t, res.Artifacts, "")
+	return res
+}
+
+// imageAndForks runs seed r of a test of images (ImageSeeds) as one gosim
+// run that makes the image and saves its file (SIM_FORK=image), then one
+// for each fork, or only for fork $SIM_FORK, which loads that file
+// (Input): each fork starts in a fresh process, as it does alone (#794).
+// It checks the image's SHA-256 against $SIM_IMAGE_SHA256, if set, as a
+// fork's replay sets it, and calls add with each fork's result.
+func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(uint64, T) bool) bool {
+	t.Helper()
+	only := -1
+	if v := os.Getenv("SIM_FORK"); v != "" {
+		k, err := strconv.Atoi(v)
+		if err != nil || k < 0 || k >= forks {
+			t.Fatalf("SIM_FORK=%q: the image has forks 0 to %d", v, forks-1)
+		}
+		only = k
+	}
+	env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return strings.HasPrefix(v, "SIM_FORK=") })
+	r.Env = append(slices.Clone(env), "SIM_FORK=image")
+	img := part(t, r, double)
+	if img.Failed {
+		return false
+	}
+	b := img.Artifacts["image"]
+	if len(b) == 0 {
+		t.Fatalf("seed %d saved no image", r.Seed)
+	}
+	sum := sha256.Sum256(b)
+	hash := hex.EncodeToString(sum[:])
+	t.Logf("image of seed %d: %d bytes, SHA-256 %s", r.Seed, len(b), hash)
+	if want := os.Getenv("SIM_IMAGE_SHA256"); want != "" && want != hash {
+		t.Fatalf("the image of seed %d has SHA-256 %s, not %s: it is not the image the fork ran from", r.Seed, hash, want)
+	}
+	path := filepath.Join(t.TempDir(), "image")
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b, img = nil, nil
+	stop := false
+	for k := range forks {
+		if only >= 0 && k != only {
+			continue
+		}
+		fork := Run{Test: r.Test, Seed: r.Seed, Env: append(slices.Clone(env), fmt.Sprintf("SIM_FORK=%d", k)), Inputs: map[string]string{"image": path}}
+		res := part(t, fork, double)
+		if res.Failed {
+			t.Logf("fork %d alone, from this image: %s", k, Replay(dir(t), Pattern(t.Name()), append(slices.Clone(fork.Env), "SIM_IMAGE_SHA256="+hash)))
+			continue
+		}
+		t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])
+		var v T
+		if err := json.Unmarshal(res.Artifacts["seed.json"], &v); err != nil {
+			t.Fatalf("fork %d of seed %d left no result: %v", k, r.Seed, err)
+		}
+		stop = add(r.Seed, v) || stop
+	}
+	return stop
 }
 
 // twoRuns runs r twice, and fails t unless both give the same hashes.

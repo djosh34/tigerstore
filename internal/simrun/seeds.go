@@ -30,7 +30,41 @@ func Seeds[T any](t *testing.T, first uint64, n int, body func(*testing.T, uint6
 		seeds[i] = first + uint64(i)
 	}
 	set := []string{fmt.Sprintf("SIM_SEED=%d", first), fmt.Sprintf("SIM_SEEDS=%d", n)}
-	return each(t, seeds, set, body, add)
+	return each(t, seeds, set, 0, body, add)
+}
+
+// ImageSeeds is Seeds for a test whose seed makes an image and runs forks
+// of it, forks in all (#794). The driver runs each seed as a gosim run
+// that makes the image and saves its file, with $SIM_FORK=image, then a
+// gosim run for each fork, or only for fork $SIM_FORK, with $SIM_FORK=k,
+// which loads the file (Input): every fork starts in a fresh process, in
+// sequence as alone, and replays alone. body does what $SIM_FORK says;
+// add gets each fork's result. Under the race detector the seeds run
+// here, as body does with $SIM_FORK unset: the image and its forks in
+// one process.
+func ImageSeeds[T any](t *testing.T, first uint64, n, forks int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
+	t.Helper()
+	first = envUint(t, "SIM_SEED", first)
+	n = int(envUint(t, "SIM_SEEDS", uint64(n)))
+	seeds := make([]uint64, n)
+	for i := range seeds {
+		seeds[i] = first + uint64(i)
+	}
+	set := []string{fmt.Sprintf("SIM_SEED=%d", first), fmt.Sprintf("SIM_SEEDS=%d", n)}
+	return each(t, seeds, set, forks, body, add)
+}
+
+// ImageEach is ImageSeeds over fixed seeds of the test's own, as Each is.
+func ImageEach[T any](t *testing.T, seeds []uint64, forks int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
+	t.Helper()
+	if One() {
+		seed := envUint(t, "SIM_SEED", 0)
+		seeds = slices.DeleteFunc(slices.Clone(seeds), func(s uint64) bool { return s != seed })
+		if len(seeds) == 0 {
+			t.Skipf("seed %d is not one of this test's", seed)
+		}
+	}
+	return each(t, seeds, nil, forks, body, add)
 }
 
 // Each is Seeds over fixed seeds of the test's own. When $SIM_SEEDS is 1,
@@ -45,7 +79,7 @@ func Each[T any](t *testing.T, seeds []uint64, body func(*testing.T, uint64) T, 
 			t.Skipf("seed %d is not one of this test's", seed)
 		}
 	}
-	return each(t, seeds, nil, body, add)
+	return each(t, seeds, nil, 0, body, add)
 }
 
 // One reports whether the tests run one seed, as a replay does

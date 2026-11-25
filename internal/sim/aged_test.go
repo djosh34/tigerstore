@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -96,7 +97,7 @@ func TestAgedForks(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: an image takes minutes to build")
 	}
-	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
+	simrun.ImageSeeds(t, 1, 0, forksPerImage, func(t *testing.T, seed uint64) Stats {
 		return agedForks(t, seed, agingConfig(seed), forksPerImage, forkConfig)
 	}, nil)
 }
@@ -104,7 +105,7 @@ func TestAgedForks(t *testing.T) {
 // TestAgedFork builds a small image, 300 objects for 40 s, and runs one
 // fork of 30 s from it, every checker on it, as CI's short case.
 func TestAgedFork(t *testing.T) {
-	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
 		aging.Objects, aging.Duration = 300, 40*Second
 		return agedForks(t, seed, aging, 1, func(aging Config, seed uint64) Config {
@@ -119,7 +120,11 @@ func TestAgedFork(t *testing.T) {
 // returns their stats added up.
 func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Config, uint64) Config) Stats {
 	t.Helper()
-	only := forkOnly(t, forks)
+	save, only := forkMode(t, forks)
+	after := func(i int) time.Duration { return forkStart(seed, i) }
+	if only >= 0 && simrun.InGosim {
+		return runForks(t, seed, aging, savedImage(t), forks, only, fork, after)
+	}
 	// The aging runs in a subtest of its own, whose end lets its run go:
 	// the forks keep the image alone (#792's re-check).
 	var img *image
@@ -141,15 +146,25 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 	}) {
 		t.FailNow()
 	}
-	return runForks(t, seed, aging, img, forks, only, fork, func(i int) time.Duration { return forkStart(seed, i) })
+	img.at = time.Now()
+	if save {
+		return saveImage(t, img)
+	}
+	return runForks(t, seed, aging, img, forks, only, fork, after)
 }
 
-// forkOnly is the one fork of forks that $SIM_FORK asks for, -1 for all.
-func forkOnly(t *testing.T, forks int) int {
+// forkMode is what $SIM_FORK asks of a test of images (simrun.ImageSeeds):
+// to make the image and save it (image), to run one fork k of it (k), or
+// with it unset, to make the image and run every fork in this process, as
+// under the race detector.
+func forkMode(t *testing.T, forks int) (save bool, only int) {
 	t.Helper()
 	v := os.Getenv("SIM_FORK")
-	if v == "" {
-		return -1
+	switch v {
+	case "":
+		return false, -1
+	case "image":
+		return true, -1
 	}
 	k, err := strconv.Atoi(v)
 	if err != nil {
@@ -158,7 +173,34 @@ func forkOnly(t *testing.T, forks int) int {
 	if k < 0 || k >= forks {
 		t.Fatalf("SIM_FORK=%d: the image has forks 0 to %d", k, forks-1)
 	}
-	return k
+	return false, k
+}
+
+// saveImage saves img as the run's artifact "image", which the driver
+// hands each fork's run as its input (simrun.ImageSeeds).
+func saveImage(t *testing.T, img *image) Stats {
+	t.Helper()
+	var b bytes.Buffer
+	if err := img.save(&b); err != nil {
+		t.Fatalf("saving the image: %v", err)
+	}
+	simrun.Artifact("image", b.Bytes())
+	return Stats{}
+}
+
+// savedImage is the image the driver gave this fork's run as its input
+// "image" (saveImage).
+func savedImage(t *testing.T) *image {
+	t.Helper()
+	b, err := simrun.Input("image")
+	if err != nil {
+		t.Fatalf("the image's file: %v", err)
+	}
+	img, err := loadImage(bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("loading the image: %v", err)
+	}
+	return img
 }
 
 // runForks runs forks of img, an image of seed made for base, each at
@@ -166,10 +208,11 @@ func forkOnly(t *testing.T, forks int) int {
 // returns their stats added up.
 func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only int, fork func(Config, uint64) Config, after func(i int) time.Duration) Stats {
 	t.Helper()
-	// The idle gaps count from the image. Under gosim the clock jumps to
-	// each fork's slot; under the race detector each run keeps a clock of
-	// its own (synctest's bubble), and no gap reaches a fork.
-	start := time.Now()
+	// The idle gaps count from when the image was taken, in this process
+	// or the one that saved it. Under gosim the clock jumps to each
+	// fork's slot; under the race detector each run keeps a clock of its
+	// own (synctest's bubble), and no gap reaches a fork.
+	start := img.at
 	var total Stats
 	for i := range forks {
 		if only >= 0 && i != only {
@@ -177,15 +220,12 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 		}
 		t.Run(fmt.Sprintf("fork%d", i), func(t *testing.T) {
 			// Logged first, so that a fork that fails says how to run it
-			// again as it ran: its image's command, which runs the image
-			// and its forks in sequence; the failure's own replay line is
-			// that one too (Config.replay). SIM_FORK=k runs the fork alone,
-			// faster, but may not run it as it ran after the others (#794).
-			image := replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed)
-			t.Logf("fork %d runs again as it ran with: %s", i, image)
-			if forks > 1 {
-				t.Logf("fork %d alone, faster, though it may not run as it did after the others until #794 is fixed: SIM_FORK=%d %s", i, i, image)
-			}
+			// again: under gosim every fork runs in a run of its own from
+			// its image's file, and replays alone, as SIM_FORK=k has the
+			// driver make the image and run fork k from it (#794). The
+			// failure's own replay line is that one too (Config.replay).
+			image := fmt.Sprintf("SIM_FORK=%d %s", i, replayCommand(fmt.Sprintf("%s/%d", strings.Split(t.Name(), "/")[0], seed), seed))
+			t.Logf("fork %d runs again with: %s", i, image)
 			wait := time.Until(start.Add(after(i)))
 			if wait < 0 {
 				t.Fatalf("fork %d starts %s after its slot", i, -wait)
@@ -223,7 +263,7 @@ func TestAgedBulk(t *testing.T) {
 	if !simrun.InGosim {
 		before = memAvailable(t)
 	}
-	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
+	simrun.ImageSeeds(t, 1, 0, 1, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
 		aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
 		aging.MemoryBytes, aging.BulkBytes = 137<<20, 160_000_000

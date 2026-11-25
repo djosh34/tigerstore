@@ -116,10 +116,16 @@ func synthConfig(seed uint64, keys int) Config {
 
 // synthForks restores seed's synthetic image of keys keys for base, then
 // runs forks of it, the first synthYears after it, and returns their
-// stats added up. $SIM_FORK=k runs fork k alone.
+// stats added up, or saves the image or runs one fork of it from its file,
+// as $SIM_FORK says (forkMode).
 func synthForks(t *testing.T, seed uint64, base Config, keys, forks int, fork func(Config, uint64) Config) Stats {
 	t.Helper()
-	only := forkOnly(t, forks)
+	save, only := forkMode(t, forks)
+	years := synthYears(seed)
+	after := func(i int) time.Duration { return years + forkStart(seed, i) }
+	if only >= 0 && simrun.InGosim {
+		return runForks(t, seed, base, savedImage(t), forks, only, fork, after)
+	}
 	var img *image
 	if !t.Run("image", func(t *testing.T) {
 		spec := syntheticSpec(seed, base.voters(), keys)
@@ -138,8 +144,11 @@ func synthForks(t *testing.T, seed uint64, base Config, keys, forks int, fork fu
 	}) {
 		t.FailNow()
 	}
-	years := synthYears(seed)
-	return runForks(t, seed, base, img, forks, only, fork, func(i int) time.Duration { return years + forkStart(seed, i) })
+	img.at = time.Now()
+	if save {
+		return saveImage(t, img)
+	}
+	return runForks(t, seed, base, img, forks, only, fork, after)
 }
 
 // TestSyntheticForks restores a synthetic image for each of $SIM_SEEDS
@@ -151,7 +160,7 @@ func TestSyntheticForks(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: the campaigns say how many images to restore")
 	}
-	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
+	simrun.ImageSeeds(t, 1, 0, forksPerImage, func(t *testing.T, seed uint64) Stats {
 		keys := synthKeys(seed)
 		return synthForks(t, seed, synthConfig(seed, keys), keys, forksPerImage, forkConfig)
 	}, nil)
@@ -258,7 +267,7 @@ func TestAReadAtRevisionOneOfASyntheticModel(t *testing.T) {
 // TestSyntheticFork restores a synthetic image of 300 keys and runs one
 // fork of 30 s from it, every checker on it, as CI's short case.
 func TestSyntheticFork(t *testing.T) {
-	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
 		return synthForks(t, seed, synthConfig(seed, 300), 300, 1, func(base Config, seed uint64) Config {
 			cfg := forkConfig(base, seed)
 			cfg.Duration = 30 * Second
