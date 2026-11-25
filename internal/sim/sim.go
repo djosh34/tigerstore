@@ -503,6 +503,9 @@ type node struct {
 	// operator replaces it (replace), after which it joins the cluster
 	// as a new member.
 	corrupted, fenced, joins bool
+	// lastMembers is the last applied membership the node showed (Turn),
+	// kept while it is down: a crash does not take its vote away for good.
+	lastMembers []wl.TurnMember
 	// catchUp, for a member an operator added in a fenced node's place,
 	// is the entry it must apply before the end of stalls[catchUpWin] is
 	// set, 0 once it did.
@@ -653,8 +656,9 @@ type Sim struct {
 	// loses its quorum, its first write (writeFirst), by which its windows
 	// moved.
 	firstWritten int64
-	// quorumLostAt is when a majority of the voters was fenced for good
-	// (Config.LoseQuorum), 0 while a quorum stays.
+	// quorumLostAt is the fence that left no surviving voter with an
+	// applied configuration whose surviving voters form a majority,
+	// 0 while a quorum stays.
 	quorumLostAt int64
 	// lagged is LagAtEnd's follower, whose links are down until the end.
 	lagged *node
@@ -876,8 +880,8 @@ type Stats struct {
 	// the page cache (Faults.Uncached).
 	Uncached int
 	// Replaced counts the nodes fenced for good that an operator replaced,
-	// and QuorumLostAt is when a majority of the voters was fenced for
-	// good (Config.LoseQuorum), 0 if never.
+	// and QuorumLostAt is the fence that lost the quorum for good,
+	// including during a replacement, 0 if never.
 	Replaced     int
 	QuorumLostAt int64
 	// CertsExpiredAt is when the connections were reset after the nodes'
