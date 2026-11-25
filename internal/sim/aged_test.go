@@ -135,17 +135,7 @@ func TestAgedFork(t *testing.T) {
 // returns their stats added up.
 func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Config, uint64) Config) Stats {
 	t.Helper()
-	only := -1
-	if v := os.Getenv("SIM_FORK"); v != "" {
-		k, err := strconv.Atoi(v)
-		if err != nil {
-			t.Fatalf("SIM_FORK=%q: %v", v, err)
-		}
-		if k < 0 || k >= forks {
-			t.Fatalf("SIM_FORK=%d: the image has forks 0 to %d", k, forks-1)
-		}
-		only = k
-	}
+	only := forkOnly(t, forks)
 	// The aging runs in a subtest of its own, whose end lets its run go:
 	// the forks keep the image alone (#792's re-check).
 	var img *image
@@ -167,6 +157,31 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 	}) {
 		t.FailNow()
 	}
+	return runForks(t, seed, aging, img, forks, only, fork, func(i int) time.Duration { return forkStart(seed, i) })
+}
+
+// forkOnly is the one fork of forks that $SIM_FORK asks for, -1 for all.
+func forkOnly(t *testing.T, forks int) int {
+	t.Helper()
+	v := os.Getenv("SIM_FORK")
+	if v == "" {
+		return -1
+	}
+	k, err := strconv.Atoi(v)
+	if err != nil {
+		t.Fatalf("SIM_FORK=%q: %v", v, err)
+	}
+	if k < 0 || k >= forks {
+		t.Fatalf("SIM_FORK=%d: the image has forks 0 to %d", k, forks-1)
+	}
+	return k
+}
+
+// runForks runs forks of img, an image of seed made for base, each at
+// after(i) after the image, or only fork only if it is not -1, and
+// returns their stats added up.
+func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only int, fork func(Config, uint64) Config, after func(i int) time.Duration) Stats {
+	t.Helper()
 	// The idle gaps count from the image. Under gosim the clock jumps to
 	// each fork's slot; under the race detector each run keeps a clock of
 	// its own (synctest's bubble), and no gap reaches a fork.
@@ -187,20 +202,20 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			if forks > 1 {
 				t.Logf("fork %d alone, faster, though it may not run as it did after the others until #794 is fixed: SIM_FORK=%d %s", i, i, image)
 			}
-			wait := time.Until(start.Add(forkStart(seed, i)))
+			wait := time.Until(start.Add(after(i)))
 			if wait < 0 {
 				t.Fatalf("fork %d starts %s after its slot", i, -wait)
 			}
 			// gosim's limit of virtual time must outlast the wait.
 			simrun.BubbleFor(t, wait+time.Hour, func(*testing.T) { time.Sleep(wait) })
-			cfg := fork(aging, seed*1000+uint64(i))
+			cfg := fork(base, seed*1000+uint64(i))
 			cfg.from, cfg.replay = img, image
 			simrun.Reseed(cfg.Seed)
 			res := run(t, cfg)
 			checkers(t, res)
 			st := res.Stats
 			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; hashes %s",
-				i, cfg.Seed, seed, forkStart(seed, i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, runHashes(res))
+				i, cfg.Seed, seed, after(i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, runHashes(res))
 			total.OK += st.OK
 			total.Failed += st.Failed
 			total.Ambiguous += st.Ambiguous

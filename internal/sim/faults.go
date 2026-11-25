@@ -917,6 +917,9 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		return err
 	}
 	r.inColdRestart = true
+	// A synthetic image's members keep their IDs (startWL), and its
+	// record starts after its snapshot (entryLog.from).
+	r.synth, r.log.from = s.synth, s.log.from
 	defer r.shutdown()
 	defer func() {
 		if err != nil {
