@@ -308,9 +308,10 @@ func (s *Sim) maybeCorrupt(n *node) {
 	if !s.cfg.Faults.Corrupt || s.healed || len(s.cfg.damageKinds) == 0 && !s.cfg.LoseQuorum && s.rng.IntN(2) != 0 {
 		return
 	}
-	if s.cfg.LoseQuorum && s.now() < s.cfg.Duration/4 {
-		// The clients first commit something, which the checks of what
-		// the survivors hold need.
+	if s.cfg.LoseQuorum && s.now() < s.firstWritten+s.cfg.Duration/4 {
+		// The run's first write committed something before the faults
+		// (writeFirst), and the clients get a quarter of the faults'
+		// window before the damage that loses the quorum starts.
 		return
 	}
 	if planted.On("B04c") && flipPayload != nil {
