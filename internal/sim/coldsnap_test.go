@@ -15,7 +15,7 @@ import (
 // whose node behind must take a snapshot that outlasts the 9 s the check
 // gave a restart to agree. A follower stops; the leader takes 8 MB of
 // puts and compacts its log past it (a catch-up of 4 entries, a disk
-// budget of 1 MiB); a cold restart then starts the leader and the
+// budget of 4 MiB); a cold restart then starts the leader and the
 // follower from their disks, erasing the third node. Each snapshot chunk
 // of 1 MiB waits 2 s, so the snapshot takes about 16 s. The restart must
 // wait on while the snapshot is served, and pass.
@@ -25,7 +25,9 @@ func TestColdRestartWaitsOnASlowSnapshot(t *testing.T) {
 	}
 	simrun.Bubble(t, func(t *testing.T) {
 		cfg := DefaultConfig(809)
-		cfg.Faults = Faults{DiskBudget: 1 << 20}
+		// A ring of 2 MiB: the 4 entries of 128 KiB the leader keeps for the
+		// stopped follower fit it, which a ring of 512 KiB did not (#814).
+		cfg.Faults = Faults{DiskBudget: 4 << 20}
 		cfg.Catchup = 4
 		cfg.snapshotWait = 2 * Second
 		s, err := newSim(cfg)
