@@ -1039,18 +1039,19 @@ func during(times []int64, from, to int64) bool {
 
 // installExcused reports whether r is a call that failed, other than as
 // a rejection the rule counts as served, and overlapped a span in which
-// its node took a snapshot that it installed: from when the snapshot
-// reached the node until the install was done, the node can apply
-// nothing, and its loop answers no client while it loads the snapshot
-// (#775's ruling). The client's timeout bounds how far back of the span
-// a call can start. A span that never ended excuses nothing, nor does a
-// call that ended before the span began or started after it ended.
+// its node took a snapshot: from when the snapshot reached the node until
+// the node applied what the leader had committed when the install was
+// done. Until then the node can't answer a write sent to it, and its loop
+// answers no client while it loads the snapshot (#775's rulings). The
+// client's timeout bounds how far back of the span a call can start. A
+// span that never caught up excuses nothing, nor does a call that ended
+// before the span began or started after it ended.
 func (n *node) installExcused(r *Record) bool {
 	if r.Err == nil || isRejection(r.Err) {
 		return false
 	}
 	for _, w := range n.installs {
-		if w[1] != 0 && r.Call < w[1] && r.Return >= w[0] {
+		if w.caughtUp != 0 && r.Call < w.caughtUp && r.Return >= w.from {
 			return true
 		}
 	}

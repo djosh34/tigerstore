@@ -14,11 +14,12 @@ import (
 )
 
 // TestLivenessExcusesOnlyAnEndedInstall checks the liveness rule's excuse
-// for a snapshot install (#775's rulings): a call that failed and
-// overlapped the span from when a snapshot reached its node to when the
-// install was done is excused, if the install was; a call that ended
-// before the span began or started after it ended is not, nor one during
-// a span that never ended, nor one with no span.
+// for a snapshot (#775's rulings): a call that failed and overlapped the
+// span from when a snapshot reached its node to when the node caught up
+// to the leader's commit as of its install is excused, if it caught up; a
+// call that ended before the span began or started after the catch-up is
+// not, nor one during a span that never caught up or never installed, nor
+// one with no span.
 func TestLivenessExcusesOnlyAnEndedInstall(t *testing.T) {
 	s, err := newSim(DefaultConfig(1))
 	if err != nil {
@@ -37,20 +38,25 @@ func TestLivenessExcusesOnlyAnEndedInstall(t *testing.T) {
 		return res
 	}
 	n := s.nodes[0]
+	span := func(from, installed, caughtUp int64) []installSpan {
+		return []installSpan{{from: from * Second, installed: installed * Second, caughtUp: caughtUp * Second}}
+	}
 	for _, c := range []struct {
 		name     string
-		installs [][2]int64
+		installs []installSpan
 		failAt   int64
 		failed   error
 		excused  bool
 	}{
-		{"no install", nil, 2 * Second, errClientTimeout, false},
-		{"during a span that ended", [][2]int64{{Second, 6 * Second}}, 2 * Second, errClientTimeout, true},
-		{"from before a span that ended, into it", [][2]int64{{3 * Second, 9 * Second}}, 2 * Second, errClientTimeout, true},
-		{"another failure during a span that ended", [][2]int64{{Second, 6 * Second}}, 2 * Second, errConnLost, true},
-		{"ended before the span began", [][2]int64{{6 * Second, 9 * Second}}, 2 * Second, errClientTimeout, false},
-		{"after the span ended", [][2]int64{{Second, 5 * Second}}, 6 * Second, errClientTimeout, false},
-		{"during a span that never ended", [][2]int64{{Second, 0}}, 2 * Second, errClientTimeout, false},
+		{"no span", nil, 2 * Second, errClientTimeout, false},
+		{"while the snapshot arrived and installed", span(1, 5, 7), 2 * Second, errClientTimeout, true},
+		{"after the install, before the catch-up", span(1, 3, 7), 4 * Second, errClientTimeout, true},
+		{"from before the span, into it", span(3, 6, 9), 2 * Second, errClientTimeout, true},
+		{"another failure in the span", span(1, 5, 7), 2 * Second, errConnLost, true},
+		{"ended before the span began", span(6, 8, 9), 2 * Second, errClientTimeout, false},
+		{"after the catch-up", span(1, 3, 5), 6 * Second, errClientTimeout, false},
+		{"installed, never caught up", span(1, 3, 0), 4 * Second, errClientTimeout, false},
+		{"never installed", span(1, 0, 0), 2 * Second, errClientTimeout, false},
 	} {
 		n.installs = c.installs
 		err := s.checkLive(calls(c.failAt, c.failed))
@@ -169,15 +175,15 @@ func TestLivenessExcusesASlowInstall(t *testing.T) {
 		if err := s.freeze(); err != nil {
 			t.Fatal(err)
 		}
-		installs := append([][2]int64(nil), behind.installs...)
-		if len(installs) == 0 || installs[0][1] == 0 || installs[0][1]-installs[0][0] < 5*Second {
-			t.Fatalf("node %d installs %v: want one that took the 5 s it was held", behind.id, installs)
+		installs := append([]installSpan(nil), behind.installs...)
+		if len(installs) == 0 || installs[0].installed-installs[0].from < 5*Second || installs[0].caughtUp == 0 {
+			t.Fatalf("node %d snapshots %+v: want one held its 5 s, and caught up", behind.id, installs)
 		}
 		if failed == 0 {
 			t.Fatal("no call failed while the node installed its snapshot: the test tests nothing")
 		}
 		if err := s.checkLive(&Result{History: history}); err != nil {
-			t.Fatalf("%d calls failed, during the install that took %s: %v", failed, seconds(installs[0][1]-installs[0][0]), err)
+			t.Fatalf("%d calls failed, during the snapshot that took %s to catch up: %v", failed, seconds(installs[0].caughtUp-installs[0].from), err)
 		}
 		// Without the install's excuse, the rule fails on those calls'
 		// timeouts, as the old rule did.
@@ -199,11 +205,11 @@ func TestLivenessHoldsAnInstallThatNeverEnds(t *testing.T) {
 		s, behind, history, failed := pinnedToAnInstall(t, 812, 3600*Second)
 		// Its loop waits in the install, so it can't be frozen.
 		s.mu.Lock()
-		installs := append([][2]int64(nil), behind.installs...)
+		installs := append([]installSpan(nil), behind.installs...)
 		s.mu.Unlock()
 		report := s.report()
-		if len(installs) == 0 || installs[len(installs)-1][1] != 0 {
-			t.Fatalf("node %d installs %v: want one that never ended", behind.id, installs)
+		if len(installs) == 0 || installs[len(installs)-1].installed != 0 {
+			t.Fatalf("node %d snapshots %+v: want one whose install never ended", behind.id, installs)
 		}
 		if failed == 0 {
 			t.Fatal("no call failed while the node installed its snapshot: the test tests nothing")
@@ -211,7 +217,7 @@ func TestLivenessHoldsAnInstallThatNeverEnds(t *testing.T) {
 		if err := s.checkLive(&Result{History: history}); !errors.Is(err, errClientTimeout) {
 			t.Fatalf("calls that timed out during an install that never ended: the rule gave %v, want a timed-out call to node %d", err, behind.id)
 		}
-		if !strings.Contains(report, "which never ended") {
+		if !strings.Contains(report, "its install never ended") {
 			t.Fatalf("the report does not say the install never ended:\n%s", report)
 		}
 	})

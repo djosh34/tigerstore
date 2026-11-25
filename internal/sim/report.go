@@ -55,10 +55,14 @@ func (s *Sim) report() string {
 				seconds(l.at), l.role, l.term, l.lead, l.commit, l.applied, l.first, l.version, describeMembers(l.members))
 		}
 		for _, w := range n.installs {
-			if w[1] == 0 {
-				fmt.Fprintf(&b, "  began to install a snapshot at %s, which never ended\n", seconds(w[0]))
-			} else {
-				fmt.Fprintf(&b, "  installed a snapshot at %s in %s\n", seconds(w[0]), seconds(w[1]-w[0]))
+			fmt.Fprintf(&b, "  took a snapshot from %s: ", seconds(w.from))
+			switch {
+			case w.installed == 0:
+				b.WriteString("its install never ended\n")
+			case w.caughtUp == 0:
+				fmt.Fprintf(&b, "installed after %s, never caught up to %d\n", seconds(w.installed-w.from), w.target)
+			default:
+				fmt.Fprintf(&b, "installed after %s, caught up to %d after %s\n", seconds(w.installed-w.from), w.target, seconds(w.caughtUp-w.from))
 			}
 		}
 		var lines []string

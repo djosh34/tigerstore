@@ -429,8 +429,15 @@ func (h *wlHooks) Installed(index uint64) {
 	defer s.mu.Unlock()
 	if k := len(p.n.installs) - 1; p.n.proc == p && p.installing && k >= 0 {
 		p.installing = false
-		p.n.installs[k][1] = s.now()
-		s.tracef("node %d: installed the snapshot at index %d in %s", p.n.id, index, seconds(s.now()-p.n.installs[k][0]))
+		w := &p.n.installs[k]
+		w.installed = s.now()
+		// The span ends once the node applied what the leader had
+		// committed now (Turn): a fixed target.
+		w.target = index
+		if lead := s.leaderIdx(); lead >= 0 && s.nodes[lead].proc != nil {
+			w.target = max(index, s.nodes[lead].proc.wl.turn.Commit)
+		}
+		s.tracef("node %d: installed the snapshot at index %d %s after it reached the node; to catch up to %d", p.n.id, index, seconds(w.installed-w.from), w.target)
 	}
 }
 
@@ -454,7 +461,7 @@ func (h *wlHooks) Installing(index uint64) {
 		from = f
 	}
 	p.n.snapFrom = 0
-	p.n.installs = append(p.n.installs, [2]int64{from, 0})
+	p.n.installs = append(p.n.installs, installSpan{from: from})
 	p.installing = true
 	s.tracef("node %d: installing a snapshot at index %d", p.n.id, index)
 	wait := s.cfg.installWait
@@ -535,6 +542,12 @@ func (h *wlHooks) Turn(st wl.TurnState, values func() []wl.LogValue) {
 		return
 	}
 	p.wl.turn = st
+	if k := len(n.installs) - 1; k >= 0 {
+		if w := &n.installs[k]; w.installed != 0 && w.caughtUp == 0 && st.Applied >= w.target {
+			w.caughtUp = s.now()
+			s.tracef("node %d: caught up to %d after its snapshot, %s after it reached the node", n.id, w.target, seconds(w.caughtUp-w.from))
+		}
+	}
 	if s.rotDue == n {
 		s.rotDue = nil
 		s.rotWL(n, values)
