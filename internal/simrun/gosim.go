@@ -4,7 +4,8 @@ package simrun
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
+	"io"
 	"strconv"
 	"testing"
 	"time"
@@ -104,24 +105,20 @@ func each[T any](t *testing.T, seeds []uint64, _ []string, _ int, body func(*tes
 	return false
 }
 
-// Input returns the run's input name (Run.Inputs), whole: a file on the
-// machine that runs the simulation, which the driver named. Reading it
-// changes nothing in the run (gosim.OpenInput).
-func Input(name string) ([]byte, error) {
+// OpenInput opens the run's input name (Run.Inputs), a file on the machine
+// that runs the simulation, which the driver named, and returns it to
+// read in place, its size, and its close. Reading it changes nothing in
+// the run (gosim.OpenInput).
+func OpenInput(name string) (io.ReaderAt, int64, func() error, error) {
 	f, err := gosim.OpenInput(name)
 	if err != nil {
-		return nil, err
+		return nil, 0, nil, err
 	}
-	defer func() { _ = f.Close() }()
 	n, err := f.Size()
 	if err != nil {
-		return nil, err
+		return nil, 0, nil, errors.Join(err, f.Close())
 	}
-	b := make([]byte, n)
-	if k, err := f.ReadAt(b, 0); k != len(b) {
-		return nil, fmt.Errorf("simrun: input %q: read %d of %d bytes: %w", name, k, n, err)
-	}
-	return b, nil
+	return f, n, f.Close, nil
 }
 
 // afterSeed is what runs after the seed's last simulation.

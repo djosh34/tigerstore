@@ -121,6 +121,9 @@ func synthConfig(seed uint64, keys int) Config {
 func synthForks(t *testing.T, seed uint64, base Config, keys, forks int, fork func(Config, uint64) Config) Stats {
 	t.Helper()
 	save, only := forkMode(t, forks)
+	if save && !simrun.InGosim {
+		t.Skip("SIM_FORK=image saves an image only under gosim")
+	}
 	years := synthYears(seed)
 	after := func(i int) time.Duration { return years + forkStart(seed, i) }
 	if only >= 0 && simrun.InGosim {

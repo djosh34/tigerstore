@@ -34,11 +34,13 @@ func TestAnImageLoadsAsItWasSaved(t *testing.T) {
 	img.log.put(img.log.from+1, logRec{term: 7, typ: 0, data: img.log.data.add([]byte("entry")), known: true, hash: 99, node: spec.ids[0]})
 	img.ckpts[img.log.from] = ckptRec{sum: 42, node: spec.ids[len(spec.ids)-1]}
 	img.expiredAt[7] = -5
+	// A value that is no UTF-8, which JSON would have changed.
+	img.start.KVs[0].Value = "\xff\xfe\x00v"
 	var b bytes.Buffer
 	if err := img.save(&b); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadImage(bytes.NewReader(b.Bytes()))
+	loaded, err := loadImage(bytes.NewReader(b.Bytes()), int64(b.Len()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +74,11 @@ func TestAnImageLoadsAsItWasSaved(t *testing.T) {
 		t.Fatal("the loaded certificate differs")
 	}
 	for _, cut := range []int{0, 10, b.Len() / 2, b.Len() - 1} {
-		if _, err := loadImage(bytes.NewReader(b.Bytes()[:cut])); err == nil {
+		if _, err := loadImage(bytes.NewReader(b.Bytes()[:cut]), int64(cut)); err == nil {
 			t.Fatalf("an image cut at %d of %d bytes loaded", cut, b.Len())
 		}
 	}
-	if _, err := loadImage(bytes.NewReader(append(b.Bytes(), 0))); !errors.Is(err, errImageFile) {
+	if _, err := loadImage(bytes.NewReader(append(b.Bytes(), 0)), int64(b.Len()+1)); !errors.Is(err, errImageFile) {
 		t.Fatalf("an image with a byte past its end gave %v", err)
 	}
 }

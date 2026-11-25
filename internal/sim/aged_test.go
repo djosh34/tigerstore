@@ -124,6 +124,9 @@ func TestAgedFork(t *testing.T) {
 func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Config, uint64) Config) Stats {
 	t.Helper()
 	save, only := forkMode(t, forks)
+	if save && !simrun.InGosim {
+		t.Skip("SIM_FORK=image saves an image only under gosim")
+	}
 	after := func(i int) time.Duration { return forkStart(seed, i) }
 	if only >= 0 && simrun.InGosim {
 		return runForks(t, seed, aging, savedImage(t), forks, only, fork, after)
@@ -195,11 +198,14 @@ func saveImage(t *testing.T, img *image) Stats {
 // "image" (saveImage).
 func savedImage(t *testing.T) *image {
 	t.Helper()
-	b, err := simrun.Input("image")
+	r, size, closeInput, err := simrun.OpenInput("image")
 	if err != nil {
 		t.Fatalf("the image's file: %v", err)
 	}
-	img, err := loadImage(bytes.NewReader(b))
+	img, err := loadImage(r, size)
+	if cerr := closeInput(); err == nil {
+		err = cerr
+	}
 	if err != nil {
 		t.Fatalf("loading the image: %v", err)
 	}

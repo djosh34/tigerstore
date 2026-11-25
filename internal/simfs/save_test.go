@@ -47,8 +47,28 @@ func TestASavedDiskLoadsAsItsDurableCopy(t *testing.T) {
 
 		var buf bytes.Buffer
 		must(d.Save(&buf))
-		loaded, err := Load(bytes.NewReader(buf.Bytes()))
+		loaded, err := Load(bytes.NewReader(buf.Bytes()), nil, 0)
 		must(err)
+		// Loaded into a Store, it keeps only its cache's pages in memory.
+		ms := &memStore{}
+		kept, err := Load(bytes.NewReader(buf.Bytes()), ms, 1)
+		must(err)
+		inMemory := 0
+		for _, f := range kept.durable {
+			for _, pg := range f.durable.blocks {
+				if pg != nil && pg.b != nil {
+					inMemory++
+				}
+			}
+		}
+		if inMemory > 1 || len(ms.slots) == 0 {
+			t.Errorf("store %v: a disk loaded with a cache of 1 holds %d pages in memory, %d in the store", store, inMemory, len(ms.slots))
+		}
+		for _, name := range kept.DurableNames() {
+			if !bytes.Equal(kept.DurableBytes(name), d.Durable().DurableBytes(name)) {
+				t.Errorf("store %v: %s loaded into a store reads otherwise", store, name)
+			}
+		}
 		want := d.Durable()
 		if got, w := loaded.DurableNames(), want.DurableNames(); !slices.Equal(got, w) {
 			t.Fatalf("store %v: files %v, want %v", store, got, w)
@@ -85,7 +105,7 @@ func TestASavedDiskLoadsAsItsDurableCopy(t *testing.T) {
 			t.Errorf("store %v: a loaded disk saves to other bytes", store)
 		}
 		for cut := range buf.Len() - 1 {
-			if _, err := Load(bytes.NewReader(buf.Bytes()[:cut])); !errors.Is(err, ErrSaved) {
+			if _, err := Load(bytes.NewReader(buf.Bytes()[:cut]), nil, 0); !errors.Is(err, ErrSaved) {
 				t.Fatalf("store %v: a save cut at %d of %d bytes loaded: %v", store, cut, buf.Len(), err)
 			}
 		}

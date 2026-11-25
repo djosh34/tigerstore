@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 )
 
@@ -85,17 +86,26 @@ func (d *Disk) Save(w io.Writer) error {
 }
 
 // Load reads a disk that Save wrote: one with those durable files and
-// directories, nothing pending, and no faults, Store or capacity set.
-func Load(r io.Reader) (*Disk, error) {
+// directories, nothing pending, and no faults or capacity set. With s set,
+// as KeepIn sets it, every page goes to s as it is read, past a cache of
+// the newest: a disk of many pages takes no more memory loaded than
+// running.
+func Load(r io.Reader, s Store, cache int) (*Disk, error) {
 	br := bufio.NewReader(r)
 	magic := make([]byte, len(saveMagic))
 	if _, err := io.ReadFull(br, magic); err != nil || string(magic) != saveMagic {
 		return nil, fmt.Errorf("%w: no header", ErrSaved)
 	}
 	d := New()
+	if s != nil {
+		d.KeepIn(s, cache)
+	}
 	files, err := readUvarint(br)
 	if err != nil {
 		return nil, err
+	}
+	if files > math.MaxInt32 {
+		return nil, fmt.Errorf("%w: %d files made", ErrSaved, files)
 	}
 	d.files = int(files)
 	ndirs, err := readUvarint(br)
@@ -113,6 +123,7 @@ func Load(r io.Reader) (*Disk, error) {
 	if err != nil {
 		return nil, err
 	}
+	ids := map[int]bool{}
 	for range nfiles {
 		name, err := readString(br)
 		if err != nil {
@@ -125,18 +136,26 @@ func Load(r io.Reader) (*Disk, error) {
 			}
 		}
 		id, size, held := vals[0], vals[1], vals[2]
-		if size > 1<<50 || held > uint64(pageCount(int(size))) {
+		switch {
+		case size > 1<<50 || held > uint64(pageCount(int(size))):
 			return nil, fmt.Errorf("%w: file %q of %d bytes with %d pages", ErrSaved, name, size, held)
+		case id == 0 || id > files || ids[int(id)]:
+			return nil, fmt.Errorf("%w: file %q has id %d of %d files made, or one another has", ErrSaved, name, id, files)
+		case d.names[name] != nil:
+			return nil, fmt.Errorf("%w: file %q twice", ErrSaved, name)
+		case parentDir(name) != "" && !d.dirs[parentDir(name)]:
+			return nil, fmt.Errorf("%w: file %q in a directory the disk lacks", ErrSaved, name)
 		}
+		ids[int(id)] = true
 		f := &file{id: int(id)}
-		f.durable.size = int(size)
+		f.durable.size, f.durable.st = int(size), d.st
 		last := -1
 		for range held {
 			i, err := readUvarint(br)
 			if err != nil {
 				return nil, err
 			}
-			if int(i) <= last || int(i) >= pageCount(int(size)) {
+			if int64(i) <= int64(last) || i >= uint64(pageCount(int(size))) {
 				return nil, fmt.Errorf("%w: file %q has page %d after %d", ErrSaved, name, i, last)
 			}
 			last = int(i)
@@ -145,9 +164,15 @@ func Load(r io.Reader) (*Disk, error) {
 				return nil, fmt.Errorf("%w: file %q page %d: %w", ErrSaved, name, i, err)
 			}
 			f.durable.set(int(i), b)
+			// As a sync keeps it: into the cache, which moves an older
+			// page to the Store.
+			f.durable.keep()
 		}
 		f.reset()
 		d.names[name], d.durable[name] = f, f
+	}
+	if d.st != nil && d.st.err != nil {
+		return nil, fmt.Errorf("simfs: keeping a loaded disk's pages: %w", d.st.err)
 	}
 	if _, err := br.ReadByte(); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: bytes past its end", ErrSaved)

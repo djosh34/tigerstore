@@ -23,14 +23,16 @@ import (
 
 // An image is saved to a file once and every fork of it starts from that
 // file in a gosim run of its own (#794): a fork then starts in a fresh
-// process, which no earlier fork or aging run left anything in, alone or
-// in a campaign's sequence. The file holds all a fork takes of its image:
-// when it was taken, its certificates, its disks as a power loss leaves
-// them (simfs.Disk.Save), its members' IDs, the record of what its nodes
-// committed, and its store (history.Start), or a synthetic image's.
+// simulation, which no earlier fork or aging run left anything in, alone
+// or in a campaign's sequence. The file holds all a fork takes of its
+// image: when it was taken, its certificates, its disks as a power loss
+// leaves them (simfs.Disk.Save), its members' IDs, the record of what its
+// nodes committed, and its store (history.Start), or a synthetic image's.
+// Every field is in the file's own binary form, so no byte of a key or a
+// value changes on the way.
 
 // imageMagic starts an image's file.
-const imageMagic = "tigerstore sim image 1\n"
+const imageMagic = "tigerstore sim image 2\n"
 
 // errImageFile means that an image's file does not parse.
 var errImageFile = errors.New("sim: malformed image file")
@@ -47,18 +49,6 @@ func (img *image) save(w io.Writer) error {
 		return err
 	}
 	cert, err := testcert.SaveCertificate(net.cert)
-	if err != nil {
-		return err
-	}
-	var disks [][]byte
-	for _, d := range img.disks {
-		var b bytes.Buffer
-		if err := d.Save(&b); err != nil {
-			return err
-		}
-		disks = append(disks, b.Bytes())
-	}
-	start, err := json.Marshal(img.start)
 	if err != nil {
 		return err
 	}
@@ -79,10 +69,14 @@ func (img *image) save(w io.Writer) error {
 	}
 	e.int(net.expires.UnixNano())
 	e.int(int64(net.valid))
-	e.uint(uint64(len(disks)))
-	for i, d := range disks {
+	e.uint(uint64(len(img.disks)))
+	for i, d := range img.disks {
+		var b bytes.Buffer
+		if err := d.Save(&b); err != nil {
+			return err
+		}
 		e.uint(img.ids[i])
-		e.bytes(d)
+		e.bytes(b.Bytes())
 	}
 	e.uint(img.maxLogged)
 	e.uint(img.applied)
@@ -121,25 +115,46 @@ func (img *image) save(w io.Writer) error {
 			e.int(m[id])
 		}
 	}
-	e.bytes(start)
+	st := img.start
+	e.int(st.Rev)
+	e.uint(uint64(len(st.KVs)))
+	for _, kv := range st.KVs {
+		e.bytes([]byte(kv.Key))
+		e.bytes([]byte(kv.Value))
+		e.int(kv.CreateRevision)
+		e.int(kv.ModRevision)
+		e.int(kv.Version)
+		e.int(kv.Lease)
+	}
+	e.uint(uint64(len(st.Leases)))
+	for _, id := range st.Leases {
+		e.int(id)
+	}
 	e.bytes(synth)
 	if e.err != nil {
 		return e.err
 	}
+	// The record's bytes and the disks' pages came from the runner's
+	// disk: a failed read of it gave zeros, which no image may hold.
+	if err := img.src.pagesErr(); err != nil {
+		return err
+	}
 	return e.w.Flush()
 }
 
-// savedSynth is a synthStore as an image's file holds it.
+// savedSynth is a synthStore as an image's file holds it. Its keys and
+// values are bytes, which JSON keeps as they are.
 type savedSynth struct {
 	Rev    int64
 	Seeds  []mvcc.Seed
 	Leases map[int64]int64
 }
 
-// loadImage reads an image that save wrote. Its disks keep their pages in
-// a store of their own on the runner's disk, as an aging run's do.
-func loadImage(r io.Reader) (*image, error) {
-	d := &imageDecoder{r: bufio.NewReader(r)}
+// loadImage reads an image of size bytes that save wrote, from r. Its
+// disks keep their pages in a store of their own on the runner's disk, as
+// an aging run's do, past a cache of keepPages each, as they are read.
+func loadImage(r io.ReaderAt, size int64) (*image, error) {
+	d := &imageDecoder{r: bufio.NewReader(io.NewSectionReader(r, 0, size)), left: size}
 	if string(d.bytes()) != imageMagic {
 		return nil, fmt.Errorf("%w: no header", errImageFile)
 	}
@@ -155,61 +170,63 @@ func loadImage(r io.Reader) (*image, error) {
 	img.src.pages, img.src.chunks = &keptPages{pages: pages}, &keptPages{pages: chunks}
 	ca, cert := d.bytes(), d.bytes()
 	net := &img.src.net
-	nhosts := d.uint()
-	for range min(nhosts, 64) {
+	nhosts := d.count(64)
+	for range nhosts {
 		net.hosts = append(net.hosts, string(d.bytes()))
 	}
 	net.expires, net.valid = time.Unix(0, d.int()), time.Duration(d.int())
-	ndisks := d.uint()
-	for range min(ndisks, 16) {
+	ndisks := d.count(16)
+	for range ndisks {
 		img.ids = append(img.ids, d.uint())
-		disk, err := simfs.Load(bytes.NewReader(d.bytes()))
-		if err != nil && d.err == nil {
-			d.err = err
-		}
-		if disk != nil {
-			disk.KeepIn(img.src.pages, keepPages)
-		}
-		img.disks = append(img.disks, disk)
+		img.disks = append(img.disks, d.disk(img.src.pages))
 	}
-	img.maxLogged, img.applied, img.ops = d.uint(), d.uint(), int(d.uint())
+	img.maxLogged, img.applied, img.ops = d.uint(), d.uint(), int(d.count(1<<40))
 	l := &entryLog{from: d.uint(), data: arena{store: img.src.chunks}}
-	nrecs := d.uint()
+	nrecs := d.count(1 << 32)
+	next := l.from
 	for range nrecs {
+		i, term, typ, known, hash, node := d.uint(), d.uint(), d.uint(), d.bool(), d.uint(), d.uint()
+		data := d.bytes()
 		if d.err != nil {
 			break
 		}
-		i, term, typ, known, hash, node := d.uint(), d.uint(), d.uint(), d.bool(), d.uint(), d.uint()
-		data := d.bytes()
+		// Indexes rise, and stay within the record's reach.
+		if i < next || i-l.from > 1<<32 {
+			d.fail(fmt.Errorf("entry %d after %d, the record from %d", i, next, l.from))
+			break
+		}
+		next = i + 1
 		l.put(i, logRec{term: term, typ: raftpb.EntryType(typ), data: l.data.add(data), known: known, hash: hash, node: node})
 	}
 	img.log = l
 	img.ckpts = map[uint64]ckptRec{}
-	nckpts := d.uint()
+	nckpts := d.count(1 << 32)
 	for range nckpts {
-		if d.err != nil {
-			break
-		}
 		i := d.uint()
 		img.ckpts[i] = ckptRec{sum: d.uint(), node: d.uint()}
 	}
 	for _, m := range []*map[int64]int64{&img.expiredAt, &img.revokedAt} {
 		*m = map[int64]int64{}
-		n := d.uint()
+		n := d.count(1 << 32)
 		for range n {
-			if d.err != nil {
-				break
-			}
 			id := d.int()
 			(*m)[id] = d.int()
 		}
 	}
-	start, synth := d.bytes(), d.bytes()
+	img.start = &history.Start{Rev: d.int()}
+	nkvs := d.count(1 << 32)
+	for range nkvs {
+		kv := history.KeyValue{Key: string(d.bytes()), Value: string(d.bytes())}
+		kv.CreateRevision, kv.ModRevision, kv.Version, kv.Lease = d.int(), d.int(), d.int(), d.int()
+		img.start.KVs = append(img.start.KVs, kv)
+	}
+	nleases := d.count(1 << 32)
+	for range nleases {
+		img.start.Leases = append(img.start.Leases, d.int())
+	}
+	synth := d.bytes()
 	if d.err != nil {
 		return nil, d.err
-	}
-	if nhosts > 64 || ndisks > 16 {
-		return nil, fmt.Errorf("%w: %d hosts and %d disks", errImageFile, nhosts, ndisks)
 	}
 	if _, err := d.r.ReadByte(); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: bytes past its end", errImageFile)
@@ -221,16 +238,15 @@ func loadImage(r io.Reader) (*image, error) {
 	if net.cert, err = testcert.LoadCertificate(cert); err != nil {
 		return nil, err
 	}
-	img.start = &history.Start{}
-	if err := json.Unmarshal(start, img.start); err != nil {
-		return nil, err
-	}
 	if len(synth) > 0 {
 		var s savedSynth
 		if err := json.Unmarshal(synth, &s); err != nil {
 			return nil, err
 		}
 		img.synth = &synthStore{rev: s.Rev, seeds: s.Seeds, leases: s.Leases}
+	}
+	if err := img.src.pagesErr(); err != nil {
+		return nil, err
 	}
 	return img, nil
 }
@@ -265,10 +281,12 @@ func (e *imageEncoder) bytes(p []byte) {
 }
 
 // imageDecoder reads an image's fields, and keeps the first error: after
-// it, every read gives zero.
+// it, every read gives zero. left is how many bytes of the file are not
+// read yet, which bounds every length it reads.
 type imageDecoder struct {
-	r   *bufio.Reader
-	err error
+	r    *bufio.Reader
+	left int64
+	err  error
 }
 
 func (d *imageDecoder) fail(err error) {
@@ -277,11 +295,20 @@ func (d *imageDecoder) fail(err error) {
 	}
 }
 
+// ReadByte is d's reader's, counted against left.
+func (d *imageDecoder) ReadByte() (byte, error) {
+	c, err := d.r.ReadByte()
+	if err == nil {
+		d.left--
+	}
+	return c, err
+}
+
 func (d *imageDecoder) uint() uint64 {
 	if d.err != nil {
 		return 0
 	}
-	v, err := binary.ReadUvarint(d.r)
+	v, err := binary.ReadUvarint(d)
 	if err != nil {
 		d.fail(err)
 	}
@@ -292,7 +319,7 @@ func (d *imageDecoder) int() int64 {
 	if d.err != nil {
 		return 0
 	}
-	v, err := binary.ReadVarint(d.r)
+	v, err := binary.ReadVarint(d)
 	if err != nil {
 		d.fail(err)
 	}
@@ -301,13 +328,29 @@ func (d *imageDecoder) int() int64 {
 
 func (d *imageDecoder) bool() bool { return d.uint() != 0 }
 
-func (d *imageDecoder) bytes() []byte {
+// count reads a count of at most most, and gives 0 after an error.
+func (d *imageDecoder) count(most uint64) uint64 {
 	n := d.uint()
-	if d.err != nil {
-		return nil
+	if n > most {
+		d.fail(fmt.Errorf("a count of %d", n))
+		return 0
 	}
-	if n > 1<<40 {
-		d.fail(fmt.Errorf("a field of %d bytes", n))
+	return n
+}
+
+// length reads the length of a field, which the file must still hold.
+func (d *imageDecoder) length() int64 {
+	n := d.uint()
+	if d.err == nil && n > uint64(d.left) {
+		d.fail(fmt.Errorf("a field of %d bytes, with %d left", n, d.left))
+		return 0
+	}
+	return int64(n)
+}
+
+func (d *imageDecoder) bytes() []byte {
+	n := d.length()
+	if d.err != nil {
 		return nil
 	}
 	b := make([]byte, n)
@@ -315,5 +358,27 @@ func (d *imageDecoder) bytes() []byte {
 		d.fail(err)
 		return nil
 	}
+	d.left -= n
 	return b
+}
+
+// disk reads a disk that simfs.Disk.Save wrote, its pages into pages as
+// they come.
+func (d *imageDecoder) disk(pages simfs.Store) *simfs.Disk {
+	n := d.length()
+	if d.err != nil {
+		return nil
+	}
+	lr := &io.LimitedReader{R: d.r, N: n}
+	disk, err := simfs.Load(lr, pages, keepPages)
+	if err != nil {
+		d.fail(err)
+		return nil
+	}
+	if lr.N != 0 {
+		d.fail(fmt.Errorf("a disk left %d of its %d bytes", lr.N, n))
+		return nil
+	}
+	d.left -= n
+	return disk
 }
