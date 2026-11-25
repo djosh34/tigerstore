@@ -17,6 +17,9 @@ import (
 // bytes, which a fork's replay checks by their SHA-256 (#794). A file cut
 // short does not load.
 func TestAnImageLoadsAsItWasSaved(t *testing.T) {
+	// A restore onto a simulated disk needs wl's seam, which a plain go
+	// test leaves out: Here skips there, as every simulator test does.
+	simrun.Here(t)
 	cfg := synthConfig(5, 40)
 	spec := syntheticSpec(5, cfg.voters(), 40)
 	var img *image
