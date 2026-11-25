@@ -135,6 +135,10 @@ type wal struct {
 	lastKick  time.Time
 	lastBytes int64
 	deferred  bool
+	// skippedAt is when the first record no sync took was written, a
+	// leader's commit skipped (appendNow): one syncs it commitHold later
+	// at most (kick).
+	skippedAt time.Time
 	// failed is the helper's error; it stops writing then.
 	failed atomic.Pointer[error]
 
@@ -179,7 +183,8 @@ type wal struct {
 	// formatted is how long this start took to format the ring, 0 if the
 	// log had one: the node logs it.
 	formatted time.Duration
-	// dataEnd is where the log's last record but a sync's mark ends, and
+	// dataEnd is where the log's last record but a sync's mark, or a hard
+	// state that only moved the commit (commitOnly), ends, and
 	// claimed what the newest mark says is durable (appendSynced): a ring
 	// syncs a mark alone once the log goes idle with its last records
 	// unclaimed (markIdle).
@@ -195,6 +200,12 @@ type walStats struct {
 	syncs  uint64
 	writes uint64
 	bytes  uint64
+	// marks are the syncs of a mark alone (markIdle), stateOnly the syncs
+	// for appends that carried no entry, a hard state only, skipped the
+	// appends that only moved the commit and owed no response, which took
+	// no sync of their own (appendNow), and flushes the syncs that took
+	// them once commitHold passed with no other (kick).
+	marks, stateOnly, skipped, flushes uint64
 }
 
 type walJob struct {
@@ -202,6 +213,11 @@ type walJob struct {
 	resps []*pb.Message
 	hs    *pb.HardState // the hard state the append wrote, if any
 	at    time.Time     // when the loop handed it the log
+	ents  bool          // whether the append carried entries
+	// held is set for an append that only moved the commit and owes
+	// responses: its sync waits, at most commitHold, for the next
+	// append's (appendNow, kick).
+	held bool
 }
 
 type segment struct {
@@ -924,18 +940,50 @@ func (w *wal) plantedUnsyncedWrite(from, n, pos int64) error {
 // kick starts a sync if none runs and appends wait, at most one every
 // gap(): under load each sync takes more appends, and the loop wakes for
 // fewer completions, so its turns and the acks they send grow.
+//
+// Appends that wait for room in the stage start one too, with no job
+// pending: the records written and not synced, as a leader's commits
+// (appendNow), hold the stage's room until a sync takes them, and no
+// sync's end would ever let the waiting appends in (#821's review).
+// While every job pending is a commit held (walJob.held), none starts
+// before the first's commitHold ends: the next append's sync covers them.
+// With no job pending and records written that no sync took, as a
+// leader's commits skipped (appendNow), one starts once commitHold passed
+// since the first: a commit stays unsynced that long at most, past which
+// a clean stop, or a crash, kept it (#821's re-review). The hold's end
+// comes before the gap between syncs: it bounds the wait, the gap only
+// gathers more appends to a sync.
 func (w *wal) kick() {
-	if w.inflight || len(w.pending) == 0 {
+	if w.inflight {
+		return
+	}
+	if len(w.pending) == 0 && w.want.Load() >= w.off {
+		// Nothing is left for a sync deferred: another, the idle mark's
+		// (markIdle), took it. Kept, the loop would wake for it at once,
+		// on every turn, and never block (#821's hang under gosim).
+		w.deferred = false
 		return
 	}
 	now := time.Now()
-	if d := now.Sub(w.lastKick); d < w.gap() {
+	if until := w.holdUntil(); !until.IsZero() {
+		if now.Before(until) {
+			w.deferred = true
+			return
+		}
+	} else if d := now.Sub(w.lastKick); d < w.gap() {
 		w.deferred = true
 		return
 	}
 	w.deferred = false
+	w.skippedAt = time.Time{}
 	w.lastKick = now
 	w.stats.syncs++
+	switch {
+	case len(w.pending) == 0:
+		w.stats.flushes++
+	case !slices.ContainsFunc(w.pending, func(j walJob) bool { return j.ents }):
+		w.stats.stateOnly++
+	}
 	if w.ring != nil {
 		w.appendSynced()
 	}
@@ -945,6 +993,43 @@ func (w *wal) kick() {
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], 1)
 	_, _ = sysWrite(w.kickFD, b[:])
+}
+
+// commitHold is the longest a commit held waits for the next append's sync
+// (walJob.held).
+const commitHold = 3 * time.Millisecond
+
+// holdUntil is when the sync of commits that wait for the next append's
+// ends its wait, commitHold past the first: the commits held, when every
+// job pending is one (walJob.held), or the records written and taken by
+// no sync, when no job is pending (wal.skippedAt). It is the zero time
+// when a job pending is not held, or appends wait for the stage, whose
+// sync starts at once.
+func (w *wal) holdUntil() time.Time {
+	if len(w.waiting) > 0 {
+		return time.Time{}
+	}
+	if len(w.pending) == 0 {
+		if w.skippedAt.IsZero() {
+			return time.Time{}
+		}
+		return w.skippedAt.Add(commitHold)
+	}
+	for _, j := range w.pending {
+		if !j.held {
+			return time.Time{}
+		}
+	}
+	return w.pending[0].at.Add(commitHold)
+}
+
+// deferUntil is when a deferred sync may start (kick): the hold's end, or
+// else gap() past the last.
+func (w *wal) deferUntil() time.Time {
+	if h := w.holdUntil(); !h.IsZero() {
+		return h
+	}
+	return w.lastKick.Add(w.gap())
 }
 
 // gap is the least time between the starts of two syncs: syncGap, or
