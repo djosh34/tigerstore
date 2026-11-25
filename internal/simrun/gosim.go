@@ -85,7 +85,7 @@ func Do(t *testing.T, r Run) *Result {
 
 // each runs the seeds, which the driver gives one at a time, and saves
 // what body returned for it (Seeds). Then it runs what AfterSeed set.
-func each[T any](t *testing.T, seeds []uint64, _ []string, _ int, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
+func each[T any](t *testing.T, seeds []uint64, _ []string, _ func(uint64) int, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
 	t.Helper()
 	for _, seed := range seeds {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {

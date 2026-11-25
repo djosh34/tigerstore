@@ -295,9 +295,10 @@ func keepQuiet(t *testing.T, artifacts map[string][]byte, suffix string) []strin
 }
 
 // each runs the seeds: here under the race detector, otherwise each as a
-// gosim run of its own (Seeds), or, with forks, as an image and its forks
-// (ImageSeeds). set holds the variables that pick the whole set again.
-func each[T any](t *testing.T, seeds []uint64, set []string, forks int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
+// gosim run of its own (Seeds), or, for a seed forksOf gives forks, as an
+// image and its forks (ImageSeeds). set holds the variables that pick the
+// whole set again.
+func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64) int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
 	t.Helper()
 	if add == nil {
 		add = func(uint64, T) bool { return false }
@@ -334,7 +335,7 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forks int, body fun
 			}
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
 			double := twice > 0 && i%max(1, len(seeds)/twice) == 0
-			if forks > 0 {
+			if forks := forksOf(seed); forks > 0 {
 				stop = imageAndForks(t, Run{Test: test, Seed: seed, Env: env}, forks, double, add)
 				return
 			}
