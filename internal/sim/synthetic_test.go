@@ -156,8 +156,7 @@ func synthForks(t *testing.T, seed uint64, base Config, keys, forks int, fork fu
 // forksPerImage forks of it (forkConfig), years after it, every checker
 // on each (#502). Each fork runs from the image's file in a gosim run of
 // its own, and $SIM_FORK=k runs only fork k, as for TestAgedForks. It
-// skips unless
-// $SIM_SEEDS is set, as TestAgedForks does.
+// skips unless $SIM_SEEDS is set, as TestAgedForks does.
 func TestSyntheticForks(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: the campaigns say how many images to restore")
