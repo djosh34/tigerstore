@@ -100,6 +100,11 @@ type Hooks interface {
 	// index, whose state has hash state (Applied): the node must have
 	// applied every entry to index and none past it.
 	Checkpoint(index, state uint64)
+	// Installing is a snapshot at index that the loop starts to install,
+	// and Installed the install done: the node answers no client in
+	// between. An install that fails stops the node, with no Installed.
+	Installing(index uint64)
+	Installed(index uint64)
 	// Loaded is a store loaded from the checkpoint at index, by a start or
 	// a snapshot's install, whose state has hash state (Applied).
 	Loaded(index, state uint64)

@@ -126,6 +126,7 @@ func (n *node) snapWaits(path string) bool {
 // storage and the log start after it.
 func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	meta := sn.GetMetadata()
+	n.simInstalling(meta.GetIndex())
 	path := string(sn.GetData())
 	if path == n.recvSnap {
 		n.recvSnap = ""
@@ -225,6 +226,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	}
 	n.stats.snapsInstalled++
 	n.logf("installed a snapshot at index %d, revision %d, %d keys", meta.GetIndex(), st.rev, st.nkeys)
+	n.simInstallDone(meta.GetIndex())
 	return nil
 }
 

@@ -56,7 +56,7 @@ func (s *Sim) replace(n *node) {
 	stalls := slices.Concat(n.stalls, [][2]int64{{fencedAt, math.MaxInt64}})
 	*n = node{
 		idx: n.idx, id: id, disk: disk, addrs: n.addrs, wake: n.wake, gen: n.gen, joins: true, since: s.now(),
-		stalls: stalls, reloads: n.reloads, fromLog: n.fromLog, catchUp: max(s.applied, 1), catchUpWin: len(stalls) - 1,
+		stalls: stalls, reloads: n.reloads, fromLog: n.fromLog, installs: n.installs, catchUp: max(s.applied, 1), catchUpWin: len(stalls) - 1,
 	}
 	s.traceDisk(n)
 	s.stats.Replaced++
