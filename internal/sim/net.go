@@ -25,6 +25,15 @@ import (
 type network struct {
 	ca   *x509.CertPool
 	cert tls.Certificate
+	// signer is the CA that issued cert, for the certificate an operator
+	// rotates to (Config.CertExpiresAt); hosts are the names cert holds,
+	// and expires when it expires.
+	signer  *testcert.CA
+	hosts   []string
+	expires time.Time
+	// valid is how long its certificates are valid: a day, or certValid
+	// for an aged image's run (Config.longCerts).
+	valid time.Duration
 	// listeners are the listening processes by address, and conns the
 	// open ends of connections. The Sim's lock guards both, and every
 	// connection's state.
@@ -55,6 +64,13 @@ func voterHost(i int) string {
 	return hosts[i+2]
 }
 
+// certValid is how long an aged image's certificates are valid: longer
+// than its run, its forks and the years between them span (aged_test.go,
+// Config.longCerts). Other runs keep certificates of a day: from 2050 on,
+// a certificate's dates take more bytes (GeneralizedTime), every
+// handshake with them, and every run of a seed would go another way.
+const certValid = 100 * 365 * 24 * time.Hour
+
 // hostName is the host of node i: a voter's, or the added member's.
 func (s *Sim) hostName(i int) string {
 	if i == s.cfg.voters() {
@@ -64,16 +80,26 @@ func (s *Sim) hostName(i int) string {
 }
 
 // init sets up an empty network with the CA and certificate of certs, or
-// new ones for a cluster of voters if certs is nil.
-func (nw *network) init(certs *network, voters int) error {
+// new ones for a cluster of voters if certs is nil, valid for a day or,
+// if long, for certValid: whose certificate expires after expires, or
+// when they do if it is 0.
+func (nw *network) init(certs *network, voters int, expires time.Duration, long bool) error {
 	if certs != nil {
-		nw.ca, nw.cert = certs.ca, certs.cert
+		nw.ca, nw.cert, nw.signer, nw.hosts, nw.expires, nw.valid = certs.ca, certs.cert, certs.signer, certs.hosts, certs.expires, certs.valid
 	} else {
-		ca, err := testcert.NewCA()
+		nw.valid = 24 * time.Hour
+		if long {
+			nw.valid = certValid
+		}
+		ca, err := testcert.NewCAValid(nw.valid)
 		if err != nil {
 			return err
 		}
-		if nw.cert, _, _, err = ca.IssueFor("tigerstore-sim", 2, nil, certHosts(voters)); err != nil {
+		if expires == 0 {
+			expires = nw.valid
+		}
+		nw.signer, nw.hosts, nw.expires = ca, certHosts(voters), time.Now().Add(expires)
+		if nw.cert, _, _, err = ca.IssueUntil("tigerstore-sim", 2, nil, nw.hosts, nw.expires); err != nil {
 			return err
 		}
 		nw.ca = ca.Pool

@@ -61,12 +61,14 @@ func Replay(dir, pattern string, env []string) string {
 // stream for each entry past the fourth, and the run copies its
 // environment into such a map when it first reads a variable, so one
 // variable more or less would change every later choice (#482).
-var runVars = []string{"SIM_SEED", "SIM_SEEDS", "SIM_PLANTED", "SIM_CONTROL", "SIM_KEEP"}
+var runVars = []string{"SIM_SEED", "SIM_SEEDS", "SIM_PLANTED", "SIM_CONTROL", "SIM_KEEP", "SIM_FORK"}
 
 // passedOn are the variables of runVars besides the seeds that the
 // driver takes from its own environment for each run: the planted bug,
-// and whether to run its seed without the bug.
-var passedOn = []string{"SIM_PLANTED", "SIM_CONTROL"}
+// whether to run its seed without the bug, and the one aged fork to run
+// (internal/sim's TestAgedForks). Their values change no draw, only
+// their number would.
+var passedOn = []string{"SIM_PLANTED", "SIM_CONTROL", "SIM_FORK"}
 
 // runEnv is env with each variable of runVars, in their order, and
 // those that env does not set empty. A variable that is not one of them
