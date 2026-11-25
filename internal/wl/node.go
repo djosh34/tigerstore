@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"go.etcd.io/raft/v3"
@@ -287,12 +288,41 @@ type node struct {
 	// the start, through which every entry's is (mustSyncCommit).
 	mustSync      []uint64
 	recoveredLast uint64
+	// ringPledged is the log bytes of the writes taken since Raft last
+	// handed the log an append, which the ring's room must hold too
+	// (ringTaken).
+	ringPledged int64
+	// batchPledge is the part of ringPledged that the open batch's writes
+	// took, and pledgeEpoch counts the appends Raft handed the log, at
+	// each of which ringPledged starts again (storageAppend).
+	batchPledge int64
+	pledgeEpoch uint64
+	// nudgedAt is the apply the empty entry nudgeRing proposed waits for,
+	// one past the applied index it was proposed at, and nudgedWhen when.
+	nudgedAt   uint64
+	nudgedWhen time.Time
+	// appendPledged is the log bytes of the appends this follower took
+	// that Raft has not handed to the log yet, and appendLast the last
+	// index they hold (followerDrops).
+	appendPledged  int64
+	appendLast     uint64
+	appendLastTerm uint64
+	// oldPeerWire makes the node act as a release before the refusal frame
+	// on the wire (refusal.go): a test's mixed cluster.
+	oldPeerWire bool
+	// holdCkpt is Config.holdCkpt.
+	holdCkpt *atomic.Bool
 }
 
 type fwdBatch struct {
 	seq     uint64
 	data    []byte
 	handles []handle
+	// pledged is the ring room the batch's writes were taken for
+	// (ringRefuses), in pledge epoch pledgeEpoch: released if the batch
+	// never comes to the log (releasePledge).
+	pledged     int64
+	pledgeEpoch uint64
 }
 
 const fwdSlots = 1 << 14

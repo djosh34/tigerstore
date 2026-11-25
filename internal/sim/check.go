@@ -18,11 +18,13 @@ import (
 )
 
 // checkLive checks that every call that started after the cluster healed
-// succeeded, but those a node's own trouble explains.
+// succeeded, but those a node's own trouble explains, and the brief busy
+// refusals that are answers (busyAnswered).
 func (s *Sim) checkLive(res *Result) error {
 	live := 0
 	liveFrom := s.liveFrom()
-	for _, r := range res.History {
+	answered := busyAnswered(res.History, liveFrom)
+	for i, r := range res.History {
 		if r.Call < liveFrom {
 			continue
 		}
@@ -39,7 +41,7 @@ func (s *Sim) checkLive(res *Result) error {
 			// another endpoint.
 			continue
 		}
-		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
+		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) && !answered[i] {
 			return fmt.Errorf("liveness: client %d call at %d ms, %d ms after healing, failed: %w",
 				r.Client, r.Call/Millisecond, (r.Call-s.healAt)/Millisecond, r.Err)
 		}
@@ -387,6 +389,86 @@ func checkLog(res *Result) error {
 // simulated clients can get for a request the cluster handled: a compacted
 // or future revision, or a lease that is gone. Anything else, such as "not
 // leader", is unavailability.
+// busyAnswered marks, by their index in h, the calls from from on that
+// were refused as too many requests and that the liveness rule takes as
+// answers, as etcd's ErrTooManyRequests is one, not as unavailability
+// (#818's ruling): one refused within busyAnswer, that is in no run of
+// more than busyRun of its client's calls refused so back to back, after
+// which its client has a call taken within busyRecover, or makes none,
+// on a node that refused so at most busyShare of its calls from from on.
+// A tiny log ring refuses a write it has no room for so while a
+// checkpoint frees it (#814), and takes the next: seed 1248 of
+// TestScenarios had 4 such refusals, single, in 1,678 calls after
+// healing, each answered within 36 ms and followed by taken calls. A
+// refusal past any bound fails the rule, as one that never ends.
+func busyAnswered(h []*Record, from int64) []bool {
+	answered := make([]bool, len(h))
+	// The client counts such a refusal ambiguous (ambiguous), as it does
+	// any error it does not know to be a rejection, which the checkers of
+	// what took effect keep; here it is an answer either way.
+	busy := func(r *Record) bool {
+		return r.Err != nil && errors.Is(r.Err, rpctypes.ErrGRPCRequestTooManyRequests)
+	}
+	var byClient [][]int
+	var nodeCalls, nodeBusy []int
+	for i, r := range h {
+		if r.Call < from || r.Client < 0 || r.Node < 0 {
+			continue
+		}
+		for len(byClient) <= r.Client {
+			byClient = append(byClient, nil)
+		}
+		byClient[r.Client] = append(byClient[r.Client], i)
+		for len(nodeCalls) <= r.Node {
+			nodeCalls, nodeBusy = append(nodeCalls, 0), append(nodeBusy, 0)
+		}
+		nodeCalls[r.Node]++
+		if busy(r) {
+			nodeBusy[r.Node]++
+		}
+	}
+	for _, calls := range byClient {
+		slices.SortStableFunc(calls, func(a, b int) int { return cmp.Compare(h[a].Call, h[b].Call) })
+		for k := 0; k < len(calls); {
+			if !busy(h[calls[k]]) {
+				k++
+				continue
+			}
+			end := k
+			for end < len(calls) && busy(h[calls[end]]) {
+				end++
+			}
+			for m := k; m < end && end-k <= busyRun; m++ {
+				r := h[calls[m]]
+				if r.Return-r.Call > busyAnswer || float64(nodeBusy[r.Node]) > busyShare*float64(nodeCalls[r.Node]) {
+					continue
+				}
+				recovered := end == len(calls)
+				for _, j := range calls[end:] {
+					if n := h[j]; n.Call > r.Return+busyRecover {
+						break
+					} else if n.Err == nil {
+						recovered = true
+						break
+					}
+				}
+				answered[calls[m]] = recovered
+			}
+			k = end
+		}
+	}
+	return answered
+}
+
+// The bounds within which a refusal as too many requests is an answer
+// (busyAnswered).
+const (
+	busyAnswer  = Second
+	busyRecover = 5 * Second
+	busyRun     = 3
+	busyShare   = 0.05
+)
+
 func isRejection(err error) bool {
 	return errors.Is(err, rpctypes.ErrGRPCCompacted) || errors.Is(err, rpctypes.ErrGRPCFutureRev) ||
 		errors.Is(err, rpctypes.ErrGRPCLeaseNotFound) || errors.Is(err, rpctypes.ErrGRPCNoSpace)

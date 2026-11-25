@@ -159,6 +159,7 @@ func run(ctx context.Context, cfg Config) error {
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), ckptLog: cmp.Or(cfg.CheckpointLog, ckptMin), ckptKeys: cfg.CheckpointChunkKeys, catchup: cmp.Or(cfg.CatchupEntries, storageWindow), confState: &pb.ConfState{},
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
+		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
 	}
 	n.startRun(run)
 	if n.sideSecret, err = newSideSecret(); err != nil {
@@ -606,10 +607,18 @@ func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args..
 // offLoop runs work in a goroutine of its own, and what it returns on the
 // loop.
 func (l *loop) offLoop(work func() func() error) {
+	strays.Add(1)
 	go func() {
+		defer strays.Add(-1)
 		l.post(work())
 	}()
 }
+
+// strays counts the goroutines a node starts that may go on after it
+// stops, reading its log (offLoop, sendSnapshot, prepareClientSnap): a
+// test that sets segSize waits for none before it sets it back
+// (waitStrays), which they read.
+var strays atomic.Int64
 
 // healthRead is the read of etcd's health checks, made on the loop as
 // etcd makes it in its server: a serializable one reads the store as it
@@ -1411,6 +1420,18 @@ type counters struct {
 	opsByKind, bytesByKind [kinds]int
 	named, held            int
 	carried, carriedBytes  [32]int
+	// propsDropped counts the proposals of followers this leader dropped
+	// for want of room in its log, refusalsSent the batches it told them
+	// of, and refusalsGot those a leader told this follower of
+	// (refusal.go).
+	propsDropped, refusalsSent, refusalsGot int
+	// appendsDropped counts the appends this follower dropped for want of
+	// room in its log, and appendsTrimmed those it kept only the first
+	// entries of (refusal.go).
+	appendsDropped, appendsTrimmed int
+	// ringNudges counts the empty entries this node proposed so that a
+	// checkpoint could free its ring (nudgeRing).
+	ringNudges int
 }
 
 // slowTurn is a turn long enough to log, so that a stall shows where

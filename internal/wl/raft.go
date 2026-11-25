@@ -129,6 +129,15 @@ func (n *node) storageAppend(m *pb.Message) error {
 	// a change Raft holds is held for before the next goes (#689's
 	// area-2 review).
 	n.confAppended(m.GetEntries())
+	// What Raft hands the log here holds every write and append taken so
+	// far but the open batch's, as the turn's batch is proposed before its
+	// Ready: it is in the log or waits for the stage now, which count it
+	// (ringTaken, followerDrops). An append written in the turn's input,
+	// as the stage drains, does not: the turn's writes taken before it are
+	// in no append yet. A new pledge epoch begins: a batch of the one
+	// before releases nothing (releasePledge).
+	n.ringPledged, n.appendPledged, n.appendLast = n.batchPledge, 0, 0
+	n.pledgeEpoch++
 	w := n.wal
 	if len(w.waiting) > 0 || !w.fits(m.GetEntries()) {
 		w.stats.waits++
@@ -502,7 +511,8 @@ func (n *node) sendPeer(m *pb.Message) {
 	app := m.GetType() == pb.MsgApp
 	to := m.GetTo()
 	carry := time.Now().Before(n.carryUntil[to])
-	size := msgHdr + 4 + len(m.GetContext())
+	mctx := n.propContext(m)
+	size := msgHdr + 4 + len(mctx)
 	for _, e := range ents {
 		size += 8 + 8 + 1 + 4
 		if app && n.names(e.GetData(), carry) {
@@ -553,9 +563,9 @@ func (n *node) sendPeer(m *pb.Message) {
 		s.put(d)
 	}
 	var cl [4]byte
-	binary.LittleEndian.PutUint32(cl[:], uint32(len(m.GetContext())))
+	binary.LittleEndian.PutUint32(cl[:], uint32(len(mctx)))
 	s.put(cl[:])
-	s.put(m.GetContext())
+	s.put(mctx)
 	n.markDirty(s)
 	if app && p.appSince.IsZero() {
 		p.appSince = n.now
@@ -601,7 +611,8 @@ func (n *node) onBeats(m *pb.Message, p *peerOut) bool {
 func waitsBehindHeld(f []byte) bool {
 	batch := len(f) >= batchFrameHdr && f[0] == frameBatch
 	heartbeat := len(f) >= msgHdr && f[0] == byte(pb.MsgHeartbeat)
-	return !batch && !heartbeat
+	refusal := len(f) == refusedFrameLn && f[0] == frameRefused
+	return !batch && !heartbeat && !refusal
 }
 
 // noteLanes notes, of a message from p, what onBeats needs: an answer to
@@ -672,6 +683,11 @@ func (n *node) peerFrames(p *peerIn) error {
 			n.carryUntil[p.from] = time.Now().Add(time.Second)
 			continue
 		}
+		if n.isRefusal(f) {
+			// The leader dropped a batch of this node's (refusal.go).
+			n.refused(f)
+			continue
+		}
 		if len(f) >= batchFrameHdr && f[0] == frameBatch {
 			// A batch a follower proposed, sent ahead of the leader's
 			// append that names it.
@@ -702,6 +718,9 @@ func (n *node) peerFrames(p *peerIn) error {
 			continue
 		}
 		n.noteLanes(p, m)
+		if n.leaderDrops(m, p.from) || n.followerDrops(m) {
+			continue
+		}
 		n.step(m)
 	}
 }
@@ -918,6 +937,9 @@ func (n *node) retryHeld() {
 					continue
 				}
 				n.noteLanes(p, m)
+				if n.leaderDrops(m, p.from) || n.followerDrops(m) {
+					continue
+				}
 				n.step(m)
 			}
 		}

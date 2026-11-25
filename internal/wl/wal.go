@@ -189,6 +189,10 @@ type wal struct {
 	// syncs a mark alone once the log goes idle with its last records
 	// unclaimed (markIdle).
 	dataEnd, claimed int64
+	// wanted is the room a write or an append refused for want of it
+	// asked for (ringRefuses, leaderDrops, followerDrops), 0 once one
+	// fits: the ring is low while it lacks it.
+	wanted int64
 }
 
 type walStats struct {

@@ -80,7 +80,9 @@ func clientSnapHead(cluster uint64, m ckptMeta) []byte {
 // prepareClientSnap writes the copy in a goroutine of its own and posts
 // it to the loop, which sends it.
 func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
+	strays.Add(1)
 	go func() {
+		defer strays.Add(-1)
 		defer func() { _ = src.Close() }()
 		f, err := l.n.sys.createTemp(l.n.ckptDir, "client-*.tmp")
 		if err == nil {
