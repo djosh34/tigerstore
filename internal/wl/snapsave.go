@@ -31,6 +31,8 @@ const (
 	clientSnapVersion = 2
 	clientSnapHeader  = len(clientSnapMagic) + 4 + 4*8
 	clientSnapChunk   = 1 << 20
+	// A busy ring must not keep one Snapshot retrying on end.
+	clientSnapRetries = 3
 )
 
 // clientSnap is a client's snapshot being sent, a chunk a turn while its
@@ -47,6 +49,7 @@ type clientSnap struct {
 // snapshotRequest takes a client's Snapshot: the node takes a checkpoint
 // for it, and sends it once written.
 func (n *node) snapshotRequest(c *client, s *stream) {
+	s.snapRetries = 0
 	n.snapWaiters = append(n.snapWaiters, mkHandle(c, s.id))
 	n.storage.wantCkpt = true
 }
@@ -60,6 +63,9 @@ func (n *node) startClientSnaps(waiters []handle, name string, meta ckptMeta) {
 	}
 	head := clientSnapHead(n.clusterID, meta)
 	for _, h := range waiters {
+		if c, _ := n.clientOf(h); c == nil {
+			continue
+		}
 		src, err := n.sys.openFile(filepath.Join(n.ckptDir, name), os.O_RDONLY, 0)
 		if err != nil {
 			n.replyErrorH(h, codeInternal, err.Error())
@@ -90,30 +96,55 @@ func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 			_ = l.n.sys.remove(f.Name())
 			err = selfContained(src, l.n.wal, f)
 		}
-		var size int64
+		cs := &clientSnap{h: h, f: f, head: head}
 		if err == nil {
-			size, err = f.Seek(0, io.SeekCurrent)
+			cs.size, err = f.Seek(0, io.SeekCurrent)
 		}
 		if err == nil {
 			_, err = f.Seek(0, io.SeekStart)
 		}
-		l.post(func() error {
-			if err != nil {
-				if f != nil {
-					_ = f.Close()
-				}
-				l.n.replyErrorH(h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
-				if errors.Is(err, ErrBadValue) {
-					return err
-				}
+		l.post(func() error { return l.n.clientSnapCopied(cs, err) })
+	}()
+}
+
+// clientSnapCopied takes back a client's copy. Only a retired log segment
+// retries through a fresh checkpoint. A replaced checkpoint can still
+// name live log bytes: a bad value is damage, whatever the file's name.
+// Retries belong to a live stream, and stop once its limit is reached.
+func (n *node) clientSnapCopied(cs *clientSnap, err error) error {
+	c, s := n.clientOf(cs.h)
+	if err != nil {
+		if cs.f != nil {
+			_ = cs.f.Close()
+		}
+		if errors.Is(err, ErrBadValue) {
+			n.replyErrorH(cs.h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
+			return err
+		}
+		if c == nil {
+			return nil
+		}
+		if errors.Is(err, errLogCut) {
+			if s.snapRetries < clientSnapRetries {
+				s.snapRetries++
+				n.snapWaiters = append(n.snapWaiters, cs.h)
+				n.storage.wantCkpt = true
 				return nil
 			}
-			body := int64(len(head)) + size
-			total := body + clientSnapPad(body) + sha256.Size
-			l.n.clientSnaps = append(l.n.clientSnaps, &clientSnap{h: h, f: f, head: head, size: total, sum: sha256.New()})
-			return nil
-		})
-	}()
+			err = fmt.Errorf("retry limit (%d) reached after log cuts; retry the snapshot request", clientSnapRetries)
+		}
+		n.replyError(c, s.id, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
+		return nil
+	}
+	if c == nil {
+		_ = cs.f.Close()
+		return nil
+	}
+	body := int64(len(cs.head)) + cs.size
+	cs.size = body + clientSnapPad(body) + sha256.Size
+	cs.sum = sha256.New()
+	n.clientSnaps = append(n.clientSnaps, cs)
+	return nil
 }
 
 // clientSnapPad is the zero padding after n bytes that makes them a

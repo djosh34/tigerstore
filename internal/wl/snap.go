@@ -272,6 +272,9 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 				// stops instead of serving it.
 				return err
 			}
+			// A copy that read a retired segment (errLogCut) failed,
+			// not the disk: Raft probes again and sends its newest
+			// snapshot. Damage above still stops the node.
 			l.n.rn.ReportSnapshot(to, status)
 			return nil
 		})
