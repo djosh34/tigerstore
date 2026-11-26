@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // A Run is one gosim run of a test.
@@ -26,6 +27,10 @@ type Run struct {
 	// Seed is gosim's seed: the harness seed, or 1 for a test that runs
 	// fixed seeds.
 	Seed uint64
+	// WallLimit, if positive, is this run's real-time backstop. Zero uses
+	// the driver's default, and SIM_WALL overrides both. It is not passed
+	// into the simulated environment and changes no random draw.
+	WallLimit time.Duration
 	// Env holds the variables of runVars, as KEY=VALUE, that the run
 	// reads its seeds and planted variant from, and whether it keeps its
 	// files. Do passes the others of runVars empty.

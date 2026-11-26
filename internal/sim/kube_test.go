@@ -103,7 +103,11 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 		}
 		// The checkers drop a long run's history, so they come after the
 		// counts.
-		checkers(t, res)
+		if long {
+			longCheckers(t, res, longWitnessStepLimit)
+		} else {
+			checkers(t, res)
+		}
 		if compactions == 0 || st.Revokes == 0 || pages == 0 || answers == 0 {
 			t.Fatalf("seed %d did too little to test anything: %d compactions in the log, %d revokes, %d later pages of lists, %d answers to progress requests", seed, compactions, st.Revokes, pages, answers)
 		}
@@ -126,7 +130,14 @@ func kubernetesLoad(t *testing.T, long bool, n int) {
 		}
 		t.Logf("seed %d: %+v, %d committed writes, %d compactions in the log, %d later pages of lists, %d answers to progress requests", seed, st, len(res.Log), compactions, pages, answers)
 		return st
-	}, nil)
+	}, nil, simrun.WithWallLimit(func(uint64) time.Duration { return kubeWallLimit(long) }))
+}
+
+func kubeWallLimit(long bool) time.Duration {
+	if long {
+		return longSeedWallLimit
+	}
+	return 0
 }
 
 // TestKubeValuesUnique makes the calls of the Kubernetes-shaped load,

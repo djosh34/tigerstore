@@ -24,10 +24,13 @@ type dueNode struct {
 	gone, by, from int64
 }
 
-func newDueIndex(os []optional) *dueIndex {
+func newDueIndex(os []optional, stop func() bool) *dueIndex {
 	d := &dueIndex{nodes: make([]dueNode, max(1, 4*len(os))), n: len(os)}
 	var build func(p, lo, hi int)
 	build = func(p, lo, hi int) {
+		if stop() {
+			return
+		}
 		if hi-lo == 1 {
 			o := os[lo]
 			d.nodes[p] = dueNode{late: o.late, early: !o.late, gone: o.gone, by: o.by, from: o.from}
@@ -76,7 +79,7 @@ func (r *revisionOrder) earlyDue(rev int64) []optional {
 // after a restore.
 func (r *revisionOrder) dueTree() *dueIndex {
 	if r.dues == nil {
-		r.dues = newDueIndex(r.optional)
+		r.dues = newDueIndex(r.optional, r.step)
 	}
 	return r.dues
 }
@@ -87,7 +90,7 @@ func (d *dueIndex) query(r *revisionOrder, holds func(dueNode) bool) []optional 
 	var out []optional
 	var visit func(p, lo, hi int)
 	visit = func(p, lo, hi int) {
-		if !holds(d.nodes[p]) {
+		if r.step() || !holds(d.nodes[p]) {
 			return
 		}
 		if hi-lo == 1 {

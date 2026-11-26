@@ -23,6 +23,7 @@ type eventTimes struct {
 	// leaves is the size of the tree's bottom row, n how many of them
 	// hold an event.
 	leaves, n int
+	step      func() bool
 }
 
 type eventTime struct{ firstReturn, lastCall int64 }
@@ -46,9 +47,15 @@ func (t *eventTimes) push(h *history.History, op int) {
 		t.leaves = max(1, 2*t.leaves)
 		t.nodes = make([]eventTime, 2*t.leaves)
 		for i := range t.nodes {
+			if t.step != nil && t.step() {
+				return
+			}
 			t.nodes[i] = noTime
 		}
 		for i := range t.n {
+			if t.step != nil && t.step() {
+				return
+			}
 			t.set(i, old[len(old)/2+i])
 		}
 	}
@@ -67,6 +74,9 @@ func (t *eventTimes) push(h *history.History, op int) {
 // truncate keeps the first n events.
 func (t *eventTimes) truncate(n int) {
 	for t.n > n {
+		if t.step != nil && t.step() {
+			return
+		}
 		t.n--
 		t.set(t.n, noTime)
 	}
