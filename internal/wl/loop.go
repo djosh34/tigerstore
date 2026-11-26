@@ -1249,6 +1249,14 @@ func (l *loop) flush() {
 		}
 		noIn := false
 		if c, isClient := n.socks[s.idx].(*client); isClient {
+			if c.hasStageOutput() {
+				// drain only refills this socket. Suppress a duplicate
+				// dirty entry while this turn already owns its flush.
+				s.dirty = true
+				c.drain()
+				s.dirty = false
+				ok = ok && c.waiting() == 0
+			}
 			n.giveRoom(c, false)
 			if c.paused && c.waiting() <= n.connOut/2 {
 				c.paused = false

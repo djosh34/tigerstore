@@ -15,8 +15,9 @@ const defaultWindow = 65535
 // held is a stream's message, or its trailers, waiting for window.
 type held struct {
 	sid     uint32
-	data    []byte // the gRPC message bytes still to send
-	trailer []byte // a header block that ends the stream once data is out
+	data    []byte      // the gRPC message bytes still to send
+	stage   *replyStage // complete, independently releasable cursor output
+	trailer []byte      // a header block that ends the stream once data is out
 }
 
 // flow is a client connection's send windows and what it holds.
@@ -158,6 +159,9 @@ func (c *client) drain() {
 			k++
 			continue
 		}
+		if h.stage != nil {
+			c.drainStage(h)
+		}
 		if m := min(int64(len(h.data)), f.conn, f.streams[h.sid]); m > 0 {
 			w := msgW{s: &c.sock, sid: h.sid, left: int(m)}
 			w.write(h.data[:m])
@@ -168,7 +172,7 @@ func (c *client) drain() {
 			f.streams[h.sid] -= m
 			n.markDirty(&c.sock)
 		}
-		if len(h.data) > 0 {
+		if len(h.data) > 0 || h.stage != nil && h.stage.read < h.stage.size {
 			if blocked == nil {
 				blocked = map[uint32]bool{}
 			}
@@ -240,6 +244,10 @@ func (c *client) dropHeld(sid uint32) {
 		}
 		f.bytes -= int64(len(h.data) + len(h.trailer))
 		c.growOut(-len(h.data) - len(h.trailer))
+		if h.stage != nil {
+			f.bytes -= int64(h.stage.size - h.stage.read)
+			h.stage.discard()
+		}
 	}
 	clear(f.held[k:])
 	f.held = f.held[:k]

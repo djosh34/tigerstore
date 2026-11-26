@@ -221,9 +221,14 @@ type client struct {
 	linePass, seenPass uint64
 	// roomHeld is the room of the reserve it holds, and roomWaiters how
 	// many of its messages wait for room (reserve.go).
-	roomHeld    int64
-	roomWaiters int
-	roomWake    bool // queued in node.roomClients
+	roomHeld     int64
+	roomWaiters  int
+	roomWake     bool  // queued in node.roomClients
+	coveredRoom  int64 // output quota backed by the client pool, not input reserve
+	stagePending int64 // unpublished wire bytes, including worker quarantine
+	stagePromise int64 // protected socket/finish capacity
+	stages       int
+	stageOrphan  bool
 	// heldCounted is what its held replies and its ranges waiting for
 	// room keep: past its share with what waits for window, its new
 	// requests are refused, as etcd refuses too many (#689's re-check, B6).
@@ -446,6 +451,11 @@ func (c *client) dropAll() {
 		c.node.active--
 	}
 	c.node.dropClientWaits(c)
+	if c.stages > 0 && !c.stageOrphan {
+		c.stageOrphan = true
+		c.node.stageOrphans++
+	}
+	c.dropStageOutput()
 	c.node.giveRoom(c, true)
 	c.grow(-cap(c.in) - cap(c.pt) - int(c.partial) - cap(c.block))
 	c.growOut(-cap(c.out) - int(c.flow.bytes))

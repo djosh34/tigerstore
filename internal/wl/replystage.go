@@ -46,6 +46,7 @@ func (b *stageCredit) give(n int64) bool {
 type replyStage struct {
 	root    stageRoot
 	credit  *stageCredit
+	owner   *client
 	size    int
 	written int
 	read    int
@@ -141,6 +142,10 @@ func (s *replyStage) commit() bool {
 		return false
 	}
 	s.flags |= stageCommitted
+	if s.owner != nil {
+		s.owner.stagePending -= int64(s.size)
+		s.owner.heldCounted -= s.charged
+	}
 	return true
 }
 
@@ -182,12 +187,34 @@ func (s *replyStage) free() {
 		r.next = nil
 		r = next
 	}
+	if s.owner != nil {
+		c := s.owner
+		c.growOut(-int(s.charged))
+		if s.flags&stageCommitted == 0 {
+			c.heldCounted -= s.charged
+			c.stagePending -= int64(s.size)
+		}
+		c.stages--
+		if c.stages == 0 {
+			c.node.stagePromises -= c.stagePromise
+			c.stagePromise = 0
+			if c.stageOrphan {
+				c.stageOrphan = false
+				c.node.stageOrphans--
+			}
+		}
+	}
 	if !s.credit.give(s.charged) {
 		s.flags |= stageBroken
 		return
 	}
 	s.charged = 0
 	s.flags |= stageFreed
+	if s.owner != nil {
+		c := s.owner
+		c.node.giveRoom(c, c.dead || c.slots == nil)
+	}
+	s.owner, s.credit = nil, nil
 }
 
 func (s *replyStage) front() []byte {
@@ -223,5 +250,8 @@ func (s *replyStage) consume(n int) {
 		r.pages[i] = nil
 		s.charged -= stageUnit
 		s.credit.give(stageUnit)
+		if s.owner != nil {
+			s.owner.growOut(-stageUnit)
+		}
 	}
 }

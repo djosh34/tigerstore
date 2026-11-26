@@ -44,7 +44,7 @@ func (n *node) msgRoom(c *client, m int64) bool {
 	if past == 0 {
 		return true
 	}
-	if n.reserved+past > n.sizes.reserve() {
+	if n.reserved+n.coveredRoom+past > n.sizes.reserve() {
 		n.stats.roomWaits++
 		n.roomShort = true
 		return false
@@ -60,7 +60,7 @@ func (n *node) roomNeeded(c *client, m int64) int64 {
 	if m <= smallMsg {
 		return 0
 	}
-	return max(0, c.waiting()+c.flow.bytes+m-n.connOut-c.roomHeld)
+	return max(0, c.waiting()+c.flow.bytes+c.stagePending+m-n.connOut-c.roomHeld)
 }
 
 // giveRoom gives back the room of the reserve that client c holds past
@@ -80,15 +80,23 @@ func (n *node) giveRoom(c *client, closed bool) {
 	if c.roomHeld == 0 {
 		return
 	}
-	keep := min(c.roomHeld, max(0, c.waiting()+c.flow.bytes-n.connOut))
+	keep := min(c.roomHeld, max(0, c.waiting()+c.flow.bytes+c.stagePending-n.connOut))
 	if closed {
 		keep = 0
+		if c.stagePending > 0 {
+			// A cancelled worker's destination is still quarantined.
+			keep = c.coveredRoom
+		}
 	}
 	if keep < c.roomHeld {
 		n.roomFreed = n.roomFreed || len(n.roomWait) > 0 || len(n.heldReplies) > 0
 		n.roomShort = false
 	}
-	n.reserved -= c.roomHeld - keep
+	returned := c.roomHeld - keep
+	covered := min(returned, c.coveredRoom)
+	c.coveredRoom -= covered
+	n.coveredRoom -= covered
+	n.reserved -= returned - covered
 	c.roomHeld = keep
 }
 
@@ -218,7 +226,7 @@ func (n *node) serveRoomWait() {
 			// first avoids reading and rebuilding its records just to
 			// discard them again (#833). The header and share are current.
 			m := int64(5 + sizeBytesField(1, n.hdrSize()) + r.body)
-			if past := n.roomNeeded(c, m); past > 0 && n.reserved+past > n.sizes.reserve() && !n.cannotFit(m) {
+			if past := n.roomNeeded(c, m); past > 0 && n.reserved+n.coveredRoom+past > n.sizes.reserve() && !n.cannotFit(m) {
 				n.stats.roomWaits++
 				n.roomShort = true
 				n.roomWait = append(n.roomWait, r)

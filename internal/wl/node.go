@@ -153,7 +153,13 @@ type node struct {
 	// the ranges whose replies wait for room in it, served again once
 	// roomFreed (reserve.go).
 	reserved int64
-	roomWait []roomRead
+	// coveredRoom is logical output reserve whose physical backing is
+	// irrevocably in the client pool. Input turns do not borrow it.
+	coveredRoom   int64
+	stageCredits  stageCredit
+	stagePromises int64
+	stageOrphans  int // closed clients retained only by quarantined loans
+	roomWait      []roomRead
 	// roomClients are local wakes: their own output changed without
 	// returning any shared reserve room. roomFreed still wakes all.
 	roomClients []*client
