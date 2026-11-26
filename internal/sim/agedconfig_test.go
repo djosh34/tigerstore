@@ -2,6 +2,21 @@ package sim
 
 import "testing"
 
+// The report names its threshold, and counts images, not their forks.
+func TestAgedImageLeaseReport(t *testing.T) {
+	ran, images := map[string]int{}, map[uint64]bool{}
+	for seed, leases := range []int{0, 999, 1000, 2999, 3000, 12000} {
+		countAgedImage(ran, images, uint64(seed), leases)
+		countAgedImage(ran, images, uint64(seed), leases)
+	}
+	if got := ran["aged images with at least 3,000 leases"]; got != 2 {
+		t.Errorf("images with at least 3,000 leases: %d, want 2; report %v", got, ran)
+	}
+	if ran["aged images"] != 6 || ran["live leases at aged images"] != 19998 {
+		t.Errorf("images or live leases counted more than once: %v", ran)
+	}
+}
+
 // The lease variant is drawn last: the objects, duration, voters, memory,
 // hot keys and tight-disk draw stay those of the older aging seeds.
 func TestAgingLeaseDraw(t *testing.T) {

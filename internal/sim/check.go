@@ -656,11 +656,25 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 	if err := revokesKeepPromises(res.History, s.revokedAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
+	// Expired runs before the leader proposes a revoke, which may never
+	// commit. Keep those decisions apart from the log's actual removals.
 	for id := range imaged {
 		if at, ok := s.expiredAt[id]; ok && at >= 0 {
-			res.Stats.ImageExpiries++
+			res.Stats.ImageExpiryDecisions++
 		}
 	}
+	removed := map[int64]bool{}
+	for _, op := range res.Log[res.base:] {
+		switch r := op.(type) {
+		case *pb.LeaseRevokeRequest:
+			if _, ok := imaged[r.ID]; ok {
+				removed[r.ID] = true
+			}
+		case *pb.LeaseGrantRequest:
+			delete(removed, r.ID)
+		}
+	}
+	res.Stats.ImageRemovals = len(removed)
 	for _, r := range res.History {
 		if r.Err != nil {
 			continue
@@ -755,7 +769,11 @@ func leasesExpire(history []*Record, imaged, expiredAt map[int64]int64, order, a
 	for _, id := range alive {
 		t, known := last[id]
 		// A lease from an ambiguous grant has an ID no client learned.
-		if known && t < end-leaseGrace(ttl[id]) {
+		// An imaged lease may outlive even a known client renewal: each
+		// new leader gives it its full TTL again. The early-expiry check
+		// above still holds, whether the client renewed it or not.
+		_, fromImage := imaged[id]
+		if known && !fromImage && t < end-leaseGrace(ttl[id]) {
 			return fmt.Errorf("lease %d with TTL %d s was last granted or kept alive at %d ms but still lives at %d ms", id, ttl[id], t/Millisecond, end/Millisecond)
 		}
 	}

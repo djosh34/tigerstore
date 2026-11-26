@@ -379,9 +379,9 @@ func (h *wlHooks) Durable(last uint64, install bool, hs *raftpb.HardState) {
 	_ = install
 }
 
-// Expired notes when a node first expired lease id, for the check that
-// no lease expires before its TTL ran out (leasesExpire), as main's
-// committer's Expired effects do.
+// Expired notes when a node first decided to expire lease id, before
+// proposing its revoke, for the check that no expiry decision comes
+// before its TTL ran out (leasesExpire). The revoke may never commit.
 func (h *wlHooks) Expired(id int64) {
 	s, p := h.s, h.p
 	s.mu.Lock()

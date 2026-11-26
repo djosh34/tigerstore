@@ -139,7 +139,8 @@ func TestAgedFork(t *testing.T) {
 
 // TestAgedLeases builds an image with 3,000 live leases and keys on a
 // quarter of them, then runs one short fork, every checker on both runs.
-// The calm fork keeps some alive, revokes some and expires thousands.
+// The calm fork keeps some alive, revokes some, decides expiries and
+// commits the removal of thousands of imaged leases.
 func TestAgedLeases(t *testing.T) {
 	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
@@ -155,8 +156,8 @@ func TestAgedLeases(t *testing.T) {
 			t.Errorf("image holds %d live leases, want at least %d", st.ImageLeases, aging.ImageLeases)
 		}
 		if save, _ := forkMode(t, 1); !save {
-			if st.ImageKeepAlives == 0 || st.ImageRevokes == 0 || st.ImageExpiries < 2000 {
-				t.Errorf("imaged leases: %d keepalives, %d client revokes, %d expiries; want renewals, revokes and thousands of expiries", st.ImageKeepAlives, st.ImageRevokes, st.ImageExpiries)
+			if st.ImageKeepAlives == 0 || st.ImageRevokes == 0 || st.ImageExpiryDecisions == 0 || st.ImageRemovals < 2000 {
+				t.Errorf("imaged leases: %d keepalives, %d client revokes, %d expiry decisions, %d committed removals; want renewals, revokes, expiry decisions and thousands of committed removals", st.ImageKeepAlives, st.ImageRevokes, st.ImageExpiryDecisions, st.ImageRemovals)
 			}
 		}
 		return st
@@ -310,14 +311,15 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 			res := run(t, cfg)
 			checkers(t, res)
 			st := res.Stats
-			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; imaged leases: %d keepalives, %d client revokes, %d expiries; hashes %s",
-				i, cfg.Seed, seed, after(i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, st.ImageKeepAlives, st.ImageRevokes, st.ImageExpiries, runHashes(res))
+			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; imaged leases: %d keepalives, %d client revokes, %d expiry decisions, %d committed removals; hashes %s",
+				i, cfg.Seed, seed, after(i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, st.ImageKeepAlives, st.ImageRevokes, st.ImageExpiryDecisions, st.ImageRemovals, runHashes(res))
 			total.OK += st.OK
 			total.Failed += st.Failed
 			total.Ambiguous += st.Ambiguous
 			total.ImageKeepAlives += st.ImageKeepAlives
 			total.ImageRevokes += st.ImageRevokes
-			total.ImageExpiries += st.ImageExpiries
+			total.ImageExpiryDecisions += st.ImageExpiryDecisions
+			total.ImageRemovals += st.ImageRemovals
 		})
 	}
 	return total

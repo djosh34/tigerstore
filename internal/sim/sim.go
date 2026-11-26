@@ -697,7 +697,8 @@ type Sim struct {
 	// values the one copy of each of its values.
 	kube   *kubeLoad
 	values *values
-	// expiredAt is when a lease first expired on any node.
+	// expiredAt is when any node first decided to expire a lease, before
+	// proposing its revoke, which may never commit.
 	expiredAt    map[int64]int64
 	expiredOrder []int64
 	// revokedAt is when a wl node first applied a lease's revoke, and
@@ -801,8 +802,10 @@ type Stats struct {
 	// not the leases its forks grant or the sum over its forks.
 	ImageLeases int
 	// ImageKeepAlives and ImageRevokes count successful client renewals
-	// and revokes of imaged leases; ImageExpiries counts those that expire.
-	ImageKeepAlives, ImageRevokes, ImageExpiries int
+	// and revokes of imaged leases. ImageExpiryDecisions counts those a
+	// node decided to expire, even if its revoke never committed.
+	// ImageRemovals counts imaged leases the committed log leaves absent.
+	ImageKeepAlives, ImageRevokes, ImageExpiryDecisions, ImageRemovals int
 	// KeptPages counts the synced pages the nodes' disks moved to the
 	// runner's disk (keptPages).
 	KeptPages             int

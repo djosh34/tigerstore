@@ -108,6 +108,18 @@ func longConfig(seed uint64) Config {
 	return cfg
 }
 
+// countAgedImage counts an image's live leases once, not once per fork.
+func countAgedImage(ran map[string]int, images map[uint64]bool, seed uint64, leases int) {
+	if !images[seed] {
+		ran["live leases at aged images"] += leases
+		if leases >= 3000 {
+			ran["aged images with at least 3,000 leases"]++
+		}
+	}
+	images[seed] = true
+	ran["aged images"] = len(images)
+}
+
 // TestCampaign runs $SIM_SEEDS seeds from $SIM_SEED, each of the kind
 // campaignKind allocates: a fresh scenario (Scenario), an aged image and its
 // forks (TestAgedForks), or a long seed (longConfig), every checker on
@@ -157,14 +169,7 @@ func TestCampaign(t *testing.T) {
 		switch r.Kind {
 		case kindAged:
 			// Each fork carries its share of the image's cost.
-			if !images[seed] {
-				ran["live leases at aged images"] += r.Stats.ImageLeases
-				if r.Stats.ImageLeases >= 1000 {
-					ran["aged images with thousands of leases"]++
-				}
-			}
-			images[seed] = true
-			ran["aged images"] = len(images)
+			countAgedImage(ran, images, seed, r.Stats.ImageLeases)
 			ran["aged forks"] += r.Forks
 			cost[kindAged] += costImage * r.Forks / forksPerImage
 		case kindLong:

@@ -242,9 +242,12 @@ func TestKubeListsPageOnPurpose(t *testing.T) {
 // expire 100 s in, and may expire 130 s in. They may live to the end,
 // kept alive or not: each new leader gives them their whole TTL (#502).
 func TestImagedLeasesExpireByTTL(t *testing.T) {
-	end := 1000 * Second
+	end := 600 * Second
 	imaged := map[int64]int64{9: 120}
 	kept := []*Record{{Call: end - 30*Second, Return: end - 30*Second + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: 9}, Resp: &pb.LeaseKeepAliveResponse{ID: 9, TTL: 120}}}
+	// Leaders changing every 100 s restart the full 120 s TTL. A client
+	// renewal at 5 s must not make survival to 600 s an error.
+	keptEarly := []*Record{{Call: 5 * Second, Return: 5*Second + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: 9}, Resp: &pb.LeaseKeepAliveResponse{ID: 9, TTL: 120}}}
 	for _, c := range []struct {
 		name    string
 		history []*Record
@@ -253,6 +256,8 @@ func TestImagedLeasesExpireByTTL(t *testing.T) {
 		ok      bool
 	}{
 		{"lives to the end with no keepalive", nil, []int64{9}, 0, true},
+		{"lives through leader changes after a keepalive at 5 s", keptEarly, []int64{9}, 0, true},
+		{"expires 6 s after a keepalive", keptEarly, nil, 11 * Second, false},
 		{"lives to the end kept alive", kept, []int64{9}, 0, true},
 		{"expires 100 s in", nil, nil, 100 * Second, false},
 		{"expires 130 s in", nil, nil, 130 * Second, true},
