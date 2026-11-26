@@ -144,6 +144,9 @@ func (n *node) refused(f []byte) {
 		}
 	}
 	b.handles = b.handles[:0]
+	if n.putTimings != nil {
+		n.forgetPutTimings(seq)
+	}
 	// The batch never comes to the log, so the room its writes were taken
 	// for is free again (ringRefuses): kept, it refused every write the
 	// size of the one refused for good (#814's test, through a follower).

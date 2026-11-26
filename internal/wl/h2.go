@@ -223,6 +223,7 @@ type client struct {
 	// many of its messages wait for room (reserve.go).
 	roomHeld    int64
 	roomWaiters int
+	roomWake    bool // queued in node.roomClients
 	// heldCounted is what its held replies and its ranges waiting for
 	// room keep: past its share with what waits for window, its new
 	// requests are refused, as etcd refuses too many (#689's re-check, B6).
@@ -488,6 +489,9 @@ func (c *client) endStream(s *stream) {
 	if !s.open {
 		return
 	}
+	if c.node.putTimings != nil {
+		c.node.tracePutClosed(s)
+	}
 	c.partial -= s.counted
 	c.grow(-int(s.counted))
 	c.streams--
@@ -641,8 +645,14 @@ func (c *client) frames(n *node) error {
 				p = p[1 : len(p)-int(p[0])]
 			}
 			s := c.get(sid)
+			if n.putTimings != nil && s != nil && !s.ended {
+				n.tracePutHeader(s, p)
+			}
 			if k := int64(len(p)); s != nil && !s.ended && (c.partial+k > n.connIn || n.cpool+k > n.sizes.clientInBufs()) && c.waitsForRoom(n, s, p) {
 				// The frame is read again once the buffers have room.
+				if n.putTimings != nil {
+					n.tracePutEvent(n.putTimingOf(s), "receive_wait", -1)
+				}
 				c.pr -= 9 + l
 				return nil
 			}
@@ -930,7 +940,7 @@ func inflate(s *stream, msg []byte) ([]byte, string) {
 	}
 	out, err := gunzip(msg)
 	if err != nil {
-		return nil, "grpc: failed to decompress the received message: " + err.Error()
+		return out, "grpc: failed to decompress the received message: " + err.Error()
 	}
 	return out, ""
 }
@@ -944,10 +954,12 @@ func gunzip(b []byte) ([]byte, error) {
 	}
 	out, err := io.ReadAll(io.LimitReader(zr, maxRequestBytes+grpcOverhead+1))
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	if len(out) > maxRequestBytes+grpcOverhead {
-		return nil, errors.New("the message is larger than the server takes")
+		// Retain the bounded prefix only until the caller logs its size:
+		// a compressed large put may be refused before full decoding.
+		return out, errors.New("the message is larger than the server takes")
 	}
 	return out, nil
 }
@@ -1057,6 +1069,9 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 	}
 	for len(p) >= 5 {
 		l := int(binary.BigEndian.Uint32(p[1:5]))
+		if n.putTimings != nil {
+			n.tracePutStart(s, l)
+		}
 		if l > maxMsg {
 			// As grpc-go's server refuses it, before taking it in.
 			n.replyError(c, s.id, codeResourceExhausted, "grpc: received message larger than max ("+itoa(l)+" vs. "+itoa(maxMsg)+")")
@@ -1074,9 +1089,17 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 		if p[0] != 0 {
 			var bad string
 			if msg, bad = inflate(s, msg); bad != "" {
+				if n.putTimings != nil {
+					n.tracePutDecoded(s, l, msg, false)
+					n.tracePutEvent(n.putTimingOf(s), "decode_refused", -1)
+				}
 				n.replyError(c, s.id, codeInternal, bad)
 				return nil
 			}
+		}
+		if n.putTimings != nil {
+			n.tracePutDecoded(s, l, msg, true)
+			n.tracePutEvent(n.putTimingOf(s), "received", -1)
 		}
 		p = p[5+l:]
 		if err := n.request(c, s, msg); errors.Is(err, errProto) {

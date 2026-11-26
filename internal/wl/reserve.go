@@ -40,8 +40,8 @@ const smallMsg = 1 << 10
 // now: within its share, or with the room the reserve gives it for what
 // passes it, which it takes.
 func (n *node) msgRoom(c *client, m int64) bool {
-	past := c.waiting() + c.flow.bytes + m - n.connOut - c.roomHeld
-	if past <= 0 || m <= smallMsg {
+	past := n.roomNeeded(c, m)
+	if past == 0 {
 		return true
 	}
 	if n.reserved+past > n.sizes.reserve() {
@@ -54,6 +54,15 @@ func (n *node) msgRoom(c *client, m int64) bool {
 	return true
 }
 
+// roomNeeded is the extra reserve room a message needs, beyond the room
+// client c holds already. Checking it does not reserve anything.
+func (n *node) roomNeeded(c *client, m int64) int64 {
+	if m <= smallMsg {
+		return 0
+	}
+	return max(0, c.waiting()+c.flow.bytes+m-n.connOut-c.roomHeld)
+}
+
 // giveRoom gives back the room of the reserve that client c holds past
 // what it holds over its share now, all of it once c is closed.
 func (n *node) giveRoom(c *client, closed bool) {
@@ -61,11 +70,12 @@ func (n *node) giveRoom(c *client, closed bool) {
 		// A reply it waited for lets go of what it holds.
 		n.roomFreed = true
 	}
-	if !closed && c.roomWaiters > 0 && c.waiting()+c.flow.bytes <= n.connOut/2 {
-		// Its messages waiting may have waited behind its own bytes, with
-		// no room of the reserve held, and those have gone down to half
-		// its share (#689's re-check, B2).
-		n.roomFreed, n.roomShort = true, false
+	if !closed && c.roomWaiters > 0 && !c.roomWake {
+		// Only this client's output changed. Other clients must not
+		// rebuild on its local progress, even if writes invalidated
+		// their saved sizes. A shared reserve return below wakes all.
+		c.roomWake = true
+		n.roomClients = append(n.roomClients, c)
 	}
 	if c.roomHeld == 0 {
 		return
@@ -82,14 +92,31 @@ func (n *node) giveRoom(c *client, closed bool) {
 	c.roomHeld = keep
 }
 
+// roomRead is a range waiting for reply room, without any record bytes.
+// Its body size excludes the header and stays right while its store,
+// revision and compacted revision stay the same. The tag identifies the
+// store without keeping its tables alive after a snapshot install.
+type roomRead struct {
+	awayRead
+	c               *client // owns the charge even after the stream ends
+	tag             *byte
+	rev, compactRev int64
+	share           int64 // a shrink can change rangeKVs' pieces threshold
+	body            int
+}
+
 // waitRoom keeps range request msg of stream s of client c until the
-// reserve has room for its reply.
-func (n *node) waitRoom(c *client, s *stream, msg []byte) {
+// reserve has room for its reply, whose body size excludes the header.
+func (n *node) waitRoom(c *client, s *stream, msg []byte, body int) {
 	c.roomWaiters++
 	// Its request, kept, counts in the client's pool (B9).
 	c.growOut(len(msg))
 	c.heldCounted += int64(len(msg))
-	n.roomWait = append(n.roomWait, awayRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg)})
+	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), c: c, share: n.connOut, body: body}
+	if n.st != nil {
+		r.tag, r.rev, r.compactRev = n.st.tag, n.st.rev, n.st.compactRev
+	}
+	n.roomWait = append(n.roomWait, r)
 }
 
 // cannotFit reports whether a message of m bytes could never be built for
@@ -148,23 +175,60 @@ func (n *node) dropWaits(c *client, sid uint32) {
 // serveRoomWait serves again the ranges that waited for room, once some
 // came back; one that finds none waits again.
 func (n *node) serveRoomWait() {
-	if !n.roomFreed {
+	all := n.roomFreed
+	if !all && len(n.roomClients) == 0 {
 		return
 	}
 	n.roomFreed = false
-	n.serveHeld()
+	clients := n.roomClients
+	n.roomClients = nil
+	defer func() {
+		for _, c := range clients {
+			c.roomWake = false
+		}
+		clear(clients)
+		if len(n.roomClients) == 0 {
+			n.roomClients = clients[:0]
+		}
+	}()
+	n.serveHeldRoom(all)
 	reads := n.roomWait
 	n.roomWait = nil
 	for _, r := range reads {
 		c, s := n.clientOf(r.h)
 		if c == nil {
+			if r.c != nil {
+				r.c.growOut(-len(r.msg))
+				r.c.heldCounted -= int64(len(r.msg))
+				r.c.roomWaiters--
+			}
 			continue
+		}
+		if !all && !c.roomWake {
+			n.roomWait = append(n.roomWait, r)
+			continue
+		}
+		var req rangeReq
+		err := parseRange(r.msg, &req)
+		// Keys-only records can gain resident value bytes without a
+		// revision change, changing rangeKVs' pieces decision. These
+		// metadata reads (and count-only reads) bypass the size hint.
+		if err == nil && !req.keysOnly && !req.countOnly && r.tag != nil && r.tag == n.st.tag && r.rev == n.st.rev && r.compactRev == n.st.compactRev && n.connOut >= r.share {
+			// A small return of room need not fit this reply. Checking
+			// first avoids reading and rebuilding its records just to
+			// discard them again (#833). The header and share are current.
+			m := int64(5 + sizeBytesField(1, n.hdrSize()) + r.body)
+			if past := n.roomNeeded(c, m); past > 0 && n.reserved+past > n.sizes.reserve() && !n.cannotFit(m) {
+				n.stats.roomWaits++
+				n.roomShort = true
+				n.roomWait = append(n.roomWait, r)
+				continue
+			}
 		}
 		c.roomWaiters--
 		c.growOut(-len(r.msg))
 		c.heldCounted -= int64(len(r.msg))
-		var req rangeReq
-		if err := parseRange(r.msg, &req); err != nil {
+		if err != nil {
 			continue
 		}
 		n.serveRange(c, s, &req, r.msg)
@@ -327,10 +391,18 @@ func firstRec(recs [][]byte) []byte {
 
 // serveHeld builds and sends the held replies the reserve has room for
 // now; one that finds none, or whose values are away, waits again.
-func (n *node) serveHeld() {
+func (n *node) serveHeld() { n.serveHeldRoom(true) }
+
+// serveHeldRoom retries all held replies, or just clients whose own
+// output changed when no shared reserve room was returned.
+func (n *node) serveHeldRoom(all bool) {
 	held := n.heldReplies
 	n.heldReplies = nil
 	for _, hr := range held {
+		if !all && !hr.c.roomWake {
+			n.heldReplies = append(n.heldReplies, hr)
+			continue
+		}
 		if n.stepHeld(hr) {
 			n.heldReplies = append(n.heldReplies, hr)
 			continue
