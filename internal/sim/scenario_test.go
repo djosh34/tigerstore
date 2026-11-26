@@ -181,6 +181,9 @@ type scenarioRun struct {
 	Kind  string
 	Nodes int
 	Stats Stats
+	// Forks is how many of an aged seed's forks the run ran (TestCampaign):
+	// one in a fork's gosim run of its own, all of them in one process.
+	Forks int
 }
 
 // kind names the load of cfg.

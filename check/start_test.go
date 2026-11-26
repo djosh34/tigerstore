@@ -175,6 +175,12 @@ func TestStartBoundaries(t *testing.T) {
 	mustFail(t, "Watches", Watches(watchFrom(10)), "at or below the start's revision")
 	mustFail(t, "Watches", Watches(watchFrom(9)), "at or below the start's revision")
 	mustPass(t, "Watches", Watches(watchFrom(9, history.WatchResponse{Time: 15, Revision: 10, Canceled: true, CompactRevision: 10})))
+	// A member on an empty disk: progress at its revision 1, below the
+	// watch's first, then canceled once the start reaches it. Progress at
+	// the watch's first revision or above is a delivery the history
+	// cannot check.
+	mustPass(t, "Watches", Watches(watchFrom(2, history.WatchResponse{Time: 14, Revision: 1, Progress: true}, history.WatchResponse{Time: 15, Revision: 10, Canceled: true, CompactRevision: 10})))
+	mustFail(t, "Watches", Watches(watchFrom(2, history.WatchResponse{Time: 14, Revision: 2, Progress: true}, history.WatchResponse{Time: 15, Revision: 10, Canceled: true, CompactRevision: 10})), "below the start's compaction")
 
 	// A read answered below the start's revision.
 	h := forkHistory(t)
