@@ -752,8 +752,9 @@ func checkers(t *testing.T, res *Result) {
 // the six-minute simulation and more than 15% margin before the 160-minute
 // wall backstop. That budget, not wall time, must stop long searches.
 // #876 intersects due sets with retained revision eligibility to avoid
-// trials of future expiries; budgets remain unchanged. See longSeedWallLimit
-// for the original sizing math.
+// trials of future expiries, but seed 1 still exhausts its deterministic
+// cap and remains a known timeout. Budgets are unchanged; its remaining
+// search work needs a separate ruling. See longSeedWallLimit for sizing.
 const (
 	witnessStepLimit     int64 = 360_000_000
 	longWitnessStepLimit int64 = 180_000_000
