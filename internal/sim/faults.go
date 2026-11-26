@@ -153,6 +153,12 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 		target = simfs.OpCreate
 	}
 	s.tracef("node %d: disk fault armed: EIO on the next %v", n.id, target)
+	if p := n.proc; p != nil && p.wl != nil {
+		// This fault replaces a start's armed crash in recovery, if any:
+		// the start no longer owns the disk's fault, and neither its
+		// recovery nor its end clears this one (#860).
+		p.wl.armed = false
+	}
 	d.Fault = func(op simfs.Op, name string) error {
 		ckpt := op == simfs.OpCreate && isCheckpoint(name)
 		if op != target || s.cfg.ckptCreateFaults && !ckpt {
