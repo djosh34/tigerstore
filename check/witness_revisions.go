@@ -386,8 +386,9 @@ func (r *revisionOrder) index() error {
 		if op.Resp != nil && op.Req.LeaseRevoke != nil {
 			// A successful revoke still found its lease alive. With no
 			// other grant of the ID, no expiry can precede it, including
-			// at its header revision: only the acked revoke can write
-			// that revision by deleting its keys. The image's expiries
+			// at its header revision: an ambiguous revoke of the same
+			// lease ID cannot write the acked revoke's header revision
+			// (another lease's expiry may). The image's expiries
 			// are called at the start, so trying one of these first left
 			// every order of the other gaps to fail at this revoke (#867).
 			id := op.Req.LeaseRevoke.ID
