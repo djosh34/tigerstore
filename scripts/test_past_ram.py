@@ -44,25 +44,50 @@ class ClassificationTests(unittest.TestCase):
         # Run 40075627047 (#419): etcd's three members hit memory.max
         # 7,115 to 11,992 times, none was killed, and a write timed out
         # at 280,256 objects.
-        def run(mode="max", failure="etcdserver: request timed out", hits=(11992, 7115, 10747), kind="etcd"):
-            result = self.result(kind, mode)
-            result["failure"] = "driver exited 1; see progress.jsonl and driver.log"
-            result["last_acknowledged"].update(objects=280256, live_bytes=410807279)
-            result["final_cgroups"] = [dict(events=dict(oom_kill=0, max=n)) for n in hits]
-            past_ram.classify(result, [dict(phase="preload"), dict(phase="preload-failed", failure=failure)])
-            return result
-        result = run()
-        self.assertEqual(result["outcome"], "capacity-limit")
-        self.assertEqual(result["limit"], "cgroup-reclaim")
-        self.assertIsNone(result["failure"])
-        for name, result in [
-            ("proof mode", run(mode="proof")),
-            ("another error", run(failure="value mismatch")),
-            ("a member below its limit", run(hits=(11992, 0, 10747))),
-            ("tigerstore", run(kind="tigerstore")),
+        # Run 45844419227 (#888), artifact
+        # past-ram-etcd-proof-9223372036854775807-normal: minimal fields
+        # from result.json and progress.jsonl, with no OOM kills.
+        for mode, count, live, hits, outcome in [
+            ("max", 280256, 410807279, (11992, 7115, 10747), "capacity-limit"),
+            ("proof", 280960, 411341174, (8949, 11465, 10553), "reference-preload-limit"),
         ]:
-            with self.subTest(name):
-                self.assertEqual(result["outcome"], "failed")
+            def run(change=None, message="etcdserver: request timed out", phase="preload"):
+                result = self.result("etcd", mode)
+                result["failure"] = "driver exited 1; see progress.jsonl and driver.log"
+                result["last_acknowledged"].update(objects=count, live_bytes=live)
+                result["final_cgroups"] = [dict(events=dict(oom_kill=0, max=n)) for n in hits]
+                result.update(copy.deepcopy(change or {}))
+                past_ram.classify(result, [dict(phase=phase), dict(phase="preload-failed", failure=message)])
+                return result
+
+            with self.subTest(mode=mode):
+                result = run()
+                self.assertEqual(result["outcome"], outcome)
+                self.assertEqual(result["limit"], "cgroup-reclaim")
+                self.assertIsNone(result["failure"])
+                self.assertEqual(result["termination"], "driver exited 1; see progress.jsonl and driver.log")
+            for name, result in [
+                ("another error", run(message="value mismatch")),
+                ("unavailable is not a reclaim timeout", run(message="rpc error: code = Unavailable desc = EOF")),
+                ("a member below its limit", run(dict(final_cgroups=[
+                    dict(events=dict(oom_kill=0, max=n)) for n in (hits[0], 0, hits[2])]))),
+                ("tigerstore", run(dict(kind="tigerstore"))),
+                ("driver error", run(dict(failure="driver exited 2; see progress.jsonl and driver.log"))),
+                ("checker error", run(dict(checker_exit=1))),
+                ("non-preload row", run(phase="mixed")),
+                ("preloaded row", run(phase="preloaded")),
+                ("mixed started", run(dict(mixed_start={}))),
+                ("censored", run(dict(censored=True))),
+                ("member killed by harness", run(dict(kills=1))),
+                ("cache mode", run(dict(mode="cache"))),
+            ]:
+                with self.subTest(mode=mode, case=name):
+                    self.assertEqual(result["outcome"], "failed")
+                    self.assertIsNotNone(result["failure"])
+                    self.assertNotIn("limit", result)
+            if mode == "proof":
+                with self.subTest(mode=mode, case="explicit preload control"):
+                    self.assertEqual(run(dict(preload_bytes=16 << 20))["outcome"], "failed")
 
     def test_failures_stay_failures(self):
         cases = [
