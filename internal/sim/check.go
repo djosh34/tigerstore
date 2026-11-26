@@ -636,7 +636,7 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 	var imaged map[int64]int64
 	if s.synth != nil {
 		imaged = s.synth.leases
-	} else if s.cfg.from != nil {
+	} else if img := s.cfg.from; img != nil && len(img.start.Leases) > 0 {
 		// An aged image's grants precede the fork's history. Its first
 		// leader gives those leases their whole TTL too, and a keepalive
 		// in this history must use that TTL, not an unknown lease's zero.
@@ -656,37 +656,39 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 	if err := revokesKeepPromises(res.History, s.revokedAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
-	// Expired runs before the leader proposes a revoke, which may never
-	// commit. Keep those decisions apart from the log's actual removals.
-	for id := range imaged {
-		if at, ok := s.expiredAt[id]; ok && at >= 0 {
-			res.Stats.ImageExpiryDecisions++
-		}
-	}
-	removed := map[int64]bool{}
-	for _, op := range res.Log[res.base:] {
-		switch r := op.(type) {
-		case *pb.LeaseRevokeRequest:
-			if _, ok := imaged[r.ID]; ok {
-				removed[r.ID] = true
+	if len(imaged) > 0 {
+		// Expired runs before the leader proposes a revoke, which may
+		// never commit. Count decisions apart from actual removals.
+		for id := range imaged {
+			if at, ok := s.expiredAt[id]; ok && at >= 0 {
+				res.Stats.ImageExpiryDecisions++
 			}
-		case *pb.LeaseGrantRequest:
-			delete(removed, r.ID)
 		}
-	}
-	res.Stats.ImageRemovals = len(removed)
-	for _, r := range res.History {
-		if r.Err != nil {
-			continue
-		}
-		switch resp := r.Resp.(type) {
-		case *pb.LeaseKeepAliveResponse:
-			if resp != nil && resp.TTL > 0 && imaged[resp.ID] > 0 {
-				res.Stats.ImageKeepAlives++
+		removed := map[int64]bool{}
+		for _, op := range res.Log[res.base:] {
+			switch r := op.(type) {
+			case *pb.LeaseRevokeRequest:
+				if _, ok := imaged[r.ID]; ok {
+					removed[r.ID] = true
+				}
+			case *pb.LeaseGrantRequest:
+				delete(removed, r.ID)
 			}
-		case *pb.LeaseRevokeResponse:
-			if imaged[r.req.(*pb.LeaseRevokeRequest).ID] > 0 {
-				res.Stats.ImageRevokes++
+		}
+		res.Stats.ImageRemovals = len(removed)
+		for _, r := range res.History {
+			if r.Err != nil {
+				continue
+			}
+			switch resp := r.Resp.(type) {
+			case *pb.LeaseKeepAliveResponse:
+				if resp != nil && resp.TTL > 0 && imaged[resp.ID] > 0 {
+					res.Stats.ImageKeepAlives++
+				}
+			case *pb.LeaseRevokeResponse:
+				if imaged[r.req.(*pb.LeaseRevokeRequest).ID] > 0 {
+					res.Stats.ImageRevokes++
+				}
 			}
 		}
 	}
@@ -763,17 +765,25 @@ func leasesExpire(history []*Record, imaged, expiredAt map[int64]int64, order, a
 			leaderAt = max(leaderAt, at)
 		}
 	}
-	possible := map[int64]int64{}
+	// gosim's map insertions and iterations draw from its scheduler's
+	// random stream. Lease-free runs must not do the image-only work,
+	// even after their load ends: capture and cold restarts still run.
+	var possible map[int64]int64
+	if len(imaged) > 0 {
+		possible = map[int64]int64{}
+	}
 	for _, r := range history {
 		switch req := r.req.(type) {
 		case *pb.LeaseGrantRequest:
 			if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok && g != nil {
 				last[g.ID] = max(last[g.ID], r.Call)
-				possible[g.ID] = max(possible[g.ID], r.Return)
+				if possible != nil {
+					possible[g.ID] = max(possible[g.ID], r.Return)
+				}
 			}
 		case *pb.LeaseKeepAliveRequest:
 			last[req.ID] = max(last[req.ID], r.Call)
-			if resp, ok := r.Resp.(*pb.LeaseKeepAliveResponse); r.Ambiguous || (ok && resp != nil && resp.TTL > 0) {
+			if resp, ok := r.Resp.(*pb.LeaseKeepAliveResponse); possible != nil && (r.Ambiguous || (ok && resp != nil && resp.TTL > 0)) {
 				// A successful or ambiguous renewal may have taken effect
 				// anywhere in the call, not just when the client called it.
 				possible[req.ID] = max(possible[req.ID], r.Return)

@@ -5,6 +5,8 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/history"
 )
 
 // A lost attachment reply can put both attempts in the committed log,
@@ -48,7 +50,7 @@ func TestImageLeaseExpiryNeedsCommittedRevoke(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			s := &Sim{
-				cfg: Config{from: &image{}}, endAt: 200 * Second,
+				cfg: Config{from: &image{start: &history.Start{Leases: []int64{9}}}}, endAt: 200 * Second,
 				expiredAt: map[int64]int64{9: 130 * Second}, expiredOrder: []int64{9},
 			}
 			res := &Result{Log: append([]proto.Message{&pb.LeaseGrantRequest{ID: 9, TTL: 120}}, c.log...), base: 1}

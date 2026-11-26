@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -295,7 +296,7 @@ func TestImagedLeasesExpireByTTL(t *testing.T) {
 				s.synth = &synthStore{leases: imaged}
 			} else {
 				// An aged image's grants precede the fork's history.
-				s.cfg.from = &image{}
+				s.cfg.from = &image{start: &history.Start{Leases: []int64{9}}}
 				res.Log, res.base = []proto.Message{&pb.LeaseGrantRequest{ID: 9, TTL: 120}}, 1
 			}
 			if err := s.checkLeasesExpire(res, c.alive); (err == nil) != c.ok {
