@@ -26,6 +26,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install classifier test dependencies
+        run: python3 -m pip install PyYAML==6.0.3
       - name: Capacity outcome classifier
         run: python3 -B -m unittest discover -s scripts -p 'test_past_ram.py' -v
   etcd-index:
