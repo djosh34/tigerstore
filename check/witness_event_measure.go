@@ -9,9 +9,12 @@ type eventEvidence struct {
 }
 
 var eventEvidenceTotal eventEvidence
-var eventEvidenceByRev = map[int64]*eventEvidence{}
+var eventEvidenceByRev map[int64]*eventEvidence
 
 func measureEventCertificate(rev int64, pool int, cert eventCertificate) {
+	if eventEvidenceByRev == nil {
+		eventEvidenceByRev = map[int64]*eventEvidence{}
+	}
 	x := eventEvidenceByRev[rev]
 	if x == nil {
 		x = &eventEvidence{}
