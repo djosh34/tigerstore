@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -319,8 +320,8 @@ func TestRateMakesOneLinkSlower(t *testing.T) {
 }
 
 // TestSentLagsRead checks that Sent counts what a rate limit let through,
-// not what the proxy read: crash-in-install kills once the follower got
-// part of its snapshot (#223).
+// not what the proxy read (the contract introduced for crash-in-install
+// in #223).
 func TestSentLagsRead(t *testing.T) {
 	p, c := start(t, echo(t), 1)
 	set(t, p, Fault{Kind: Rate, Dir: Backward, Rate: 32 << 10})
@@ -328,10 +329,7 @@ func TestSentLagsRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
-	for p.Stats().BackwardBytes < 64<<10 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	st := p.Stats()
+	st := waitSentAndRead(p.Stats, deadline)
 	if st.ForwardSent != 64<<10 || st.BackwardBytes != 64<<10 || st.BackwardSent >= st.BackwardBytes {
 		t.Fatalf("stats %+v: want all 64 KiB sent forward, read back, and less sent back so far", st)
 	}
@@ -346,6 +344,101 @@ func TestSentLagsRead(t *testing.T) {
 	}
 	if st := p.Stats(); st.BackwardSent != 64<<10 {
 		t.Fatalf("after the echo arrived: %+v", st)
+	}
+}
+
+// waitSentAndRead waits for both counters: the echo can be read before
+// the forward Write returns and its Sent counter catches up.
+func waitSentAndRead(stats func() Stats, deadline time.Time) Stats {
+	for {
+		st := stats()
+		if (st.BackwardBytes >= 64<<10 && st.ForwardSent >= 64<<10) || !time.Now().Before(deadline) {
+			return st
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// heldWriteConn lets the echo arrive while the forward Write has not yet
+// returned to the counter update. Only the test controls when it returns.
+type heldWriteConn struct {
+	*net.TCPConn
+	wrote   chan struct{}
+	release chan struct{}
+}
+
+func (c heldWriteConn) Write(b []byte) (int, error) {
+	n, err := c.TCPConn.Write(b)
+	close(c.wrote)
+	<-c.release
+	return n, err
+}
+
+func TestSentLagsReadEchoBeforeCounter(t *testing.T) {
+	// Use the real backward relay to read the echo. Its destination is a
+	// connected client socket, as in an accepted proxy connection.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	downstream, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = downstream.Close() }()
+	upstream, err := net.Dial("tcp", echo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := &pair{a: downstream.(*net.TCPConn), b: upstream.(*net.TCPConn), done: make(chan struct{})}
+	p := &Proxy{}
+	p.cur.Store(&state{fault: Fault{Kind: None}, changed: make(chan struct{})})
+	ch := make(chan chunk, 2)
+	ch <- chunk{data: make([]byte, 64<<10), s: p.cur.Load(), due: time.Now()}
+	ch <- chunk{eof: true}
+	held := heldWriteConn{TCPConn: q.b, wrote: make(chan struct{}), release: make(chan struct{})}
+	written, relayed := make(chan struct{}), make(chan struct{})
+	go func() { p.write(q, Forward, held, ch); close(written) }()
+	go func() { p.relay(q, Backward, q.b, q.a, &p.bwd); close(relayed) }()
+	release := sync.OnceFunc(func() { close(held.release) })
+	defer func() {
+		release()
+		q.close(false)
+		<-written
+		<-relayed
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	select {
+	case <-held.wrote:
+	case <-time.After(time.Until(deadline)):
+		t.Fatal("forward write did not complete")
+	}
+	for p.Stats().BackwardBytes < 64<<10 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if st := p.Stats(); st.BackwardBytes != 64<<10 || st.ForwardSent != 0 {
+		t.Fatalf("forced echo before counter update: %+v", st)
+	}
+	calls := 0
+	st := waitSentAndRead(func() Stats {
+		calls++
+		// The first snapshot must have the full echo but no ForwardSent.
+		// Only asking again releases the write, so the old wait condition
+		// deterministically returns too early, regardless of scheduling.
+		if calls == 2 {
+			release()
+		}
+		return p.Stats()
+	}, deadline)
+	if st.ForwardSent != 64<<10 || st.BackwardBytes != 64<<10 {
+		t.Fatalf("wait returned before the forward counter caught up: %+v", st)
 	}
 }
 
