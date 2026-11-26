@@ -429,13 +429,16 @@ func TestSentLagsReadEchoBeforeCounter(t *testing.T) {
 	calls := 0
 	st := waitSentAndRead(func() Stats {
 		calls++
-		// The first snapshot must have the full echo but no ForwardSent.
-		// Only asking again releases the write, so the old wait condition
-		// deterministically returns too early, regardless of scheduling.
+		// Every snapshot up to the second has the full echo but no
+		// ForwardSent: the second is taken before it releases the write.
+		// A wait that reads twice, as main's loop and its final read did,
+		// sees ForwardSent 0 either way, whatever the scheduling; a wait
+		// for both counters asks again and sees the write counted.
+		st := p.Stats()
 		if calls == 2 {
 			release()
 		}
-		return p.Stats()
+		return st
 	}, deadline)
 	if st.ForwardSent != 64<<10 || st.BackwardBytes != 64<<10 {
 		t.Fatalf("wait returned before the forward counter caught up: %+v", st)
