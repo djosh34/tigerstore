@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -804,7 +805,19 @@ func independentWithSteps(res *Result, report func(int64, time.Duration), budget
 		if measure {
 			cpuFrom, cpuErr = simrun.CPUTime()
 		}
+		var profile strings.Builder
+		var profileErr error
+		if mode == check.FromRevisions {
+			profileErr = pprof.StartCPUProfile(&profile)
+		}
 		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
+		if mode == check.FromRevisions {
+			if profileErr == nil {
+				pprof.StopCPUProfile()
+				simrun.Artifact(filepath.Join("sim-out", "event-evidence", "revision.pprof"), []byte(profile.String()))
+			}
+			simrun.Artifact(filepath.Join("sim-out", "event-evidence", "certificate.json"), check.EventCertificateMeasurements())
+		}
 		if measure {
 			// Timing is diagnostic: a failed counter must not change a
 			// check's verdict. Zero means the counter was unavailable.

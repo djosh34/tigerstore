@@ -1839,6 +1839,7 @@ func (r *revisionOrder) write(rev int64) bool {
 			return false
 		}
 		if cert.all {
+			measureEventCertificate(rev, len(cands), cert)
 			if r.testCertificate != nil {
 				r.testCertificate(rev, cert, cands)
 			}
