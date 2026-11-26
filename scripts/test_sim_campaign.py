@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 spec = importlib.util.spec_from_file_location("sim_campaign", Path(__file__).with_name("sim-campaign.py"))
@@ -111,7 +112,7 @@ class SummaryTests(unittest.TestCase):
                 # Real -test.v order: parent verdict, then buffered subtests.
                 text += f"--- PASS: {test} (1.00s)\n"
                 text += "".join(f"    --- PASS: {test}/{seed} (0.01s)\n" for seed in seeds)
-                (directory / f"seeds-{p}.log").write_text(text)
+                (directory / f"seeds-{job['shard']}-{p}.log").write_text(text)
 
     def check(self, status):
         out = io.StringIO()
@@ -121,7 +122,7 @@ class SummaryTests(unittest.TestCase):
     def test_missing_seed_and_job_without_artifact(self):
         self.logs()
         # Seed 390 started but never finished. Job 1 uploaded nothing.
-        (self.artifacts / "sim-campaign-logs-0/seeds-1.log").write_text("=== RUN   TestCampaign/390\n")
+        (self.artifacts / "sim-campaign-logs-0/seeds-0-1.log").write_text("=== RUN   TestCampaign/390\n")
         for path in (self.artifacts / "sim-campaign-logs-1").iterdir():
             path.unlink()
         (self.artifacts / "sim-campaign-logs-1").rmdir()
@@ -139,14 +140,14 @@ class SummaryTests(unittest.TestCase):
         log = "=== RUN   TestCampaign\n" + "".join(result("TestCampaign", seed) for seed in range(1, 61))
         log += "=== RUN   TestCampaign/61\n"
         self.assertNotIn("--- PASS:", log)
-        (directory / "seeds-0.log").write_text(log)
+        (directory / "seeds-0-0.log").write_text(log)
         text = self.check(1)
         self.assertIn("60 of 100 seeds reported; 40 missing", text)
         self.assertIn("Missing seeds 61–100: seeds (0), process 0", text)
 
     def test_known_failure_skip_counts_but_other_skips_do_not(self):
         self.logs()
-        path = self.artifacts / "sim-campaign-logs-0/seeds-1.log"
+        path = self.artifacts / "sim-campaign-logs-0/seeds-0-1.log"
         path.write_text(result("TestCampaign", 390, "SKIP"))
         self.check(1)
         path.write_text("=== RUN   TestCampaign/390\n"
@@ -158,7 +159,7 @@ class SummaryTests(unittest.TestCase):
 
     def test_aged_image_and_forks_are_not_driver_completion(self):
         self.logs()
-        path = self.artifacts / "sim-campaign-logs-0/seeds-1.log"
+        path = self.artifacts / "sim-campaign-logs-0/seeds-0-1.log"
         image = ("=== RUN   TestCampaign/390\n"
                  "    campaign_test.go:132: === RUN   TestCampaign/390\n"
                  "        --- PASS: TestCampaign/390 (1.00s)\n"
@@ -175,7 +176,7 @@ class SummaryTests(unittest.TestCase):
         self.plan = campaign.plan("TestCampaignKindShares", 2404, 1, [])
         directory = self.artifacts / "sim-campaign-logs-0"
         directory.mkdir()
-        (directory / "seeds-0.log").write_text(
+        (directory / "seeds-0-0.log").write_text(
             "=== RUN   TestCampaignKindShares/2404\n"
             "--- PASS: TestCampaignKindShares (0.00s)\n"
             "    --- PASS: TestCampaignKindShares/2404 (0.00s)\n")
@@ -183,7 +184,7 @@ class SummaryTests(unittest.TestCase):
 
     def test_fail_is_reported_and_test_variants_do_not_match(self):
         self.logs()
-        path = self.artifacts / "sim-campaign-logs-0/seeds-1.log"
+        path = self.artifacts / "sim-campaign-logs-0/seeds-0-1.log"
         path.write_text(result("TestCampaign", 390, "FAIL"))
         self.check(0)  # The workflow separately propagates seed-job failure.
         for test in ["TestCampaignShapeSeeds", "TestCampaignOther", "TestCampaign/variant"]:
@@ -241,9 +242,9 @@ class RunnerTests(unittest.TestCase):
             with (root / "runner.log").open("w") as output:
                 checked = subprocess.run(["bash", str(Path(__file__).with_name("sim-campaign.sh"))],
                                          env=dict(os.environ, GITHUB_WORKSPACE=str(root), RUNNER_TEMP=str(root / "out"),
-                                                  TEST="TestCampaign", PROCESSES=json.dumps(processes)),
+                                                  TEST="TestCampaign", SHARD="0", PROCESSES=json.dumps(processes)),
                                          stdout=output, stderr=output, timeout=10)
-            return checked.returncode, (root / "out/seeds-0.log").read_text(), (root / "runner.log").read_text()
+            return checked.returncode, (root / "out/seeds-0-0.log").read_text(), (root / "runner.log").read_text()
 
     def test_binary_exiting_zero_without_a_seed_fails_the_job(self):
         process = campaign.plan("TestCampaign", 1, 1, [])["jobs"][0]["processes"]
@@ -260,6 +261,71 @@ class RunnerTests(unittest.TestCase):
         budgets = [line.split()[1:] for line in log.splitlines() if line.startswith("budget ")]
         self.assertEqual([int(b[1]) for b in budgets], [83, 38])
         self.assertEqual([int(b[2]) for b in budgets], [1, 0])
+
+
+class RecheckTests(unittest.TestCase):
+    def test_single_artifact_flat_layout_uses_shard_filename(self):
+        plan = campaign.plan("TestSeeds", 1, 1, [])
+        with tempfile.TemporaryDirectory() as temp:
+            artifacts = Path(temp)
+            (artifacts / "seeds-0-0.log").write_text(result("TestSeeds", 1))
+            out = io.StringIO()
+            self.assertEqual(campaign.summary(plan, artifacts, out), 0)
+            self.assertIn("1 of 1 seeds reported", out.getvalue())
+
+    def test_multiple_artifact_layout_uses_shard_filenames(self):
+        plan = campaign.plan("TestSeeds", 1, 5, [])
+        with tempfile.TemporaryDirectory() as temp:
+            artifacts = Path(temp)
+            for job in plan["jobs"]:
+                directory = artifacts / f"sim-campaign-logs-{job['shard']}"
+                directory.mkdir()
+                for p, process in enumerate(job["processes"]):
+                    log = "".join(result("TestSeeds", seed) for span in process
+                                  for seed in range(span["first"], span["first"] + span["seeds"]))
+                    (directory / f"seeds-{job['shard']}-{p}.log").write_text(log)
+            out = io.StringIO()
+            self.assertEqual(campaign.summary(plan, artifacts, out), 0)
+            self.assertIn("5 of 5 seeds reported", out.getvalue())
+
+    def test_only_surviving_artifact_keeps_nonzero_shard_identity(self):
+        plan = campaign.plan("TestCampaignShapeSeeds", 7, 2, [7, 8])
+        with tempfile.TemporaryDirectory() as temp:
+            artifacts = Path(temp)
+            (artifacts / "seeds-1-0.log").write_text(result("TestCampaignShapeSeeds", 8))
+            out = io.StringIO()
+            self.assertEqual(campaign.summary(plan, artifacts, out), 1)
+            self.assertIn("1 of 2 seeds reported; 1 missing", out.getvalue())
+            self.assertIn("Missing seeds 7: seeds (0), process 0", out.getvalue())
+            self.assertNotIn("Missing seeds 8:", out.getvalue())
+
+    def test_failed_download_fails_even_with_complete_extracted_logs(self):
+        # Execute the workflow's actual final shell, not a copy of its
+        # status logic. Readable results must not forgive a digest error.
+        root = Path(__file__).resolve().parent.parent
+        workflow = (root / ".github/workflows/sim-campaign.yml").read_text()
+        step = workflow.split("      - name: Require a result for every requested seed\n", 1)[1]
+        shell = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        plan = campaign.plan("TestSeeds", 1, 1, [])
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp) / "campaign/sim-campaign-logs-0"
+            directory.mkdir(parents=True)
+            # Both names let this test reproduce the old green result
+            # before the independent shard-filename change is applied.
+            for name in ["seeds-0.log", "seeds-0-0.log"]:
+                (directory / name).write_text(result("TestSeeds", 1))
+            for outcome, expected in [("success", 0), ("failure", 1)]:
+                checked = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", shell], cwd=root,
+                                         env=dict(os.environ, TEST="TestSeeds", FIRST="1", SEEDS="1",
+                                                  MATRIX=json.dumps(dict(include=plan["jobs"])),
+                                                  PLAN_RESULT="success", SEEDS_RESULT="success",
+                                                  DOWNLOAD_RESULT=outcome, RUNNER_TEMP=temp,
+                                                  GITHUB_STEP_SUMMARY=str(Path(temp) / "summary.md")),
+                                         capture_output=True, text=True, timeout=10)
+                self.assertIn("1 of 1 seeds reported", checked.stdout)
+                self.assertEqual(checked.returncode, expected, checked.stdout + checked.stderr)
+        self.assertIn("id: download", workflow)
+        self.assertIn("DOWNLOAD_RESULT: ${{ steps.download.outcome }}", step)
 
 
 if __name__ == "__main__":

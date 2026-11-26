@@ -89,6 +89,7 @@ jobs:
         env:
           TEST: ${{ inputs.test }}
           PROCESSES: ${{ toJSON(matrix.processes) }}
+          SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
         run: bash scripts/sim-campaign.sh
       # Even successful seeds retain hashes for replay. A dead runner may
@@ -112,6 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        id: download
         continue-on-error: true
         with:
           pattern: sim-campaign-logs-*
@@ -120,6 +122,7 @@ jobs:
         env:
           SEEDS_RESULT: ${{ needs.seeds.result }}
           PLAN_RESULT: ${{ needs.plan.result }}
+          DOWNLOAD_RESULT: ${{ steps.download.outcome }}
           TEST: ${{ inputs.test }}
           FIRST: ${{ inputs.first }}
           SEEDS: ${{ inputs.seeds }}
@@ -129,10 +132,10 @@ jobs:
           set -uo pipefail
           python3 scripts/sim-campaign.py summary --artifacts "$RUNNER_TEMP/campaign" | tee -a "$GITHUB_STEP_SUMMARY"
           status=$?
-          # Completeness is not success: a reported FAIL or a failed
-          # aggregate checker must still fail the campaign.
-          if [ "$PLAN_RESULT" != success ] || [ "$SEEDS_RESULT" != success ]; then
-            echo "Plan: $PLAN_RESULT; seed jobs: $SEEDS_RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Completeness is not success: failed seed jobs, aggregate
+          # checks, and download/digest validation must remain failures.
+          if [ "$PLAN_RESULT" != success ] || [ "$SEEDS_RESULT" != success ] || [ "$DOWNLOAD_RESULT" != success ]; then
+            echo "Plan: $PLAN_RESULT; seed jobs: $SEEDS_RESULT; download: $DOWNLOAD_RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
             status=1
           fi
           exit "$status"

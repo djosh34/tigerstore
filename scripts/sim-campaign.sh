@@ -25,7 +25,7 @@ for ((p=0; p<$(jq length <<<"$PROCESSES"); p++)); do
       SIM_SEED=$seed SIM_SEEDS=$n SIM_TWICE=$twice "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run "^$TEST\$" -test.v -test.timeout 340m || status=1
     done < <(jq -r --argjson p "$p" '.[$p][] | "\(.first) \(.seeds) \(.twice)"' <<<"$PROCESSES")
     exit "$status"
-  ) >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
+  ) >"$RUNNER_TEMP/seeds-$SHARD-$p.log" 2>&1 &
   pids+=($!)
   procs+=("$p")
 done
@@ -35,9 +35,9 @@ for pid in "${pids[@]}"; do
 done
 # Wait for every process before replaying any failures.
 for p in "${procs[@]}"; do
-  grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50 || true
-  PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -gosim || status=1
-  if ! grep -qE "^simrun: seed $TEST/[0-9]+ (PASS|FAIL|SKIP known-failure)\$" "$RUNNER_TEMP/seeds-$p.log"; then
+  grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$SHARD-$p.log" | head -50 || true
+  PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$SHARD-$p.log" -gosim || status=1
+  if ! grep -qE "^simrun: seed $TEST/[0-9]+ (PASS|FAIL|SKIP known-failure)\$" "$RUNNER_TEMP/seeds-$SHARD-$p.log"; then
     echo "process $p reported no seed of $TEST"
     status=1
   fi

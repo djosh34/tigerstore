@@ -96,10 +96,15 @@ def summary(campaign, artifacts, out):
     for job in campaign["jobs"]:
         shard = job["shard"]
         for p, ranges in enumerate(job["processes"]):
-            path = artifacts / f"sim-campaign-logs-{shard}" / f"seeds-{p}.log"
+            # A single matching artifact extracts flat; multiple ones
+            # get artifact directories. Identity belongs to the filename,
+            # never to the extraction layout or number of surviving jobs.
+            paths = list(artifacts.rglob(f"seeds-{shard}-{p}.log"))
+            if len(paths) > 1:
+                raise ValueError(f"duplicate log for seeds ({shard}), process {p}")
             done = set()
-            if path.exists():
-                with path.open(errors="replace") as log:
+            if paths:
+                with paths[0].open(errors="replace") as log:
                     done = reported(log, campaign["test"])
             for span in ranges:
                 first, end = span["first"], span["first"] + span["seeds"]

@@ -371,11 +371,15 @@ func driverVerdict(t *testing.T, part, name, status string) {
 // own PASS/FAIL lines may remain buffered until the parent test ends.
 func seedSubtest(t *testing.T, test string, seed uint64, knownFailure bool, body func(*testing.T)) bool {
 	t.Helper()
-	skipped := false
+	ran, skipped := false, false
 	passed := t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+		ran = true
 		t.Cleanup(func() { skipped = t.Skipped() })
 		body(t)
 	})
+	if !ran {
+		return passed // A filtered-out subtest is not a completed seed.
+	}
 	status := "PASS"
 	if !passed {
 		status = "FAIL"
@@ -385,7 +389,13 @@ func seedSubtest(t *testing.T, test string, seed uint64, knownFailure bool, body
 			status += " known-failure"
 		}
 	}
-	driverVerdict(t, "seed", fmt.Sprintf("%s/%d", test, seed), status)
+	part := "seed"
+	if os.Getenv("SIM_FORK") != "" {
+		// Image-only and single-fork replays are not whole-seed results,
+		// even when all the work selected by the replay passed.
+		part = "partial"
+	}
+	driverVerdict(t, part, fmt.Sprintf("%s/%d", test, seed), status)
 	return passed
 }
 
@@ -447,11 +457,6 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 	env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return strings.HasPrefix(v, "SIM_FORK=") })
 	r.Env = append(slices.Clone(env), "SIM_FORK=image")
 	path, hash, ok := runImage(t, r, double)
-	status := "PASS"
-	if !ok {
-		status = "FAIL"
-	}
-	driverVerdict(t, "image", fmt.Sprintf("%s/%d", r.Test, r.Seed), status)
 	if !ok || imageOnly {
 		return false
 	}
@@ -496,6 +501,15 @@ func imageFork[T any](t *testing.T, r Run, k int, double bool, add func(uint64, 
 // caller keeps no copy of the image's bytes in memory.
 func runImage(t *testing.T, r Run, double bool) (path, hash string, ok bool) {
 	t.Helper()
+	// ok stays false on a fatal exit, including an image-SHA mismatch.
+	// Report only after the image's full validation and replay checks.
+	defer func() {
+		status := "FAIL"
+		if ok {
+			status = "PASS"
+		}
+		driverVerdict(t, "image", fmt.Sprintf("%s/%d", r.Test, r.Seed), status)
+	}()
 	// The run writes its image straight to a file of t's (CreateOutput),
 	// which holds it whole only on disk: as an artifact a large image
 	// came back in memory several times over (#794's TestAgedBulk).
@@ -522,6 +536,7 @@ func runImage(t *testing.T, r Run, double bool) (path, hash string, ok bool) {
 		hash2, _ := fileHash(t, path+"-again")
 		if err := os.Remove(path + "-again"); err != nil {
 			t.Error(err)
+			return "", "", false
 		}
 		if hash2 != hash || !bytes.Equal(again.Artifacts["hashes"], hashes) {
 			t.Errorf("the image of seed %d played out differently the second time: SHA-256 %s, then %s\n%s\n%s\nreplay: %s",
@@ -576,10 +591,13 @@ func twoRuns(t *testing.T, r Run) *Result {
 	differ := false
 	switch {
 	case second.Failed:
+		first.Failed = true
 		keep(t, second.Artifacts, "")
 	case len(hashes) == 0:
+		first.Failed = true
 		t.Errorf("seed %d left no hashes to compare", r.Seed)
 	case string(hashes) != string(second.Artifacts["hashes"]):
+		first.Failed = true
 		differ = true
 		for _, d := range saved {
 			t.Logf("the run is saved in %s", d)
@@ -592,6 +610,7 @@ func twoRuns(t *testing.T, r Run) *Result {
 	if !differ {
 		for _, d := range saved {
 			if err := os.RemoveAll(d); err != nil {
+				first.Failed = true
 				t.Error(err)
 			}
 		}
