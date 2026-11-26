@@ -83,11 +83,14 @@ func (z sizes) worst(budget int64, followers int) int64 {
 
 // fetchWorkMax counts the second fetch buffer, separate from the kept
 // cache: in-flight reads and results not yet taken by the loop. They fit
-// fetchedMax, except for one batch alone. A consumer stops at oneShot
-// (at most the lone client's share), plus the last value; a watch may
-// also read that event's value before it. Values fit maxRequestBytes;
-// gRPC's extra overhead in maxMsg holds no extra value bytes. Count both
-// values in the overshoot, not just oneShot or the ordinary share.
+// fetchedMax, except for one batch alone. Consumers count fetchCharge,
+// including per-entry work, toward oneShot (at most the lone client's
+// share). A piece stops before its next record/event, except for its
+// first, and at fetchEntries values. A held reply is at most maxMsg;
+// its capped metadata and payload rounding fit this allowance too.
+// The two maxRequestBytes values cover a whole event and its previous
+// value alone, not an unbounded array of one-byte values. This keeps
+// the ruled 94/149/206 MiB minimums unchanged (#887).
 func fetchWorkMax(budget int64) int64 {
 	return max(fetchedMax(budget), max(maxMsg, sizeFor(budget).connOut(1))+2*maxRequestBytes)
 }

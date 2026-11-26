@@ -138,13 +138,18 @@ type store struct {
 	// the loop would wait on the disk for is not read: it goes to away,
 	// and the read fails with errAway, to be served again once the
 	// value was fetched off the loop into fetched (fetch.go).
-	noWait  bool
-	away    []logValue
-	fetched map[int64]fetchedValue
-	// fetchedBytes is what fetched holds, and fetchedOrder its values by
-	// when they came, oldest first (keepFetched, trimFetched).
+	noWait bool
+	// planValues records every value, including resident ones, for a
+	// cold range's complete plan at a held revision (fetch.go).
+	planValues bool
+	away       []logValue
+	fetched    map[int64]fetchedValue
+	// fetchedBytes charges payload, allocation rounding and per-entry
+	// state, not payload alone. fetchedOrder has the values by when they
+	// came, oldest first (keepFetched, trimFetched).
 	fetchedBytes int64
 	fetchedOrder []fetchedAt
+	fetchedPeak  int // map/order high-water mark, compacted after eviction
 	// bad is the first value read back that did not match its checksum:
 	// the loop stops on it, and no read serves it (#708).
 	bad error
@@ -360,6 +365,9 @@ func (st *store) live(id uint32) ([]byte, error) {
 	if k.create == 0 {
 		return nil, nil
 	}
+	if st.planValues && k.vlen > 0 {
+		return nil, st.awayValue(k.voff, k.vlen, k.vsum)
+	}
 	if k.rec == 0 {
 		return st.load(id)
 	}
@@ -448,6 +456,9 @@ func checkValue(v []byte, off int64, sum uint32) error {
 // them against sum. The first value that does not check stops the node
 // (st.bad).
 func (st *store) readValue(off int64, n, sum uint32) ([]byte, error) {
+	if st.planValues && n > 0 {
+		return nil, st.awayValue(off, n, sum)
+	}
 	var val []byte
 	var err error
 	if f, ok := st.fetched[off]; ok && len(f.val) == int(n) {
@@ -456,7 +467,7 @@ func (st *store) readValue(off int64, n, sum uint32) ([]byte, error) {
 		val, err = st.readLog(off, int(n))
 	}
 	if errors.Is(err, errAway) {
-		st.away = append(st.away, logValue{off: off, len: n, sum: sum})
+		err = st.awayValue(off, n, sum)
 	}
 	if err != nil {
 		return nil, err
@@ -468,6 +479,18 @@ func (st *store) readValue(off int64, n, sum uint32) ([]byte, error) {
 		return nil, err
 	}
 	return val, nil
+}
+
+// awayValue records one value to fetch. Bound the metadata as well as
+// the payload. Range consumers send larger plans in pieces; a held
+// write whose reply cannot be built aborts its stream, never reports a
+// refusal for a write already applied.
+func (st *store) awayValue(off int64, n, sum uint32) error {
+	if len(st.away) >= fetchEntries {
+		return errBig
+	}
+	st.away = append(st.away, logValue{off: off, len: n, sum: sum})
+	return errAway
 }
 
 // logValue is a value the store names in the log.

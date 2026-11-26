@@ -108,7 +108,7 @@ func (n *node) waitRoom(c *client, s *stream, msg []byte, body int) {
 	// Its request, kept, counts in the client's pool (B9).
 	c.growOut(len(msg))
 	c.heldCounted += int64(len(msg))
-	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), body: body}
+	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), c: c, body: body}
 	if n.st != nil {
 		r.tag, r.rev, r.compactRev = n.st.tag, n.st.rev, n.st.compactRev
 	}
@@ -183,6 +183,11 @@ func (n *node) serveRoomWait() {
 	for _, r := range reads {
 		c, s := n.clientOf(r.h)
 		if c == nil {
+			if r.c != nil {
+				r.c.growOut(-len(r.msg))
+				r.c.heldCounted -= int64(len(r.msg))
+				r.c.roomWaiters--
+			}
 			continue
 		}
 		if r.tag != nil && r.tag == n.st.tag && r.rev == n.st.rev && r.compactRev == n.st.compactRev {
@@ -417,8 +422,11 @@ func (n *node) stepHeld(hr *heldReply) bool {
 			continue
 		}
 		if err != nil || rec == nil {
-			// Never, as its states are held.
+			// A held state cannot vanish. A fetch plan may nevertheless
+			// exceed the per-entry work cap: abort, never refuse a write
+			// already applied, and leave no partial scratch plan behind.
 			st.noWait = false
+			st.away = nil
 			n.abortBig(c, s)
 			return false
 		}

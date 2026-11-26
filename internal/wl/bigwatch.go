@@ -81,6 +81,29 @@ func (n *node) revSize(x *watcher, j int) (int, error) {
 	return size, err
 }
 
+// revFetchFits reports whether a revision's value work fits one batch.
+// The wire size alone does not bound metadata for many tiny values.
+func (n *node) revFetchFits(x *watcher, j int) (bool, error) {
+	st := n.st
+	work, entries := int64(0), 0
+	err := n.eachRevEvent(st, x, j, 0, func(_ int, ev bigEv) bool {
+		if !ev.ch.del {
+			if s, ok := st.putStateAt(ev.ch.key, ev.ch.rev); ok && s.vlen > 0 {
+				work += fetchCharge(s.vlen)
+				entries++
+			}
+		}
+		if ev.prev {
+			if s, ok := st.stateAt(ev.ch.key, ev.ch.rev-1); ok && s.vlen > 0 {
+				work += fetchCharge(s.vlen)
+				entries++
+			}
+		}
+		return work <= n.oneShot() && entries <= fetchEntries
+	})
+	return work <= n.oneShot() && entries <= fetchEntries, err
+}
+
 // revStart is where the changes of revision rev begin in st's index.
 func revStart(st *store, rev int64) int {
 	j, _ := slices.BinarySearchFunc(st.changes, rev, func(ch change, r int64) int { return cmp.Compare(ch.rev, r) })
@@ -417,11 +440,12 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 	var evs []pieceEv
 	size := 0
 	err := n.eachRevEvent(st, &b.x, j, b.next, func(off int, ev bigEv) bool {
-		if off >= b.end || len(evs) > 0 && size+ev.size > target {
+		cost := int(fetchCharge(uint32(ev.size)) + fetchCharge(0)) // up to two values
+		if off >= b.end || len(evs) >= fetchEntries/2 || len(evs) > 0 && size+cost > target {
 			return false
 		}
 		evs = append(evs, pieceEv{off, ev})
-		size += ev.size
+		size += cost
 		return true
 	})
 	if err != nil || len(evs) == 0 {
@@ -441,6 +465,7 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 				continue
 			} else if err != nil || recs[i].kv == nil {
 				st.noWait = false
+				st.away = nil
 				n.abortBigWatch(c, s)
 				return false
 			}
@@ -451,6 +476,7 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 				continue
 			} else if err != nil || recs[i].prev == nil {
 				st.noWait = false
+				st.away = nil
 				n.abortBigWatch(c, s)
 				return false
 			}

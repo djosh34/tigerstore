@@ -465,11 +465,11 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 	b.piece = b.piece[:0]
 	size := 0
 	n.walk(b, func(id uint32, sz int) bool {
-		if int64(len(b.piece)) >= b.msgRecs || len(b.piece) > 0 && size+sz > target {
+		if int64(len(b.piece)) >= b.msgRecs || len(b.piece) >= fetchEntries || len(b.piece) > 0 && size+int(fetchCharge(uint32(sz))) > target {
 			return false
 		}
 		b.piece = append(b.piece, id)
-		size += sz
+		size += int(fetchCharge(uint32(sz)))
 		return true
 	})
 	if len(b.piece) == 0 {
@@ -495,6 +495,7 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		}
 		if err != nil || rec == nil {
 			st.noWait = false
+			st.away = nil
 			clear(recs)
 			n.kvs = recs[:0]
 			n.abortBig(c, s)

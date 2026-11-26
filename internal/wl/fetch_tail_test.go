@@ -107,6 +107,66 @@ func TestValueFetchesWaitForTheLoopToTakeThePreviousBatch(t *testing.T) {
 	}
 }
 
+// A complete cold plan includes values still in the WAL's stage. They
+// must be copied on the loop, after admission, not read from an unwritten
+// disk range or from a mutable stage by an off-loop goroutine.
+func TestACompletePlanCopiesStageValuesBeforeLeavingTheLoop(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	st, log := newTestStore(t)
+	defer func() { _ = st.close() }()
+	n.st = st
+	st.setBudget(96<<20, 0)
+	n.sizes = sizeFor(st.budget)
+	n.connOut = n.sizes.connOut(1)
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	c.flow.conn = 0
+	putValue(t, st, log, "k", "stage")
+	dropRecords(st)
+	w := &wal{stage: make([]byte, 4096), stageLen: 4096, off: int64(len(log.b))}
+	copy(w.stage, log.b)
+	n.wal, st.log = w, w // no on-disk bytes exist yet
+	sh := &heldFetchShell{}
+	n.shell = sh
+	msg := appendBytesField(nil, 1, []byte("k"))
+	n.awaitValues(mkHandle(c, s.id), msg)
+	if len(sh.work) != 1 {
+		t.Fatal("the complete plan did not start its admitted handoff")
+	}
+	take := sh.work[0]()
+	clear(w.stage) // the result must own its bytes, not alias the stage
+	if err := take(); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.awayReads) != 0 || len(c.flow.held) == 0 {
+		t.Fatal("the stage-backed cold read did not finish")
+	}
+	var reply pb.RangeResponse
+	if err := proto.Unmarshal(c.flow.held[0].data[5:], &reply); err != nil {
+		t.Fatal(err)
+	}
+	if len(reply.Kvs) != 1 || string(reply.Kvs[0].Value) != "stage" {
+		t.Fatal("the complete plan read disk or borrowed the mutable stage")
+	}
+}
+
+// A helper completion between a stage choice and the memory copy must
+// not make that copy read disk on the loop. No disk bytes exist here.
+func TestAStageChoiceDoesNotFallBackToDisk(t *testing.T) {
+	w := &wal{stage: make([]byte, 4096), stageLen: 4096, off: 4096}
+	copy(w.stage, "stage")
+	end := w.durableEnd()
+	w.done.Store(4096) // the helper advances after the caller's choice
+	if end != 0 {
+		t.Fatal("the test did not choose the stage")
+	}
+	p := make([]byte, 5)
+	if err := w.readStage(p, 0); err != nil || string(p) != "stage" {
+		t.Fatalf("the memory copy fell back to disk: %q, %v", p, err)
+	}
+}
+
 // Fetches whose bytes fit in the share still run together. A batch past
 // it runs alone, and releasing a result on the loop starts the next.
 func TestValueFetchesUseTheirShareAndLetOneLargerBatchThrough(t *testing.T) {
@@ -114,22 +174,26 @@ func TestValueFetchesUseTheirShareAndLetOneLargerBatchThrough(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st, _ := newTestStore(t)
 			defer func() { _ = st.close() }()
-			st.setBudget(32*128, 0) // 128 bytes of fetched values
+			st.setBudget(32*2*(fetchCharge(64)+fetchBatchOverhead), 0) // two complete handoffs
 			sh := &heldFetchShell{}
 			n := &node{st: st, wal: &wal{}, shell: sh, fetching: map[int64]bool{}}
-			for i := range 3 {
+			jobs := 3
+			if large {
+				jobs = 2
+			}
+			for i := range jobs {
 				size := uint32(64)
 				if large && i == 0 {
-					size = 256
+					size = 8192
 				}
 				st.away = []logValue{{off: int64(i * 1024), len: size}}
 				n.fetchAway()
 			}
-			want, bytes := 2, int64(128)
+			want, bytes := 2, 2*(fetchCharge(64)+fetchBatchOverhead)
 			if large {
-				want, bytes = 1, 256
+				want, bytes = 1, fetchCharge(8192)+fetchBatchOverhead
 			}
-			if len(sh.work) != want || n.fetchBytes != bytes || len(n.fetchQueue) != 3-want {
+			if len(sh.work) != want || n.fetchBytes != bytes || len(n.fetchQueue) != jobs-want {
 				t.Fatalf("%d fetches of %d bytes, %d queued", len(sh.work), n.fetchBytes, len(n.fetchQueue))
 			}
 			for len(sh.work) > 0 {
@@ -142,7 +206,7 @@ func TestValueFetchesUseTheirShareAndLetOneLargerBatchThrough(t *testing.T) {
 					t.Fatal("a completed batch was kept past the share")
 				}
 			}
-			if n.fetchBytes != 0 || len(n.fetchQueue) != 0 || len(n.fetching) != 0 {
+			if n.fetchBytes != 0 || n.fetchPlanBytes != 0 || len(n.fetchQueue) != 0 || len(n.fetching) != 0 {
 				t.Fatal("a fetch stayed queued or counted after every result was taken")
 			}
 		})
@@ -280,5 +344,21 @@ func TestAWaitingRangeChecksItsSizeAgainWhenTheStoreChanges(t *testing.T) {
 				t.Fatal("the reply past its new share and the reserve did not go in pieces")
 			}
 		})
+	}
+}
+
+// Check the actual allocation caps against the ruled minimums. The
+// largest small-value case is a held-reply batch plus both pending plans.
+// A range/watch stops at oneShot plus one value; an event with two large
+// values is taken alone. Per-value rounding adds at most one byte each.
+func TestFetchAllocationCapsFitTheRuledBudget(t *testing.T) {
+	pending := int64(fetchEntries)*(16+64) + 2*256
+	held := int64(replyRoom) + (int64(replyRoom)+7)/8 + int64(fetchEntries)*(fetchEntryOverhead+17) + fetchBatchOverhead
+	for _, budget := range []int64{94 << 20, 96 << 20, 149 << 20, 200 << 20, 206 << 20, 512 << 20, 3 << 30} {
+		one := max(int64(maxMsg), sizeFor(budget).connOut(1))
+		last := fetchCharge(maxRequestBytes)
+		if worst := max(held, one+last+fetchBatchOverhead, 2*last+fetchBatchOverhead) + pending; worst > fetchWorkMax(budget) {
+			t.Fatalf("budget %d: %d bytes of capped work pass the allowance of %d", budget, worst, fetchWorkMax(budget))
+		}
 	}
 }

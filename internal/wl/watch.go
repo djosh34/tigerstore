@@ -628,7 +628,7 @@ func (n *node) syncWatchers() error {
 	if len(w.unsynced) == 0 {
 		return nil
 	}
-	budget := syncBudget{changes: syncChanges, events: syncEvents, bytes: n.syncBytes(), bigAt: -1}
+	budget := syncBudget{changes: min(syncChanges, fetchEntries), events: syncEvents, bytes: n.syncBytes(), bigAt: -1}
 	k := 0
 	for _, i := range w.unsynced {
 		x := &w.ws[i]
@@ -788,13 +788,17 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool
 		}
 		if ch.rev != last && mayPassRoom(x, st.changes, j) {
 			// A revision is sized from its keys' states before any of its
-			// values is read: one past one message's room goes out in
+			// values is read: past the wire or fetch-work bound it goes in
 			// pieces (bigwatch.go, #728).
 			size, err := n.revSize(x, j)
 			if err != nil {
 				return false, err
 			}
-			if size > replyRoom {
+			fits, err := n.revFetchFits(x, j)
+			if err != nil {
+				return false, err
+			}
+			if size > replyRoom || !fits {
 				if away || len(evs) > 0 && !emit(evs) {
 					return false, nil
 				}
@@ -814,7 +818,7 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool
 		// reads them.
 		spend := func() {
 			for _, v := range st.away[a:] {
-				b.bytes -= int64(v.len)
+				b.bytes -= fetchCharge(v.len)
 			}
 			a = len(st.away)
 		}

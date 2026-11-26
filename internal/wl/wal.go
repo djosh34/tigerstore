@@ -1132,13 +1132,26 @@ func (w *wal) read(p []byte, off int64) error {
 		return fmt.Errorf("read %d bytes of the log at %d, past its end %d", len(p), off, w.off)
 	}
 	if off >= w.durableEnd() {
-		for got := 0; got < len(p); {
-			pos := (off + int64(got)) & (w.stageLen - 1)
-			got += copy(p[got:], w.stage[pos:])
-		}
-		return nil
+		return w.readStage(p, off)
 	}
 	return w.readDurable(p, off)
+}
+
+// readStage copies bytes on the loop, after its caller chose the stage.
+// Do not check durableEnd again: the helper may advance it between the
+// choice and the copy, which must not turn a no-wait read into disk I/O.
+func (w *wal) readStage(p []byte, off int64) error {
+	if len(p) == 0 {
+		return nil
+	}
+	if off < 0 || off+int64(len(p)) > w.off {
+		return fmt.Errorf("read %d bytes of the log at %d, past its end %d", len(p), off, w.off)
+	}
+	for got := 0; got < len(p); {
+		pos := (off + int64(got)) & (w.stageLen - 1)
+		got += copy(p[got:], w.stage[pos:])
+	}
+	return nil
 }
 
 // errLogCut is a read of a segment a cut retired, not a damaged value.
@@ -1153,7 +1166,7 @@ var errAway = errors.New("the value is not in memory")
 // fails with errAway where it would wait for the disk.
 func (w *wal) readNoWait(p []byte, off int64) error {
 	if len(p) == 0 || off >= w.durableEnd() {
-		return w.read(p, off)
+		return w.readStage(p, off)
 	}
 	return w.readSegments(p, off, func(fd int, p []byte, off int64) (int, error) {
 		n, err := sysPreadNoWait(fd, p, off)

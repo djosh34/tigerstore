@@ -1049,8 +1049,9 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 		}
 	}
 	// A node behind may be taking a snapshot of the whole store, which
-	// with a large one takes far longer than that: 160 MB under a 137 MiB
-	// budget takes minutes (#809). The restart waits on, a second at a
+	// with a large one takes far longer than that: the historical #809
+	// measurement, 160 MB under a 137 MiB budget (before #887 raised the
+	// minimum), took minutes. The restart waits on, a second at a
 	// time, until the nodes agree and each applied what was applied before,
 	// while a snapshot stream is served or a node applies more: it gives up
 	// after 10 s with neither, past the run's limit of real time, or once

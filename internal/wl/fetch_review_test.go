@@ -115,18 +115,40 @@ func TestOverlappingColdRangesComplete(t *testing.T) {
 // Eight waiters of 65,536 one-byte values held 4 MiB of such lists,
 // uncounted by the 64 KiB fetch, on 5421104d.
 func TestColdRangeWaitersHoldNoPerValueLists(t *testing.T) {
-	st, _ := newTestStore(t)
+	c, first := flowClient(t)
+	n := c.node
+	st, log := newTestStore(t)
 	defer func() { _ = st.close() }()
+	n.st = st
 	st.setBudget(96<<20, 0)
+	st.log = &coldFetchLog{memLog: log}
+	putValue(t, st, log, "cold", "v")
+	dropRecords(st)
 	sh := &heldFetchShell{}
-	n := &node{st: st, shell: sh, fetching: map[int64]bool{}}
+	n.shell = sh
+	c.idx, c.gen = 0, 1
+	n.socks, n.gens = []any{c}, []uint16{1}
+	msg := appendBytesField(nil, 1, []byte("cold"))
 	vs := make([]logValue, 65536)
 	for i := range vs {
 		vs[i] = logValue{off: int64(i), len: 1}
 	}
 	for i := range 8 {
+		s := first
+		if i > 0 {
+			s = c.newStream(uint32(2*i+1), kRange)
+		}
 		st.away = vs
-		n.awaitValues(handle(i), nil)
+		n.awaitValues(mkHandle(c, s.id), msg)
+	}
+	if len(n.awayReads) != 8 || len(sh.work) != 1 {
+		t.Fatalf("%d live waiters and %d fetches, want eight and one", len(n.awayReads), len(sh.work))
+	}
+	if cap(st.away) != 0 {
+		t.Fatal("the waiters retain a discarded per-value scratch array")
+	}
+	if c.heldCounted != 8*int64(len(msg)) {
+		t.Fatal("the live waiters' requests are not counted")
 	}
 	for _, r := range n.awayReads {
 		v := reflect.ValueOf(r)

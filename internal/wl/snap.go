@@ -230,6 +230,9 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	n.fetchTag, n.fetching = st.tag, map[int64]bool{}
 	n.pumpFetch()
 	n.serveAway(false)
+	if err := n.wakeFetchWaits(); err != nil {
+		return err
+	}
 	n.stats.snapsInstalled++
 	n.logf("installed a snapshot at index %d, revision %d, %d keys", meta.GetIndex(), st.rev, st.nkeys)
 	n.simInstallDone(meta.GetIndex())

@@ -223,7 +223,7 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 	if errors.Is(err, errBig) {
 		clear(kvs)
 		n.kvs = kvs[:0]
-		n.startBig(c, s, msg)
+		n.startBig(c, s, n.rangeAgain(r, msg))
 		return
 	}
 	if errors.Is(err, errAway) {
@@ -253,11 +253,17 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.kvs = kvs[:0]
 		if n.cannotFit(int64(5 + body)) {
 			// It could never fit: it goes in pieces (reserve.go).
-			n.startBig(c, s, msg)
+			n.startBig(c, s, n.rangeAgain(r, msg))
 			return
 		}
 		// The reserve has no room for it: it waits, unbuilt (reserve.go).
 		n.waitRoom(c, s, msg, body-sizeBytesField(1, n.hdrSize()))
+		if n.awayServing && r.rev != st.rev {
+			// The cold head read a held revision. Its original current
+			// request may read a newer, smaller reply when room returns;
+			// do not gate that retry on the old revision's size.
+			n.roomWait[len(n.roomWait)-1].tag = nil
+		}
 		return
 	}
 	n.gs.rangesN++
@@ -447,7 +453,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 	var err error
 	away, big := false, false
 	st.tree.scan(r.key, end, func(id uint32) bool {
-		if most > 0 && size > most {
+		if most > 0 && (size > most || taken >= fetchEntries && taken < read) {
 			big = true
 			return false
 		}
@@ -464,6 +470,10 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 		} else {
 			a := len(st.away)
 			rec, err = st.at(id, rev)
+			if errors.Is(err, errBig) {
+				big = true
+				return false
+			}
 			if errors.Is(err, errAway) {
 				// The scan goes on, so that one fetch reads every value the
 				// range lacks, up to most. Only a live state has a value to
@@ -472,7 +482,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 				count++
 				taken++
 				for _, v := range st.away[a:] {
-					size += int64(v.len)
+					size += fetchCharge(v.len)
 				}
 				return true
 			}
@@ -491,6 +501,9 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 	})
 	if big {
 		st.away = st.away[:a0]
+		if a0 == 0 {
+			st.away = nil
+		}
 		return kvs, 0, false, errBig
 	}
 	if away {

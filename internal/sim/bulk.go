@@ -31,7 +31,8 @@ func (s *Sim) bulkLoad() error {
 	n := int(s.cfg.BulkBytes / bulkValue)
 	// The load may take the run's fault window, or a second a value if
 	// that is longer: under a small memory budget it puts about three a
-	// second (TestAgedBulk: 372 of 610 in 120 s, at 137 MiB).
+	// second (a historical TestAgedBulk run: 372 of 610 in 120 s, at
+	// 137 MiB, before #887 raised the minimum).
 	limit := max(s.cfg.Duration, int64(n)*Second)
 	for i := 0; i < n; i += bulkPerTxn {
 		// The bulk client's calls follow one another: the next is called
