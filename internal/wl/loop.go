@@ -139,6 +139,9 @@ func run(ctx context.Context, cfg Config) error {
 	if err := checkNotMain(sys, cfg.DataDir); err != nil {
 		return err
 	}
+	if err := cleanCkptDirAtStart(sys, cfg.DataDir); err != nil {
+		return err
+	}
 	run, err := nextRun(sys, cfg.DataDir)
 	if err != nil {
 		return err

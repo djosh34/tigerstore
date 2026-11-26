@@ -111,6 +111,22 @@ type ckptMeta struct {
 
 func ckptName(index uint64) string { return fmt.Sprintf("%016x.ckpt", index) }
 
+// nextCkptName gives a checkpoint at the newest's own index a new name.
+// Its file and the values in it stay readable until ckptDone, and a
+// removal queued for an older name must never remove a newer file.
+// CURRENT holds the whole name, and cleanup recognizes the .ckpt suffix.
+func nextCkptName(index uint64, prev string) string {
+	name := ckptName(index)
+	if prev == name {
+		return fmt.Sprintf("%016x-%016x.ckpt", index, uint64(1))
+	}
+	var before, seq uint64
+	if _, err := fmt.Sscanf(prev, "%016x-%016x.ckpt", &before, &seq); err == nil && before == index {
+		return fmt.Sprintf("%016x-%016x.ckpt", index, seq+1)
+	}
+	return name
+}
+
 // ckptState is one state of a key, as a checkpoint holds it.
 type ckptState struct {
 	deleted                 bool
@@ -352,12 +368,19 @@ type ckptRun struct {
 	// force cuts the log at prevFrom whatever the store names before it,
 	// which the checkpoint takes in: the log's ring ran low (logring.go).
 	force bool
+	// raftWanted is the independent Raft request this run took in; a
+	// drop for lack of room restores it, not client-only demand.
+	raftWanted bool
 	// snapWaiters are the clients' Snapshots that asked before it started.
 	snapWaiters []handle
 	cut         int64
 	rels        []ckptRel
 	segLive     map[int64]int64
 	relAt       int // the next value to hand the writer
+	// nKeys, keyBytes and nStates count the keys the scan found states
+	// of, their bytes and the states, which the room it needs counts
+	// (ckptNeed).
+	nKeys, keyBytes, nStates int64
 
 	// For the stats line: when it started, the loop's time encoding, and
 	// the bytes of values it takes in and of those it leaves in the log.
@@ -377,7 +400,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 		_ = st.ckpts[gen].Close()
 		st.setCkpt(gen, nil)
 	}
-	name := ckptName(index)
+	name := nextCkptName(index, n.ckptName)
 	tmp := name + ".tmp"
 	st.hold()
 	r := &ckptRun{
@@ -395,6 +418,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	r.leases = st.encodeLeases(nil)
 	r.members = n.encodeMembers(nil)
 	r.snapWaiters, n.snapWaiters = n.snapWaiters, nil
+	r.raftWanted, n.storage.wantCkpt = n.storage.wantCkpt, false
 	dl, _ := st.log.(durableLog)
 	r.w = &ckptWriter{
 		sys: n.sys,
@@ -437,6 +461,11 @@ func (n *node) ckptStep(block bool) error {
 		}
 		r.sent--
 		if c.err != nil {
+			if isNoSpace(c.err) {
+				// The node stays up with NOSPACE raised (#769).
+				n.ckptNoSpace(c.err)
+				return nil
+			}
 			return c.err
 		}
 		if c.last {
@@ -450,6 +479,9 @@ func (n *node) ckptStep(block bool) error {
 		n.turnCkpt.scan = time.Since(t)
 		if r.phase == ckptScanning {
 			return nil
+		}
+		if !n.ckptFits(r) {
+			return nil // dropped, with NOSPACE raised (#769)
 		}
 	}
 	te := time.Now()
@@ -507,6 +539,11 @@ func (n *node) scanKeys(r *ckptRun) {
 		r.states, walked = st.takeStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
 		// What it walked counts, behind a hold a key's long history.
 		states += max(len(r.states), walked)
+		if len(r.states) > 0 {
+			r.nKeys++
+			r.keyBytes += int64(st.keys[r.next].klen)
+			r.nStates += int64(len(r.states))
+		}
 		for i := range r.states {
 			s := &r.states[i]
 			switch {
@@ -616,7 +653,7 @@ func (n *node) ckptDone() error {
 		n.cutLog()
 	}
 	n.st.release()
-	n.startClientSnaps(r.snapWaiters, r.w.name, r.meta)
+	n.startClientSnaps(r.snapWaiters, r.w.name)
 	n.logf("checkpoint at index %d, revision %d: %d bytes, the log from %d and cut at %d, in %v; %d MB of values taken in, %d MB left in the log; the loop encoded for %v, the writer read for %v and wrote for %v",
 		r.meta.index, r.meta.rev, r.at+4, r.logFrom, r.cut, time.Since(r.started).Round(time.Millisecond), r.taken>>20, r.leftInLog>>20,
 		time.Duration(r.encodeNs).Round(time.Millisecond), time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
@@ -652,6 +689,11 @@ func (n *node) abortCkpt() {
 	r.w.closeFile()
 	_ = n.sys.remove(filepath.Join(n.ckptDir, r.w.tmp))
 	n.st.release()
+	// An install replaces the store, not its clients' Snapshot calls.
+	// Restore their checkpoint demand without spending a cut retry.
+	// Shutdown closed its clients first, so pruning drops its waiters.
+	n.snapWaiters = append(n.snapWaiters, r.snapWaiters...)
+	n.pruneSnapWaiters()
 }
 
 // errCkptAborted is a checkpoint's write that stopped at its abort.
@@ -1411,7 +1453,8 @@ func rewriteCkpt(r io.Reader, dst io.Writer, hdr *ckptHeader) error {
 // read reads a value it names in itself or in the log. With hdr, the
 // ConfState and the members are hdr's.
 func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst io.Writer, hdr *ckptHeader) error {
-	cr := &ckptReader{r: bufio.NewReaderSize(r, 1<<20)}
+	src := &fileReader{r: r}
+	cr := &ckptReader{r: bufio.NewReaderSize(src, 1<<20), src: src}
 	bw := bufio.NewWriterSize(dst, 1<<20)
 	crc := uint32(0)
 	out := func(b []byte) {
@@ -1430,9 +1473,14 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		out(b)
 		return err
 	}
-	if err := copyBytes(uint64(len(ckptMagic))); err != nil {
+	magic, err := cr.bytes(uint64(len(ckptMagic)))
+	if err != nil {
 		return err
 	}
+	if string(magic) != string(ckptMagic) {
+		return fmt.Errorf("%w: no magic", ErrCorruptCheckpoint)
+	}
+	out(magic)
 	for range 5 { // index, term, revision, compacted revision, whether compacted
 		if _, err := uv(); err != nil {
 			return err
@@ -1448,7 +1496,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		}
 		cm, err := cr.readMembers()
 		if err != nil {
-			return err
+			return cr.damage(err)
 		}
 		n := &node{members: cm.members, removed: cm.removed, alarms: cm.alarms, downgrade: cm.downgrade, format: cm.format, formatEpoch: cm.formatEpoch, auth: cm.auth}
 		out(n.encodeMembers(nil))
@@ -1462,7 +1510,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		}
 		cm, err := cr.readMembers()
 		if err != nil {
-			return err
+			return cr.damage(err)
 		}
 		cs, err := proto.Marshal(hdr.cs)
 		if err != nil {
@@ -1493,6 +1541,10 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		return err
 	}
 	var val []byte
+	// A value-read error establishes no cut until the source's CRC
+	// checks. Keep the error, but finish parsing the source before
+	// returning it: a damaged offset must not masquerade as a log cut.
+	var valueErr error
 	for {
 		kind, err := cr.ReadByte()
 		if err != nil {
@@ -1506,6 +1558,9 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 			}
 			if binary.LittleEndian.Uint32(sum) != want {
 				return fmt.Errorf("%w: its CRC", ErrCorruptCheckpoint)
+			}
+			if valueErr != nil {
+				return valueErr
 			}
 			out([]byte{ckptEnd})
 			_, _ = bw.Write(binary.LittleEndian.AppendUint32(nil, crc))
@@ -1535,6 +1590,12 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 						return err
 					}
 				}
+				// A value cannot exceed the request that introduced it.
+				// Bound this unverified length before allocating: damage
+				// must not panic or exhaust memory before the CRC checks.
+				if f[5] > maxRequestBytes {
+					return fmt.Errorf("%w: a value of %d bytes exceeds the request limit %d", ErrCorruptCheckpoint, f[5], maxRequestBytes)
+				}
 				at, sum := uint64(0), uint64(0)
 				if f[5] > 0 {
 					if sum, err = cr.uvarint(); err != nil {
@@ -1563,15 +1624,20 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 					}
 					continue
 				}
+				if valueErr != nil {
+					continue
+				}
 				if uint64(cap(val)) < f[5] {
 					val = make([]byte, f[5])
 				}
 				v := val[:f[5]]
 				if err := read(v, inFile, int64(at)); err != nil {
-					return fmt.Errorf("read a value for a follower's checkpoint: %w", err)
+					valueErr = fmt.Errorf("read a value for a follower's checkpoint: %w", err)
+					continue
 				}
 				if err := checkValue(v, int64(at), uint32(sum)); err != nil {
-					return err
+					valueErr = err
+					continue
 				}
 				out(v)
 			}

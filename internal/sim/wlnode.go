@@ -110,7 +110,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		ClientListeners: []net.Listener{s.net.listen(s, p, []string{s.hostName(n.idx) + ":2379"})},
 		PeerListeners:   []net.Listener{s.net.listen(s, p, n.addrs)},
 		ClientTLS:       srvTLS, PeerServerTLS: peerTLS, PeerClientTLS: peerTLS,
-		MemoryBudget: s.cfg.MemoryBytes,
+		MemoryBudget: s.cfg.MemoryBytes, QuotaBackendBytes: s.cfg.Quota,
 		// A checkpoint, which cuts the log behind it, every DiskBudget of
 		// log, as main's node cleans within it.
 		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: cmp.Or(s.cfg.Catchup, wlCatchup), CheckpointChunkKeys: s.cfg.ckptChunkKeys,
@@ -526,6 +526,9 @@ func (h *wlHooks) CheckpointDone(index uint64, name string) {
 		return
 	}
 	s.stats.Checkpoints++
+	if s.stats.DiskGrowths > 0 {
+		s.stats.GrownCheckpoints++
+	}
 	if c, ok := s.ckpts[index]; ok && c.sum != state {
 		s.fail("node %d wrote checkpoint %d with another state than node %d's store had at it", n.id, index, c.node)
 	}
@@ -649,6 +652,38 @@ func (h *wlHooks) SnapshotChunk(to uint64, first bool, p []byte) int {
 	return keep
 }
 
+// NoRoom counts a checkpoint the node held or dropped for lack of room on
+// its disk, with NOSPACE raised: a full disk's effect on a node that
+// stays up (#769). When a disk fault made it, a full disk or a short
+// write, an operator comes to disarm the alarm once the fault is over; a
+// disk too small for the store keeps it up.
+func (h *wlHooks) NoRoom() {
+	s, p := h.s, h.p
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := p.n
+	if n.proc != p {
+		return
+	}
+	s.stats.NoRoom++
+	short := n.shortArmed && !n.disk.ShortPending()
+	if short {
+		n.shortArmed = false
+	}
+	if !n.diskFull && !short {
+		n.noRoomAt = s.now()
+	}
+	switch {
+	case n.disarming:
+	case n.diskFull || short:
+		n.disarming = true
+		s.wg.Go(func() { s.disarmNoSpace(n) })
+	case s.cfg.Faults.GrowDisk && !s.growing:
+		s.growing, n.disarming = true, true
+		s.wg.Go(func() { s.growDisk(n) })
+	}
+}
+
 // SnapshotCut crashes the source of a stream SnapshotChunk cut, once the
 // follower read what it kept.
 func (h *wlHooks) SnapshotCut(to uint64) { h.s.crashSource(h.p, to, h.p.ctx.Done()) }
@@ -730,6 +765,8 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 		return pb.NewClusterClient(conn).MemberRemove(ctx, r)
 	case *pb.MemberListRequest:
 		return pb.NewClusterClient(conn).MemberList(ctx, r)
+	case *pb.AlarmRequest:
+		return pb.NewMaintenanceClient(conn).Alarm(ctx, r)
 	case *pb.LeaseKeepAliveRequest:
 		ka, err := pb.NewLeaseClient(conn).LeaseKeepAlive(ctx)
 		if err != nil {
@@ -922,6 +959,7 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 	n.fenced = true
 	n.why = fmt.Sprintf("refused to start on its damaged disk: %v", err)
 	s.stats.Fenced++
+	s.lastFenceAt = s.now()
 	s.tracef("node %d: fenced: %v", n.id, err)
 	s.down(n)
 	if s.cfg.LoseQuorum && s.quorumLostAt == 0 && s.count(func(m *node) bool { return m.fenced }) > (s.cfg.voters()-1)/2 {

@@ -143,6 +143,7 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 		target = simfs.OpTruncate
 	case 2:
 		d.ShortWrite(s.rng)
+		n.shortArmed = true
 		s.tracef("node %d: disk fault armed: the next write is short", n.id)
 		return
 	case 3:
@@ -152,6 +153,12 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 		target = simfs.OpCreate
 	}
 	s.tracef("node %d: disk fault armed: EIO on the next %v", n.id, target)
+	if p := n.proc; p != nil && p.wl != nil {
+		// This fault replaces a start's armed crash in recovery, if any:
+		// the start no longer owns the disk's fault, and neither its
+		// recovery nor its end clears this one (#860).
+		p.wl.armed = false
+	}
 	d.Fault = func(op simfs.Op, name string) error {
 		ckpt := op == simfs.OpCreate && isCheckpoint(name)
 		if op != target || s.cfg.ckptCreateFaults && !ckpt {
@@ -232,12 +239,16 @@ func (s *Sim) diskFull() {
 	s.stats.DiskFulls++
 	d := n.disk
 	d.Capacity = d.Bytes()
+	n.diskFull = true
 	s.tracef("node %d: disk full at %d bytes", n.id, d.Capacity)
 	s.after(1500*Millisecond+s.rng.Int64N(2000*Millisecond), func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.healed {
 			d.Capacity = s.diskCapacity()
+			if n.disk == d {
+				n.diskFull = false
+			}
 			s.tracef("node %d: disk no longer full", n.id)
 		}
 	})
@@ -824,21 +835,36 @@ func hasLeader(nodes []*node) bool {
 // grant it their votes. A learner votes but does not campaign. The nodes
 // are frozen, and nothing is appended without a leader, so each one's
 // last entry is on its disk.
-func (s *Sim) canElect() (bool, error) {
-	type last struct{ term, index uint64 }
-	logs := map[uint64]last{}
+func (s *Sim) canElect() (bool, error) { return s.canElectBy(s.lastOnDisk) }
+
+// lastEntry is a node's last log entry.
+type lastEntry struct{ term, index uint64 }
+
+// lastOnDisk is a running node's last entry as its disk holds it.
+func (s *Sim) lastOnDisk(n *node) (lastEntry, error) {
+	ents, err := s.logOn(n)
+	if err != nil {
+		return lastEntry{}, err
+	}
+	if err := ents.close(); err != nil {
+		return lastEntry{}, err
+	}
+	return lastEntry{ents.lastTerm, ents.last}, nil
+}
+
+// canElectBy is canElect with each running node's last entry from lastOf,
+// which a test gives without a disk (TestReplacementLosesQuorum).
+func (s *Sim) canElectBy(lastOf func(*node) (lastEntry, error)) (bool, error) {
+	logs := map[uint64]lastEntry{}
 	for _, n := range s.nodes {
 		if n.out() || n.proc == nil {
 			continue
 		}
-		ents, err := s.logOn(n)
+		l, err := lastOf(n)
 		if err != nil {
 			return false, err
 		}
-		if err := ents.close(); err != nil {
-			return false, err
-		}
-		logs[n.id] = last{ents.lastTerm, ents.last}
+		logs[n.id] = l
 	}
 	for _, n := range s.nodes {
 		own, ok := logs[n.id]

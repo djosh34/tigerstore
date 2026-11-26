@@ -24,20 +24,42 @@ status=0 all=""
 for mode in tls h2c; do
 	scheme=https flags=(-t -k)
 	if [ "$mode" = h2c ]; then scheme=http flags=(); fi
-	client=$((23900 + RANDOM % 50)) peer=$((23960 + RANDOM % 30))
-	rm -rf "$work/data-$mode"
-	"$tigerstore" --name n1 --data-dir "$work/data-$mode" \
-		--listen-client-urls "$scheme://127.0.0.1:$client" --advertise-client-urls "$scheme://127.0.0.1:$client" \
-		--listen-peer-urls "https://127.0.0.1:$peer" --initial-advertise-peer-urls "https://127.0.0.1:$peer" \
-		--initial-cluster "n1=https://127.0.0.1:$peer" \
-		--cert-file "$work/certs/node1.pem" --key-file "$work/certs/node1-key.pem" \
-		--peer-cert-file "$work/certs/node1.pem" --peer-key-file "$work/certs/node1-key.pem" \
-		--peer-trusted-ca-file "$work/certs/ca.pem" --memory-budget-bytes $((512 << 20)) \
-		--max-concurrent-streams 100 >"$work/node-$mode.log" 2>&1 &
-	pid=$!
-	for _ in $(seq 100); do
-		curl -sfk "$scheme://127.0.0.1:$client/health" >/dev/null && break
-		sleep 0.1
+	# Another process may take a port before the node binds it: the node
+	# then stops with "address already in use", and starts again on new
+	# ports, 5 times at most (#847). It is up once it listens on the client
+	# port itself, which another process holding the port would not.
+	for try in 1 2 3 4 5; do
+		client=$((23900 + RANDOM % 50)) peer=$((23960 + RANDOM % 30))
+		rm -rf "$work/data-$mode"
+		"$tigerstore" --name n1 --data-dir "$work/data-$mode" \
+			--listen-client-urls "$scheme://127.0.0.1:$client" --advertise-client-urls "$scheme://127.0.0.1:$client" \
+			--listen-peer-urls "https://127.0.0.1:$peer" --initial-advertise-peer-urls "https://127.0.0.1:$peer" \
+			--initial-cluster "n1=https://127.0.0.1:$peer" \
+			--cert-file "$work/certs/node1.pem" --key-file "$work/certs/node1-key.pem" \
+			--peer-cert-file "$work/certs/node1.pem" --peer-key-file "$work/certs/node1-key.pem" \
+			--peer-trusted-ca-file "$work/certs/ca.pem" --memory-budget-bytes $((512 << 20)) \
+			--max-concurrent-streams 100 >"$work/node-$mode.log" 2>&1 &
+		pid=$!
+		up=""
+		for _ in $(seq 100); do
+			kill -0 "$pid" 2>/dev/null || break
+			if grep -q "pid=$pid," <<<"$(ss -Hltnp "sport = :$client")" &&
+				curl -sfk "$scheme://127.0.0.1:$client/health" >/dev/null; then
+				up=1
+				break
+			fi
+			sleep 0.1
+		done
+		[ -n "$up" ] && break
+		kill "$pid" 2>/dev/null || true
+		wait "$pid" || true
+		if [ "$try" -lt 5 ] && grep -q "address already in use" "$work/node-$mode.log"; then
+			echo "h2spec: port $client or $peer was taken before the $mode node bound it; it starts again on new ports (#847)" >&2
+			continue
+		fi
+		echo "h2spec: the $mode node did not start; its log:" >&2
+		cat "$work/node-$mode.log" >&2
+		exit 1
 	done
 	"$h2spec" -h 127.0.0.1 -p "$client" "${flags[@]}" -o 3 -j "$work/h2spec-$mode.xml" >"$work/h2spec-$mode.txt" 2>&1 || true
 	kill "$pid"

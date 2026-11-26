@@ -446,7 +446,10 @@ func (n *node) afterApply() error {
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !n.ringDue() {
+	n.pruneSnapWaiters()
+	clientDue := len(n.snapWaiters) > 0
+	ringDue := n.ringDue()
+	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !clientDue && !ringDue {
 		return nil
 	}
 	index := n.applied
@@ -455,7 +458,26 @@ func (n *node) maybeCkpt() error {
 		// applied one its store is at.
 		index = c
 	}
+	if !ringDue && clientDue && s.snap != nil && index == s.snap.GetMetadata().GetIndex() {
+		// No apply followed the newest checkpoint and no cut is due:
+		// it is already a fresh source for waiting clients. Otherwise
+		// the forced checkpoint takes them in and frees the ring first.
+		waiters := n.snapWaiters
+		n.snapWaiters = nil
+		n.startClientSnaps(waiters, n.ckptName)
+		return nil
+	}
 	off := s.offOf(index)
+	if s.snap != nil && index == s.snap.GetMetadata().GetIndex() {
+		if !ringDue && !s.wantCkpt {
+			return nil
+		}
+		// The ring may need a forced cut at the newest's own index
+		// (#815), or Raft may ask for another checkpoint there. Storage
+		// may have compacted that entry already; the checkpoint keeps
+		// its record's place so a new file can start at the same index.
+		off = n.ckptFrom + walEntHdr
+	}
 	if off < 0 {
 		return nil
 	}
@@ -463,7 +485,10 @@ func (n *node) maybeCkpt() error {
 	if err != nil {
 		return err
 	}
-	s.wantCkpt = false
+	if !n.ckptRetry() {
+		// The last found no room (dropCkpt).
+		return nil
+	}
 	return n.startCkpt(index, term, off-walEntHdr)
 }
 

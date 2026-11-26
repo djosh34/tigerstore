@@ -211,6 +211,14 @@ type node struct {
 	// the loop's time encoding the last is at most 1/ckptLoopShare of the
 	// time since it started.
 	ckptNotBefore time.Time
+	// ckptRoomAt: after a checkpoint found no room on the disk, the next
+	// looks again at this time, not at every turn (ckptRetry, #769).
+	// ckptShort is set, after a checkpoint that asked for ckptShortNeed
+	// bytes the disk did not have, until it has them or the store is
+	// smaller than ckptShortSize.
+	ckptRoomAt                   time.Time
+	ckptShort                    bool
+	ckptShortNeed, ckptShortSize int64
 	// ckptLog is the log written after the newest checkpoint before the
 	// next is taken (Config.CheckpointLog).
 	ckptLog  int64
@@ -622,8 +630,8 @@ func (n *node) endReply(c *client, s *stream, w *msgW) {
 	n.endStreamOK(c, s)
 }
 
-// replyError ends stream sid with a gRPC error, headers and trailers in
-// one block.
+// replyError ends stream sid with a gRPC error. Before streaming, the
+// response headers and trailers share one block; after it, only trailers.
 func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 	if s := c.get(sid); s != nil && s.watch {
 		if s.big {
@@ -640,10 +648,15 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 	if s := c.get(sid); s != nil {
 		n.callEnded(s, code)
 	}
-	blk := append([]byte(nil), respHeaders...)
+	s := c.get(sid)
+	var blk []byte
+	if s == nil || !s.streaming {
+		blk = append(blk, respHeaders...)
+	}
+	// Once response headers went out, only gRPC trailers may follow:
+	// a second :status in the trailing block is an HTTP/2 error.
 	blk = appendLiteral(blk, "grpc-status", itoa(code))
 	blk = appendLiteral(blk, "grpc-message", encodeGrpcMessage(msg))
-	s := c.get(sid)
 	if s != nil && (s.holds || s.big) {
 		c.hold(s, nil, blk)
 	} else {

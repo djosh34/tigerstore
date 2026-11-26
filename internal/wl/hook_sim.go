@@ -200,6 +200,12 @@ func (n *node) simCheckpointDone(index uint64, name string) {
 	}
 }
 
+func (n *node) simNoRoom() {
+	if h := n.sys.h; h != nil {
+		h.NoRoom()
+	}
+}
+
 func (n *node) simSnapshotChunk(to uint64, first bool, p []byte) int {
 	if h := n.sys.h; h != nil {
 		return h.SnapshotChunk(to, first, p)
