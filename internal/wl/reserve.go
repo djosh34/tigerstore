@@ -70,10 +70,10 @@ func (n *node) giveRoom(c *client, closed bool) {
 		// A reply it waited for lets go of what it holds.
 		n.roomFreed = true
 	}
-	if !closed && c.roomWaiters > 0 && c.waiting()+c.flow.bytes <= n.connOut/2 {
-		// Its messages waiting may have waited behind its own bytes, with
-		// no room of the reserve held, and those have gone down to half
-		// its share (#689's re-check, B2).
+	if !closed && c.roomWaiters > 0 {
+		// A partial flush or dropped output can let a waiting reply fit
+		// even above half the share, without any reserve room returned.
+		// Rechecking is cheap when its saved size still cannot fit.
 		n.roomFreed, n.roomShort = true, false
 	}
 	if c.roomHeld == 0 {
@@ -100,6 +100,7 @@ type roomRead struct {
 	c               *client // owns the charge even after the stream ends
 	tag             *byte
 	rev, compactRev int64
+	share           int64 // a shrink can change rangeKVs' pieces threshold
 	body            int
 }
 
@@ -110,7 +111,7 @@ func (n *node) waitRoom(c *client, s *stream, msg []byte, body int) {
 	// Its request, kept, counts in the client's pool (B9).
 	c.growOut(len(msg))
 	c.heldCounted += int64(len(msg))
-	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), c: c, body: body}
+	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), c: c, share: n.connOut, body: body}
 	if n.st != nil {
 		r.tag, r.rev, r.compactRev = n.st.tag, n.st.rev, n.st.compactRev
 	}
@@ -190,7 +191,7 @@ func (n *node) serveRoomWait() {
 			}
 			continue
 		}
-		if r.tag != nil && r.tag == n.st.tag && r.rev == n.st.rev && r.compactRev == n.st.compactRev {
+		if r.tag != nil && r.tag == n.st.tag && r.rev == n.st.rev && r.compactRev == n.st.compactRev && n.connOut >= r.share {
 			// A small return of room need not fit this reply. Checking
 			// first avoids reading and rebuilding its records just to
 			// discard them again (#833). The header and share are current.
