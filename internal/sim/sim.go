@@ -701,6 +701,9 @@ type Sim struct {
 	// proposing its revoke, which may never commit.
 	expiredAt    map[int64]int64
 	expiredOrder []int64
+	// leaseLeaders records when a node's own turn first shows it leading,
+	// starting every lease's TTL over, once per term and process.
+	leaseLeaders []int64
 	// revokedAt is when a wl node first applied a lease's revoke, and
 	// revokesTo the last index whose revokes it holds (noteRevokes).
 	revokedAt   map[int64]int64
