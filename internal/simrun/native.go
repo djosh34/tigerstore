@@ -129,7 +129,10 @@ func Do(t *testing.T, r Run) *Result {
 	if err != nil {
 		t.Fatalf("running %s in gosim: %v", r.Test, err)
 	}
-	limit := wallLimit(t)
+	limit := wallLimit(t, r.WallLimit)
+	if r.WallLimit > 0 && testing.Verbose() {
+		t.Logf("seed %d real-time backstop %s, non-yield kill %s", r.Seed, limit, limit+wallGrace)
+	}
 	start := time.Now()
 	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace, Inputs: r.Inputs, Outputs: r.Outputs})
 	if err != nil {
@@ -188,28 +191,40 @@ func keepBlackbox(run string, res *metatesting.RunResult) {
 // yields gets before gosim ends it.
 const wallGrace = 10 * time.Minute
 
-// wallLimit is the limit of real time of each gosim run, $SIM_WALL as a
-// duration, by default 30 minutes, or 165 for a test named *Long. A run
-// past it fails with its report, and its stacks: the simulation stops
-// itself, its checks too, and one that never yields is ended wallGrace
-// later (#499). The limit changes no run before it passes, and it is not
-// passed to the run.
-func wallLimit(t *testing.T) time.Duration {
+// wallLimit is each run's real-time backstop: SIM_WALL overrides its
+// per-seed policy, otherwise the default is 30 minutes, or 165 for a test
+// named *Long. A run past it stops with its report and stacks; one that
+// never yields is ended wallGrace later (#499). The limit is not passed
+// into the simulated environment and changes no run before it passes.
+func wallLimit(t *testing.T, configured time.Duration) time.Duration {
 	t.Helper()
-	v := os.Getenv("SIM_WALL")
-	if v == "" && strings.HasSuffix(Top(strings.Split(t.Name(), "/"))[0], "Long") {
-		// A long seed takes up to 2 hours or so, and its kill must come
-		// before the 180 minutes kube-sim.sh gives the test binary.
-		return 165 * time.Minute
-	}
-	if v == "" {
-		return 30 * time.Minute
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d <= 0 {
-		t.Fatalf("SIM_WALL: %q is not a positive duration", v)
+	d, err := resolveWallLimit(Top(strings.Split(t.Name(), "/"))[0], os.Getenv("SIM_WALL"), configured)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return d
+}
+
+func resolveWallLimit(test, override string, configured time.Duration) (time.Duration, error) {
+	if override != "" {
+		d, err := time.ParseDuration(override)
+		if err != nil || d <= 0 {
+			return 0, fmt.Errorf("SIM_WALL: %q is not a positive duration", override)
+		}
+		return d, nil
+	}
+	if configured < 0 {
+		return 0, fmt.Errorf("run wall limit %s is negative", configured)
+	}
+	if configured > 0 {
+		return configured, nil
+	}
+	if strings.HasSuffix(test, "Long") {
+		// Keep the existing kube-sim limit and its margin below the
+		// 180 minutes kube-sim.sh gives that test binary.
+		return 165 * time.Minute, nil
+	}
+	return 30 * time.Minute, nil
 }
 
 // readable is a run's log as go test prints it: gosim writes what the
@@ -298,7 +313,7 @@ func keepQuiet(t *testing.T, artifacts map[string][]byte, suffix string) []strin
 // gosim run of its own (Seeds), or, for a seed forksOf gives forks, as an
 // image and its forks (ImageSeeds). set holds the variables that pick the
 // whole set again.
-func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64) int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
+func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64) int, body func(*testing.T, uint64) T, add func(uint64, T) bool, opts seedOptions) bool {
 	t.Helper()
 	if add == nil {
 		add = func(uint64, T) bool { return false }
@@ -335,11 +350,15 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 			}
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
 			double := twice > 0 && i%max(1, len(seeds)/twice) == 0
+			run := Run{Test: test, Seed: seed, Env: env}
+			if opts.wallLimit != nil {
+				run.WallLimit = opts.wallLimit(seed)
+			}
 			if forks := forksOf(seed); forks > 0 {
-				stop = imageAndForks(t, Run{Test: test, Seed: seed, Env: env}, forks, double, add)
+				stop = imageAndForks(t, run, forks, double, add)
 				return
 			}
-			r := part(t, Run{Test: test, Seed: seed, Env: env}, double)
+			r := part(t, run, double)
 			if r.Failed {
 				return
 			}
@@ -417,7 +436,7 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 			continue
 		}
 		fork := Run{
-			Test: r.Test, Seed: r.Seed, Env: append(slices.Clone(env), fmt.Sprintf("SIM_FORK=%d", k)),
+			Test: r.Test, Seed: r.Seed, WallLimit: r.WallLimit, Env: append(slices.Clone(env), fmt.Sprintf("SIM_FORK=%d", k)),
 			Inputs: map[string]string{"image": path}, ReplayEnv: []string{"SIM_IMAGE_SHA256=" + hash},
 		}
 		res := part(t, fork, double)

@@ -744,11 +744,19 @@ func checkers(t *testing.T, res *Result) {
 //
 // Round the worst ratio, 110,295 / 15,881, up to seven: the old
 // 50,000,000 * 7 = 350,000,000 preserves every measured margin.
-// This ratio-derived budget is PROVISIONAL until TestCampaignShapeSeeds
-// seed 1's full revision check reports its steps: the final budget is at
-// least twice that count as well. Long checks log it through StepsUsed.
+// Fresh, aged and busy seeds retain this ratio-derived budget. For the
+// four-hour long seeds only, part 2a provisionally allows twice the upper
+// estimate of two billion steps, pending seed 1's full measured count.
+// Part 2b will use max(witnessStepLimit, 2 * measuredFullSteps) and resize
+// the long-only wall backstop (longSeedWallLimit) from the runner's rate.
+const (
+	witnessStepLimit         int64 = 350_000_000
+	provisionalLongFullSteps int64 = 2_000_000_000
+	longWitnessStepLimit           = max(witnessStepLimit, 2*provisionalLongFullSteps)
+)
+
 var (
-	witnessSteps   = check.MaxSteps(350_000_000)
+	witnessSteps   = check.MaxSteps(witnessStepLimit)
 	porcupineSteps = check.MaxSteps(1_000_000)
 	wallStop       = check.StopWhen(simrun.WallLimitPassed)
 )
@@ -756,13 +764,13 @@ var (
 // independent runs the durability, revision and watch checkers of package
 // check on a run.
 func independent(res *Result) error {
-	return independentWithSteps(res, nil)
+	return independentWithSteps(res, nil, witnessStepLimit)
 }
 
 // independentWithSteps reports the revision witness's weighted count before
 // returning its verdict, including a timeout. Long runs log it for sizing
 // their deterministic budget without relying on the real-time backstop.
-func independentWithSteps(res *Result, report func(int64)) error {
+func independentWithSteps(res *Result, report func(int64, time.Duration), budget int64) error {
 	// A long run's checks drop its history as they convert it: they need
 	// only their own copy, and a report decodes it again (#500). Its
 	// hashes, which cover the history, are taken before.
@@ -785,9 +793,21 @@ func independentWithSteps(res *Result, report func(int64)) error {
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
 		var steps int64
-		err := check.Witnessed(h, mode, time.Minute, witnessSteps, wallStop, check.StepsUsed(&steps))
-		if mode == check.FromRevisions && report != nil {
-			report(steps)
+		var cpuFrom time.Duration
+		var cpuErr error
+		measure := mode == check.FromRevisions && report != nil
+		if measure {
+			cpuFrom, cpuErr = simrun.CPUTime()
+		}
+		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
+		if measure {
+			// Timing is diagnostic: a failed counter must not change a
+			// check's verdict. Zero means the counter was unavailable.
+			var elapsed time.Duration
+			if cpuTo, err := simrun.CPUTime(); cpuErr == nil && err == nil {
+				elapsed = max(0, cpuTo-cpuFrom)
+			}
+			report(steps, elapsed)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
