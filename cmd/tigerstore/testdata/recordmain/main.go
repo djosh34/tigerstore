@@ -16,13 +16,14 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+
+	"github.com/djosh34/tigerstore/internal/testport"
 )
 
 // fixture is what the previous release answered.
@@ -279,13 +280,17 @@ func saveSnapshot(ctx context.Context, c *clientv3.Client, path string) error {
 	return errors.Join(err, rc.Close(), f.Close())
 }
 
+// freePort picks a free loopback port below the ephemeral range, where
+// the kernel gives out no port of its own choice (testport, #847).
 func freePort() string {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, port, err := testport.Listen()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		log.Fatal(err)
+	}
+	return fmt.Sprintf("127.0.0.1:%d", port)
 }
 
 func ignoreKilled(err error) error {
