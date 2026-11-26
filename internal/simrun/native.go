@@ -320,8 +320,9 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 	}
 	for i, seed := range seeds {
 		stop := false
-		anyFailed = !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			if bug, ok := known[knownSeed{test, seed}]; ok {
+		bug, knownFailure := known[knownSeed{test, seed}]
+		anyFailed = !seedSubtest(t, test, seed, knownFailure, func(t *testing.T) {
+			if knownFailure {
 				// Printed also without -test.v, which shows no skip.
 				msg := fmt.Sprintf("known failure: seed %d of %s fails because of %s (known-failures.txt)", seed, test, bug)
 				if _, err := fmt.Fprintln(os.Stdout, msg); err != nil {
@@ -334,7 +335,7 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 				return
 			}
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
-			double := twice > 0 && i%max(1, len(seeds)/twice) == 0
+			double := doubleSeed(i, len(seeds), twice)
 			if forks := forksOf(seed); forks > 0 {
 				stop = imageAndForks(t, Run{Test: test, Seed: seed, Env: env}, forks, double, add)
 				return
@@ -356,6 +357,54 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 		}
 	}
 	return true
+}
+
+// driverVerdict writes directly, not through testing's buffered subtest
+// log. A later killed seed must not erase the verdicts of finished seeds.
+func driverVerdict(t *testing.T, part, name, status string) {
+	t.Helper()
+	if _, err := fmt.Fprintf(os.Stdout, "simrun: %s %s %s\n", part, name, status); err != nil {
+		t.Error(err)
+	}
+}
+
+// seedSubtest reports after t.Run returns, including its cleanups. Go's
+// own PASS/FAIL lines may remain buffered until the parent test ends.
+func seedSubtest(t *testing.T, test string, seed uint64, knownFailure bool, body func(*testing.T)) bool {
+	t.Helper()
+	ran, skipped := false, false
+	passed := t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+		ran = true
+		t.Cleanup(func() { skipped = t.Skipped() })
+		body(t)
+	})
+	if !ran {
+		return passed // A filtered-out subtest is not a completed seed.
+	}
+	status := "PASS"
+	if !passed {
+		status = "FAIL"
+	} else if skipped {
+		status = "SKIP"
+		if knownFailure {
+			status += " known-failure"
+		}
+	}
+	part := "seed"
+	if os.Getenv("SIM_FORK") != "" {
+		// Image-only and single-fork replays are not whole-seed results,
+		// even when all the work selected by the replay passed.
+		part = "partial"
+	}
+	driverVerdict(t, part, fmt.Sprintf("%s/%d", test, seed), status)
+	return passed
+}
+
+// doubleSeed selects exactly min(n, twice) evenly spaced seeds, starting
+// with the first. Integer division's old stride could select extra seeds.
+func doubleSeed(i, n, twice int) bool {
+	twice = min(n, max(0, twice))
+	return twice > 0 && i*twice%n < twice
 }
 
 // addFailedSeed passes a failed seed's result to add only when it asks
@@ -440,18 +489,30 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 			Test: r.Test, Seed: r.Seed, Env: append(slices.Clone(env), fmt.Sprintf("SIM_FORK=%d", k)),
 			Inputs: map[string]string{"image": path}, ReplayEnv: []string{"SIM_IMAGE_SHA256=" + hash},
 		}
-		res := part[T](t, fork, double)
-		if res.Failed {
-			stop = addFailedSeed(r.Seed, res.Artifacts["seed.json"], add) || stop
-			continue
-		}
-		t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])
-		var v T
-		if err := json.Unmarshal(res.Artifacts["seed.json"], &v); err != nil {
-			t.Fatalf("fork %d of seed %d left no result: %v", k, r.Seed, err)
-		}
-		stop = add(r.Seed, v) || stop
+		stop = imageFork(t, fork, k, double, add) || stop
 	}
+	return stop
+}
+
+// imageFork reports each completed fork separately, without presenting a
+// fork's result as the verdict of the seed that owns all the forks.
+func imageFork[T any](t *testing.T, r Run, k int, double bool, add func(uint64, T) bool) bool {
+	t.Helper()
+	status := "FAIL"
+	defer func() { driverVerdict(t, "fork", fmt.Sprintf("%s/%d/%d", r.Test, r.Seed, k), status) }()
+	res := part[T](t, r, double)
+	if res.Failed {
+		// A failed fork's result still counts where it asks to (FailedSeed,
+		// a missed quorum loss); its verdict stays FAIL.
+		return addFailedSeed(r.Seed, res.Artifacts["seed.json"], add)
+	}
+	t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])
+	var v T
+	if err := json.Unmarshal(res.Artifacts["seed.json"], &v); err != nil {
+		t.Fatalf("fork %d of seed %d left no result: %v", k, r.Seed, err)
+	}
+	stop := add(r.Seed, v)
+	status = "PASS"
 	return stop
 }
 
@@ -462,6 +523,15 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 // caller keeps no copy of the image's bytes in memory.
 func runImage(t *testing.T, r Run, double bool) (path, hash string, ok bool) {
 	t.Helper()
+	// ok stays false on a fatal exit, including an image-SHA mismatch.
+	// Report only after the image's full validation and replay checks.
+	defer func() {
+		status := "FAIL"
+		if ok {
+			status = "PASS"
+		}
+		driverVerdict(t, "image", fmt.Sprintf("%s/%d", r.Test, r.Seed), status)
+	}()
 	// The run writes its image straight to a file of t's (CreateOutput),
 	// which holds it whole only on disk: as an artifact a large image
 	// came back in memory several times over (#794's TestAgedBulk).
@@ -488,6 +558,7 @@ func runImage(t *testing.T, r Run, double bool) (path, hash string, ok bool) {
 		hash2, _ := fileHash(t, path+"-again")
 		if err := os.Remove(path + "-again"); err != nil {
 			t.Error(err)
+			return "", "", false
 		}
 		if hash2 != hash || !bytes.Equal(again.Artifacts["hashes"], hashes) {
 			t.Errorf("the image of seed %d played out differently the second time: SHA-256 %s, then %s\n%s\n%s\nreplay: %s",
@@ -549,10 +620,13 @@ func twoRunsWith[T any](t *testing.T, r Run, run func(*testing.T, Run) *Result) 
 	differ := false
 	switch {
 	case second.Failed:
+		first.Failed = true
 		keep(t, second.Artifacts, "")
 	case len(hashes) == 0:
+		first.Failed = true
 		t.Errorf("seed %d left no hashes to compare", r.Seed)
 	case string(hashes) != string(second.Artifacts["hashes"]):
+		first.Failed = true
 		differ = true
 		for _, d := range saved {
 			t.Logf("the run is saved in %s", d)
@@ -565,6 +639,7 @@ func twoRunsWith[T any](t *testing.T, r Run, run func(*testing.T, Run) *Result) 
 	if !differ {
 		for _, d := range saved {
 			if err := os.RemoveAll(d); err != nil {
+				first.Failed = true
 				t.Error(err)
 			}
 		}
