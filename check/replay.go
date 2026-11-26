@@ -159,10 +159,19 @@ func firstAbove(revs []int64, rev int64, from int) int {
 // read answers a range over keys at revision rev, which must not be above
 // the newest revision added.
 func (v versions) read(keys []string, q *history.RangeRequest, rev int64) *history.RangeResponse {
+	return v.readWithStop(keys, q, rev, nil)
+}
+
+// readWithStop is read with the witness's budget check inside the key loop.
+// Like state.read, it returns nil if replay stopped.
+func (v versions) readWithStop(keys []string, q *history.RangeRequest, rev int64, stop func() bool) *history.RangeResponse {
 	s := state{keys: keys}
 	lo, hi := s.span(q.Key, q.End)
 	resp := &history.RangeResponse{}
 	for _, key := range keys[lo:hi] {
+		if stop != nil && stop() {
+			return nil
+		}
 		kv, ok := v.at(key, rev)
 		if !ok {
 			continue

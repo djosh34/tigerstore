@@ -721,13 +721,45 @@ func checkers(t *testing.T, res *Result) {
 	}
 }
 
-// Under gosim the clock stands still while a check computes, so the
-// checks are bounded by the steps of their search too. A typical check of
-// a run takes 4,000 to 10,000 steps. The witness checker's bound is about
-// a minute of its steps natively; Porcupine's search steps cost more.
-// A check also stops once the run passed its limit of real time.
+// Under gosim the clock stands still while a check computes, so weighted
+// steps are the deterministic bound; wallStop is only a backstop. #872
+// charges ordinary inner work at 1/1,024 and cheap capacity-vector items
+// and sort estimates at 1/16,384; index work stays at 1/256 and operation
+// turns at one. Stop polls still tick every 64 inner items, independently
+// of those weights. After the re-check's copy-accounting fixes, no-cap
+// measurements against base 37e51817 (maximum of three runs, ratios
+// rounded up to four decimals):
+//
+//	history                     base  weighted   ratio
+//	planted-B01a-1                10        10  1.0000
+//	seed-5058843                1479      1662  1.1238
+//	seed-5068434                 107       114  1.0655
+//	seed-59113215                272       293  1.0773
+//	seed-77148                   777       841  1.0824
+//	seed-888737                  141       156  1.1064
+//	witness-425                23712     25426  1.0723
+//	witness-control-80-201      9764     12296  1.2594
+//	witness-control-320-1529   15881    110320  6.9467
+//	81000 same-revision grants 87330     89394  1.0237
+//	256 gaps, 4096 expiries    13271     62811  4.7330
+//
+// Round the worst ratio, 110,320 / 15,881, up to seven: the old
+// 50,000,000 * 7 = 350,000,000 preserves every measured margin; ordinary
+// checks get 360,000,000, a little above that floor. Long-seed revision
+// checks instead get 180,000,000: run 45803627951 used 219,708,153 steps
+// in about 149 search minutes and stopped at 68% of seed 1. Its measured
+// rate (about 24,600 steps/s) puts 180M near 122 search minutes, leaving
+// the six-minute simulation and more than 15% margin before the 160-minute
+// wall backstop. That budget, not wall time, must stop long searches.
+// Seed 1 is a known timeout under #876; its full check and #502 evidence
+// belong there, not to #872. See longSeedWallLimit for the sizing math.
+const (
+	witnessStepLimit     int64 = 360_000_000
+	longWitnessStepLimit int64 = 180_000_000
+)
+
 var (
-	witnessSteps   = check.MaxSteps(50_000_000)
+	witnessSteps   = check.MaxSteps(witnessStepLimit)
 	porcupineSteps = check.MaxSteps(1_000_000)
 	wallStop       = check.StopWhen(simrun.WallLimitPassed)
 )
@@ -735,6 +767,13 @@ var (
 // independent runs the durability, revision and watch checkers of package
 // check on a run.
 func independent(res *Result) error {
+	return independentWithSteps(res, nil, witnessStepLimit)
+}
+
+// independentWithSteps reports the revision witness's weighted count before
+// returning its verdict, including a timeout. Long runs log it for sizing
+// their deterministic budget without relying on the real-time backstop.
+func independentWithSteps(res *Result, report func(int64, time.Duration), budget int64) error {
 	// A long run's checks drop its history as they convert it: they need
 	// only their own copy, and a report decodes it again (#500). Its
 	// hashes, which cover the history, are taken before.
@@ -756,7 +795,24 @@ func independent(res *Result) error {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
-		if err := check.Witnessed(h, mode, time.Minute, witnessSteps, wallStop); err != nil {
+		var steps int64
+		var cpuFrom time.Duration
+		var cpuErr error
+		measure := mode == check.FromRevisions && report != nil
+		if measure {
+			cpuFrom, cpuErr = simrun.CPUTime()
+		}
+		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
+		if measure {
+			// Timing is diagnostic: a failed counter must not change a
+			// check's verdict. Zero means the counter was unavailable.
+			var elapsed time.Duration
+			if cpuTo, err := simrun.CPUTime(); cpuErr == nil && err == nil {
+				elapsed = max(0, cpuTo-cpuFrom)
+			}
+			report(steps, elapsed)
+		}
+		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
 		}
 	}

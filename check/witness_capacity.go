@@ -2,6 +2,8 @@ package check
 
 import (
 	"cmp"
+	"iter"
+	"math/bits"
 	"slices"
 	"sort"
 
@@ -281,25 +283,123 @@ func (r *revisionOrder) indexRoom() {
 // in order and once each. The ambiguous revokes of a busy history are its
 // leases' expiries, so only those of a lease a key holds or a put puts it
 // on count.
-func (r *revisionOrder) coverers(s *state, need []int) []int {
-	x := r.room
-	n := len(s.keys)
-	var out []int
-	for k := range n {
-		if need[k] > 0 {
-			out = append(out, r.putters[k]...)
+func (r *revisionOrder) coverers(s *state, need []int) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		x := r.room
+		n := len(s.keys)
+		var local [2 * maxRoomKeys][]int
+		lists := local[:0]
+		count := 0
+		add := func(ops []int) {
+			if len(ops) > 0 {
+				lists = append(lists, ops)
+				count += len(ops)
+			}
 		}
-		if need[n+k] > 0 {
-			out = append(out, r.deleters[k]...)
-			// A key holds a lease only from a put of the history, so its
-			// lease now is one of these.
-			for _, id := range x.leasesOf[k] {
-				out = append(out, x.revokesOf[id]...)
+		for k := range n {
+			if r.step() {
+				return
+			}
+			if need[k] > 0 {
+				add(r.putters[k])
+			}
+			if need[n+k] > 0 {
+				add(r.deleters[k])
+				// A key holds a lease only from a put of the history, so
+				// its lease now is one of these.
+				for _, id := range x.leasesOf[k] {
+					if r.capacityStep() {
+						return
+					}
+					add(x.revokesOf[id])
+				}
+			}
+		}
+		if count > maxCovererSort {
+			// Each input follows the history's op order (indexCounts,
+			// indexRoom). Merge them without copying and sorting every
+			// candidate in one uninterruptible library call.
+			r.mergeCoverers(lists, count, yield)
+			return
+		}
+		var out []int
+		for _, ops := range lists {
+			if r.capacityCharge(int64(len(ops))) {
+				return
+			}
+			out = append(out, ops...)
+		}
+		// Keep the native sort for small inputs only. Its entire input
+		// is bounded, and the charged n log n estimate is below one
+		// stop-poll interval; large inputs use the polled merge above.
+		if r.capacityCharge(int64(count) * int64(bits.Len(uint(count)))) {
+			return
+		}
+		slices.Sort(out)
+		if r.capacityCharge(int64(count)) {
+			return
+		}
+		for _, i := range slices.Compact(out) {
+			if !yield(i) {
+				return
 			}
 		}
 	}
-	slices.Sort(out)
-	return slices.Compact(out)
+}
+
+const maxCovererSort = 2048
+
+// mergeCoverers walks sorted op lists with a min-heap, yielding each op
+// once. Keep the conservative n log n estimate of the old sort, but pay
+// it per consumed candidate, not before the whole call. It covers the
+// bounded heap walk too and keeps long-run budget sizing conservative.
+// There is no candidate-sized scratch buffer or unbounded native sort.
+func (r *revisionOrder) mergeCoverers(lists [][]int, count int, yield func(int) bool) {
+	for p := len(lists)/2 - 1; p >= 0; p-- {
+		if r.capacityCharge(int64(bits.Len(uint(len(lists))))) {
+			return
+		}
+		covererDown(lists, p)
+	}
+	work := int64(bits.Len(uint(count)) + 2)
+	last, have := 0, false
+	for len(lists) > 0 {
+		if r.capacityCharge(work) {
+			return
+		}
+		i := lists[0][0]
+		if !have || i != last {
+			last, have = i, true
+			if !yield(i) {
+				return
+			}
+		}
+		lists[0] = lists[0][1:]
+		if len(lists[0]) == 0 {
+			lists[0] = lists[len(lists)-1]
+			lists = lists[:len(lists)-1]
+		}
+		covererDown(lists, 0)
+	}
+}
+
+// A heap walk has at most bits.Len(len(lists)) levels, fewer than 64 on
+// any supported target. Its caller charges that bound before each walk.
+func covererDown(lists [][]int, p int) {
+	for {
+		child := 2*p + 1
+		if child >= len(lists) {
+			return
+		}
+		if child+1 < len(lists) && lists[child+1][0] < lists[child][0] {
+			child++
+		}
+		if lists[p][0] <= lists[child][0] {
+			return
+		}
+		lists[p], lists[child] = lists[child], lists[p]
+		p = child
+	}
 }
 
 // unionRevs returns the revisions of a and b, which are each in order and
@@ -335,6 +435,9 @@ func between(revs []int64, lo, hi int64) int {
 // life of it they saw created later, and of each key present now that a
 // count of zero needs gone.
 func (r *revisionOrder) roomReachable(s *state, skip int) bool {
+	if r.step() {
+		return false
+	}
 	x := r.room
 	if x == nil || r.w.slow {
 		return true
@@ -342,6 +445,9 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 	now := s.rev
 	first := sort.Search(len(x.ends), func(j int) bool { return x.ends[j] > now })
 	for _, end := range x.ends[first:] {
+		if r.step() {
+			return false
+		}
 		// end is past now: the difference doesn't overflow (#768).
 		if end-now > countHorizon {
 			break
@@ -349,6 +455,9 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 		need := r.roomNeed(s, end)
 		total := 0
 		for _, v := range need {
+			if r.capacityStep() {
+				return false
+			}
 			total += v
 		}
 		if total == 0 || total > maxRoomNeed {
@@ -358,21 +467,27 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 		add := func(a []int) {
 			useful := false
 			for j := range a {
+				if r.capacityStep() {
+					return
+				}
 				a[j] = min(a[j], need[j])
 				useful = useful || a[j] > 0
 			}
-			if useful && !slices.ContainsFunc(actions, func(b []int) bool { return slices.Equal(a, b) }) {
+			if useful && !slices.ContainsFunc(actions, func(b []int) bool { return r.capacityStep() || slices.Equal(a, b) }) {
 				actions = append(actions, a)
 			}
 		}
-		for _, i := range r.coverers(s, need) {
+		for i := range r.coverers(s, need) {
+			if r.capacityStep() {
+				return false
+			}
 			if _, held := r.reserved[i]; i == skip || r.used[i] || r.lb[i] >= end || held {
 				continue
 			}
 			add(slices.Clone(x.actions[i]))
 		}
 		free := int(end-now) - between(x.fixed, now, end)
-		if fewestActions(need, actions, free) > free {
+		if r.w.stopped || fewestActions(need, actions, free, r.capacityStep) > free {
 			return false
 		}
 	}
@@ -419,12 +534,18 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 	// The lives that end by end after now, and those created after now by
 	// end: no other one needs anything by end.
 	for _, l := range x.byM[sort.Search(len(x.byM), func(j int) bool { return x.byM[j].m > now }):] {
+		if r.capacityStep() {
+			return nil
+		}
 		if l.m > end {
 			break
 		}
 		life(l)
 	}
 	for _, l := range x.byC[sort.Search(len(x.byC), func(j int) bool { return x.byC[j].c > now }):] {
+		if r.capacityStep() {
+			return nil
+		}
 		if l.c > end {
 			break
 		}
@@ -433,12 +554,21 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 		}
 	}
 	for _, rev := range r.countRevs[sort.Search(len(r.countRevs), func(j int) bool { return r.countRevs[j] > now }):] {
+		if r.capacityStep() {
+			return nil
+		}
 		if rev > end {
 			break
 		}
 		for _, c := range r.counts[rev] {
+			if r.capacityStep() {
+				return nil
+			}
 			if c.n == 0 {
 				for k := c.lo; k < c.hi; k++ {
+					if r.capacityStep() {
+						return nil
+					}
 					mustDelete(k, rev)
 				}
 			}
@@ -450,13 +580,19 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 // fewestActions returns the fewest actions, each taken any number of
 // times, whose sum covers need, or limit+1 if more. The first coordinate
 // still needed must be covered by one of them, so it branches on those.
-func fewestActions(need []int, actions [][]int, limit int) int {
+func fewestActions(need []int, actions [][]int, limit int, stop func() bool) int {
 	memo := map[string]int{}
 	var solve func([]int) int
 	solve = func(d []int) int {
+		if stop() {
+			return limit + 1
+		}
 		key := make([]byte, len(d))
 		first := -1
 		for j, v := range d {
+			if stop() {
+				return limit + 1
+			}
 			key[j] = byte(v)
 			if v > 0 && first < 0 {
 				first = j
@@ -470,11 +606,17 @@ func fewestActions(need []int, actions [][]int, limit int) int {
 		}
 		best := limit + 1
 		for _, a := range actions {
+			if stop() {
+				return limit + 1
+			}
 			if a[first] == 0 {
 				continue
 			}
 			next := make([]int, len(d))
 			for j, v := range d {
+				if stop() {
+					return limit + 1
+				}
 				next[j] = max(0, v-a[j])
 			}
 			best = min(best, 1+solve(next))

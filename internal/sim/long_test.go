@@ -7,11 +7,29 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simrun"
+)
+
+// Run 45803627951 on 116ba5f4 used 219,708,153 weighted steps in about
+// 149 search minutes, reaching revision 432,505 of 634,611 before its
+// 155-minute wall stopped it. Its rate is about 24,600 steps/s; round
+// down to 24,500. The separate 180M long budget then takes 122m27s.
+// Add six minutes for simulation/other checks and thirty minutes of
+// margin, rounded up to five minutes: 160m soft / 170m non-yield kill,
+// within the campaign binary's 340m. The step budget must stop the search
+// first. Seed 1's full check is #876's work, not evidence met by #872.
+const (
+	longWitnessEstimatedRate = 24_500
+	longSeedSetupAllowance   = 6 * time.Minute
+	longSeedWallMargin       = 30 * time.Minute
+	longSeedWallQuantum      = 5 * time.Minute
+	longBudgetTime           = time.Duration((longWitnessStepLimit+longWitnessEstimatedRate-1)/longWitnessEstimatedRate) * time.Second
+	longSeedWallLimit        = time.Duration(int64((longBudgetTime+longSeedSetupAllowance+longSeedWallMargin+longSeedWallQuantum-1)/longSeedWallQuantum) * int64(longSeedWallQuantum))
 )
 
 // TestBusySeeds runs TestSeeds's seeds with their faults for 1,280 s
@@ -23,7 +41,7 @@ func TestBusySeeds(t *testing.T) {
 		cfg := DefaultConfig(seed)
 		cfg.Duration = 1280 * Second
 		return cfg
-	})
+	}, 0)
 }
 
 // TestCampaignShapeSeeds runs seeds of the long campaign's shape: TestSeeds's
@@ -36,21 +54,40 @@ func TestCampaignShapeSeeds(t *testing.T) {
 		cfg.Duration = 4 * 3600 * Second
 		spreadFaults(&cfg.Faults, 16)
 		return cfg
-	})
+	}, longSeedWallLimit)
 }
 
 // longSeeds runs $SIM_SEEDS seeds of the configs that config gives, from
 // $SIM_SEED or seed 1, with every checker.
-func longSeeds(t *testing.T, config func(seed uint64) Config) {
+func longSeeds(t *testing.T, config func(seed uint64) Config, wallLimit time.Duration) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: a long seed takes minutes to hours")
 	}
+	budget := longSeedBudget(wallLimit)
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
 		res := run(t, config(seed))
-		checkers(t, res)
+		longCheckers(t, res, budget)
 		t.Logf("%+v, %d committed writes", res.Stats, len(res.Log))
 		return res.Stats
-	}, func(uint64, Stats) bool { return false })
+	}, func(uint64, Stats) bool { return false }, simrun.WithWallLimit(func(uint64) time.Duration { return wallLimit }))
+}
+
+func longSeedBudget(wallLimit time.Duration) int64 {
+	if wallLimit > 0 {
+		return longWitnessStepLimit
+	}
+	return witnessStepLimit
+}
+
+// longCheckers logs the revision witness's steps before handling its
+// verdict, so Actions records the full check's count (or its limit).
+func longCheckers(t *testing.T, res *Result, budget int64) {
+	t.Helper()
+	if err := independentWithSteps(res, func(steps int64, cpu time.Duration) {
+		t.Logf("revision witness used %d weighted steps (budget %d, native CPU %s)", steps, budget, cpu)
+	}, budget); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestHostErrorComesFirst checks that a run whose pages on the runner's

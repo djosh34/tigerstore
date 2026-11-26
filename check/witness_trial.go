@@ -32,6 +32,9 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 	del := func(d *history.DeleteRequest) {
 		lo, hi := s.span(d.Key, d.End)
 		for k := lo; k < hi; k++ {
+			if r.step() {
+				return
+			}
 			written = append(written, k)
 		}
 	}
@@ -43,6 +46,9 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 	case req.Txn != nil:
 		for _, ops := range [][]history.TxnOp{req.Txn.Success, req.Txn.Failure} {
 			for _, op := range ops {
+				if r.step() {
+					return s, func() {}
+				}
 				switch {
 				case op.Put != nil:
 					put(op.Put)
@@ -53,15 +59,21 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 		}
 	case req.LeaseRevoke != nil:
 		for k, kv := range s.kvs {
+			if r.step() {
+				return s, func() {}
+			}
 			if kv.Version != 0 && kv.Lease == req.LeaseRevoke.ID {
 				written = append(written, k)
 			}
 		}
 	}
-	slices.Sort(written)
+	sortWithStep(written, cmp.Compare[int], r.step)
 	written = slices.Compact(written)
 	before := make([]history.KeyValue, len(written))
 	for j, k := range written {
+		if r.step() {
+			return s, func() {}
+		}
 		before[j] = s.kvs[k]
 	}
 	c := *s
@@ -77,7 +89,7 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 func (r *revisionOrder) tryOptional(s *state, o optional, take func(*state, optional) bool) bool {
 	t, undo := r.try(s, r.w.reqs[o.op])
 	defer undo()
-	return take(t, o)
+	return !r.w.stopped && take(t, o)
 }
 
 // scopedState returns state j for answering op i, which changed nothing:
@@ -92,7 +104,7 @@ func (w *witness) scopedState(i, j int) *state {
 	}
 	keys := w.scope[i]
 	if keys == nil {
-		keys = requestKeys(w.keys, w.reqs[i])
+		keys = requestKeys(w.keys, w.reqs[i], w.innerStep)
 		if keys == nil {
 			// So that a request of no keys is not looked at again.
 			keys = []string{}
@@ -103,8 +115,11 @@ func (w *witness) scopedState(i, j int) *state {
 	// One state serves every answer: an answer keeps nothing of it, and a
 	// new one per answer was most of what the check allocated (#499).
 	s := &w.scoped
-	*s = state{keys: keys, kvs: slices.Grow(s.kvs[:0], len(keys))[:len(keys)], leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
+	*s = state{keys: keys, kvs: slices.Grow(s.kvs[:0], len(keys))[:len(keys)], leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: w.replayStop}
 	for k, key := range keys {
+		if w.innerStep() {
+			return s
+		}
 		s.kvs[k], _ = w.past.at(key, sm.rev)
 	}
 	return s
@@ -112,7 +127,7 @@ func (w *witness) scopedState(i, j int) *state {
 
 // requestKeys returns the keys, of keys, that req can read or write, in
 // order.
-func requestKeys(keys []string, req history.Request) []string {
+func requestKeys(keys []string, req history.Request, stop func() bool) []string {
 	if req.LeaseRevoke != nil {
 		return keys
 	}
@@ -140,6 +155,9 @@ func requestKeys(keys []string, req history.Request) []string {
 	}
 	branch := func(ops []history.TxnOp) {
 		for _, o := range ops {
+			if stop() {
+				return
+			}
 			switch {
 			case o.Range != nil:
 				add(o.Range.Key, o.Range.End)
@@ -152,15 +170,21 @@ func requestKeys(keys []string, req history.Request) []string {
 	}
 	if req.Txn != nil {
 		for _, c := range req.Txn.Compare {
+			if stop() {
+				return nil
+			}
 			add(c.Key, "")
 		}
 		branch(req.Txn.Success)
 		branch(req.Txn.Failure)
 	}
-	slices.SortFunc(spans, func(a, b [2]int) int { return cmp.Compare(a[0], b[0]) })
+	sortWithStep(spans, func(a, b [2]int) int { return cmp.Compare(a[0], b[0]) }, stop)
 	var out []string
 	end := 0
 	for _, p := range spans {
+		if stop() {
+			return nil
+		}
 		lo := max(p[0], end)
 		if lo < p[1] {
 			out = append(out, keys[lo:p[1]]...)

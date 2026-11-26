@@ -27,6 +27,11 @@ var (
 // reports it as a checker limit, not as a server bug.
 var errUnsupported = &history.Error{Code: "Unimplemented", Message: "check: historical range inside a txn is not modelled"}
 
+// errReplayStopped is internal to bounded witness replay, not a server
+// error. A stopped replay may have changed its scratch state; the witness
+// discards it and returns ErrWitnessTimeout, never a history verdict.
+var errReplayStopped = &history.Error{Code: "Canceled", Message: "check: witness replay stopped"}
+
 // errRevisionLimit is the model's answer to a write that would take the
 // store's revision past the int64 limit (#768). No server answers so: a
 // history whose write succeeded there is convicted, and an unanswered one
@@ -57,6 +62,9 @@ type state struct {
 	// past, if set, holds every version before rev, so that the state
 	// answers reads at past revisions too. Only Witnessed sets it.
 	past versions
+	// stop charges replay work only in the revision witness. Other model
+	// users leave it nil, and a clone keeps the same cancellation hook.
+	stop func() bool
 	// sum is a fingerprint of the state, kept only by the Porcupine
 	// model, where comparing sets of states is the hot path. It must be
 	// recomputed after every change: same and states.equal rely on it,
@@ -124,7 +132,22 @@ func startEvents(st *history.Start) []history.Event {
 
 func (s *state) clone() *state {
 	c := *s
-	c.kvs = slices.Clone(s.kvs)
+	if s.stop == nil {
+		c.kvs = slices.Clone(s.kvs)
+		return &c
+	}
+	// Full copies used by witness trials/restores must poll too. A
+	// cancelled copy is partial and the stopped witness discards it.
+	if s.cancelled() {
+		return &c
+	}
+	c.kvs = make([]history.KeyValue, len(s.kvs))
+	for i, kv := range s.kvs {
+		if s.cancelled() {
+			break
+		}
+		c.kvs[i] = kv
+	}
 	return &c
 }
 
@@ -186,9 +209,13 @@ type outcome struct {
 }
 
 // step applies req to s in place and returns its outcome. A request that
-// fails leaves s unchanged. With withEvents the outcome lists the events the
-// request caused, with their previous values.
+// fails leaves s unchanged, except a cancelled witness replay, which is
+// discarded. With withEvents the outcome lists the events the request caused,
+// with their previous values.
 func (s *state) step(req history.Request, withEvents bool) outcome {
+	if s.cancelled() {
+		return outcome{err: errReplayStopped}
+	}
 	switch {
 	case req.Range != nil:
 		return s.stepRange(req.Range)
@@ -221,11 +248,19 @@ func (s *state) stepRange(r *history.RangeRequest) outcome {
 	}
 	if r.Revision > 0 && r.Revision < s.rev {
 		if s.past != nil {
-			return outcome{resp: &history.Response{Revision: s.rev, Range: s.past.read(s.keys, r, r.Revision)}}
+			got := s.past.readWithStop(s.keys, r, r.Revision, s.stop)
+			if got == nil {
+				return outcome{err: errReplayStopped}
+			}
+			return outcome{resp: &history.Response{Revision: s.rev, Range: got}}
 		}
 		return outcome{resp: &history.Response{Revision: s.rev, Range: &history.RangeResponse{}}, historical: true}
 	}
-	return outcome{resp: &history.Response{Revision: s.rev, Range: s.read(r)}}
+	got := s.read(r)
+	if got == nil {
+		return outcome{err: errReplayStopped}
+	}
+	return outcome{resp: &history.Response{Revision: s.rev, Range: got}}
 }
 
 // checkRevision returns the error of a read at rev. etcd reads at the current
@@ -240,12 +275,29 @@ func (s *state) checkRevision(rev int64) *history.Error {
 	return nil
 }
 
-// read answers a range at the current revision.
+func (s *state) cancelled() bool { return s.stop != nil && s.stop() }
+
+// read answers a range at the current revision, or nil if replay stopped.
 func (s *state) read(r *history.RangeRequest) *history.RangeResponse {
+	return s.readBefore(r, nil)
+}
+
+// readBefore overlays the first value of each key a transaction changed.
+// Unchanged keys still live in s, so a read at the transaction's start
+// revision needs no copy of the rest of the store.
+func (s *state) readBefore(r *history.RangeRequest, before map[string]history.KeyValue) *history.RangeResponse {
 	resp := &history.RangeResponse{}
 	lo, hi := s.span(r.Key, r.End)
 	for i := lo; i < hi; i++ {
+		if s.cancelled() {
+			return nil
+		}
 		kv := s.kvs[i]
+		if before != nil {
+			if old, ok := before[s.keys[i]]; ok {
+				kv = old
+			}
+		}
 		if kv.Version == 0 {
 			continue
 		}
@@ -321,7 +373,15 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 		// At the limit, a txn that changes a key cannot happen; one that
 		// changes none still goes (#768). It is tried on a copy first,
 		// as it changes the store in place.
-		if c := s.clone(); c.applyTxn(t, false).err == nil && c.rev != s.rev {
+		c := s.clone()
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
+		o := c.applyTxn(t, false)
+		if o.err == errReplayStopped {
+			return o
+		}
+		if o.err == nil && c.rev != s.rev {
 			return outcome{err: errRevisionLimit}
 		}
 	}
@@ -332,6 +392,9 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 	ok := true
 	for _, c := range t.Compare {
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
 		if !s.compare(c) {
 			ok = false
 			break
@@ -344,6 +407,9 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 	// A put with a missing lease fails the whole txn before anything is
 	// written, as etcd checks leases before applying.
 	for _, op := range ops {
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
 		if op.Put != nil && op.Put.Lease != 0 && !s.hasLease(op.Put.Lease) {
 			return outcome{err: errLeaseNotFound}
 		}
@@ -358,12 +424,17 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 			return outcome{err: errUnsupported}
 		}
 	}
-	// A read at the txn's own start revision sees the store before the
-	// txn, as etcd keeps a positive requested revision.
-	var before *state
+	// A read at the txn's own start revision sees each key's value from
+	// before the first write to it. Keep only changed keys, not a clone
+	// of every key even for a one-key range. Older reads use past alone.
+	start := s.rev
+	needsBefore := false
 	for _, op := range ops {
-		if op.Range != nil && op.Range.Revision > 0 {
-			before = s.clone()
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
+		if op.Range != nil && op.Range.Revision > 0 && op.Range.Revision == start {
+			needsBefore = true
 			break
 		}
 	}
@@ -373,6 +444,10 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 	// An event's previous value is the key at the revision before the
 	// txn, as etcd reads it, not what an earlier op of the txn wrote.
 	was := map[string]history.KeyValue{}
+	var before map[string]history.KeyValue
+	if needsBefore {
+		before = was
+	}
 	prior := func(key string, cur history.KeyValue) history.KeyValue {
 		if kv, ok := was[key]; ok {
 			return kv
@@ -382,11 +457,14 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 	}
 	resp := &history.TxnResponse{Succeeded: ok, Results: make([]history.TxnOpResponse, len(ops))}
 	for i, op := range ops {
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
 		switch {
-		case op.Range != nil && op.Range.Revision > 0 && op.Range.Revision < before.rev:
-			resp.Results[i].Range = s.past.read(s.keys, op.Range, op.Range.Revision)
+		case op.Range != nil && op.Range.Revision > 0 && op.Range.Revision < start:
+			resp.Results[i].Range = s.past.readWithStop(s.keys, op.Range, op.Range.Revision, s.stop)
 		case op.Range != nil && op.Range.Revision > 0:
-			resp.Results[i].Range = before.read(op.Range)
+			resp.Results[i].Range = s.readBefore(op.Range, before)
 		case op.Range != nil:
 			// Reads at the current revision see the txn's earlier
 			// writes.
@@ -395,6 +473,10 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 			p := op.Put
 			j := s.index(p.Key)
 			prev := s.kvs[j]
+			old := prev
+			if needsBefore || withEvents {
+				old = prior(p.Key, prev)
+			}
 			kv := history.KeyValue{Key: p.Key, Value: p.Value, CreateRevision: next, ModRevision: next, Version: 1, Lease: p.Lease}
 			if prev.Version != 0 {
 				kv.CreateRevision = prev.CreateRevision
@@ -408,16 +490,23 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 			}
 			resp.Results[i].Put = pr
 			if withEvents {
-				events = append(events, putEvent(kv, prior(p.Key, prev)))
+				events = append(events, putEvent(kv, old))
 			}
 		default:
 			d := op.Delete
 			dr := &history.DeleteResponse{}
 			lo, hi := s.span(d.Key, d.End)
 			for j := lo; j < hi; j++ {
+				if s.cancelled() {
+					return outcome{err: errReplayStopped}
+				}
 				prev := s.kvs[j]
 				if prev.Version == 0 {
 					continue
+				}
+				old := prev
+				if needsBefore || withEvents {
+					old = prior(prev.Key, prev)
 				}
 				s.kvs[j] = history.KeyValue{}
 				changed = true
@@ -426,10 +515,13 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 					dr.PrevKVs = append(dr.PrevKVs, prev)
 				}
 				if withEvents {
-					events = append(events, deleteEvent(prev.Key, prior(prev.Key, prev), next))
+					events = append(events, deleteEvent(prev.Key, old, next))
 				}
 			}
 			resp.Results[i].Delete = dr
+		}
+		if op.Range != nil && resp.Results[i].Range == nil {
+			return outcome{err: errReplayStopped}
 		}
 	}
 	if changed {
@@ -474,16 +566,25 @@ func (s *state) stepLeaseRevoke(r *history.LeaseRevokeRequest, withEvents bool) 
 	if !s.leases.has(r.ID) {
 		return outcome{err: errLeaseNotFound}
 	}
-	if s.rev == math.MaxInt64 && slices.ContainsFunc(s.kvs, func(kv history.KeyValue) bool { return kv.Version != 0 && kv.Lease == r.ID }) {
+	if s.rev == math.MaxInt64 && slices.ContainsFunc(s.kvs, func(kv history.KeyValue) bool { return s.cancelled() || kv.Version != 0 && kv.Lease == r.ID }) {
 		// A revoke that deletes a key would take the revision past the
 		// limit (#768).
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
 		return outcome{err: errRevisionLimit}
+	}
+	if s.cancelled() {
+		return outcome{err: errReplayStopped}
 	}
 	s.leases = s.leases.without(r.ID)
 	next := s.rev + 1
 	changed := false
 	var events []history.Event
 	for j, kv := range s.kvs {
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
 		if kv.Version == 0 || kv.Lease != r.ID {
 			continue
 		}
