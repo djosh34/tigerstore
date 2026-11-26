@@ -287,11 +287,15 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 	}
 	r := &rollingRun{t: t, c: c, dir: dir, oldBin: oldBin, newBin: newBin}
 	t.Cleanup(func() {
+		done := startPhase("close proxies", t.Logf)
+		defer done()
 		if err := c.closeProxies(); err != nil {
 			t.Error(err)
 		}
 	})
 	t.Cleanup(func() {
+		done := startPhase("close node logs", t.Logf)
+		defer done()
 		for _, n := range c.nodes {
 			if err := n.log.Close(); err != nil {
 				t.Error(err)
@@ -299,6 +303,8 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 		}
 	})
 	t.Cleanup(func() {
+		done := startPhase("stop remaining nodes", t.Logf)
+		defer done()
 		if !r.stopped {
 			if err := c.stop(); err != nil {
 				t.Error(err)
@@ -312,6 +318,8 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 		if !t.Failed() {
 			return
 		}
+		done := startPhase("report failure", t.Logf)
+		defer done()
 		if r.nodes == "" && !r.stopped {
 			// A failure before finish was set up, as a start that never
 			// came up: the nodes dump their goroutines before the stop.
@@ -332,6 +340,8 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		done := startPhase("close clients", t.Logf)
+		defer done()
 		if err := closeClients(cs); err != nil {
 			t.Error(err)
 		}
@@ -347,6 +357,8 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 	// finish too has the report of how the nodes stood.
 	t.Cleanup(func() {
 		if !r.stopped {
+			done := startPhase("report nodes", t.Logf)
+			defer done()
 			r.nodes = c.report(context.Background())
 		}
 	})
@@ -875,10 +887,18 @@ func (r *rollingRun) refuseOld(i int) {
 
 func (r *rollingRun) finish() {
 	t := r.t
+	done := startPhase("stop clients", t.Logf)
+	defer done()
 	r.traffic.stopClients()
+	done()
+	done = startPhase("finish traffic", t.Logf)
+	defer done()
 	if err := r.traffic.finish(); err != nil {
 		t.Error(err)
 	}
+	done()
+	done = startPhase("stop nodes", t.Logf)
+	defer done()
 	if t.Failed() {
 		// After the traffic's last reads, which the checkers need, the
 		// nodes still running dump their goroutines into their logs, so
@@ -889,6 +909,9 @@ func (r *rollingRun) finish() {
 		t.Error(err)
 	}
 	r.stopped = true
+	done()
+	done = startPhase("check node exits and logs", t.Logf)
+	defer done()
 	for _, u := range r.c.unexpectedExits() {
 		t.Error(u)
 	}
@@ -900,6 +923,9 @@ func (r *rollingRun) finish() {
 			t.Errorf("node%d reported a data race", i+1)
 		}
 	}
+	done()
+	done = startPhase("gather committed history", t.Logf)
+	defer done()
 	var dirs []string
 	for i := range 3 {
 		dirs = append(dirs, filepath.Join(r.dir, "data", fmt.Sprintf("node%d", i+1)))
@@ -918,14 +944,21 @@ func (r *rollingRun) finish() {
 	}
 	h := &r.traffic.r.h
 	h.Log = log
+	done()
+	t.Logf("history: %d ops, %d log requests, target %d", len(h.Ops), len(h.Log), h.Target)
+	done = startPhase("save history", t.Logf)
+	defer done()
 	for name, value := range map[string]any{"wal.json": evidence, "history.json": h, "watch-responses.json": r.traffic.r.diagnostics} {
 		if err := save(filepath.Join(r.dir, name), value); err != nil {
 			t.Error(err)
 		}
 	}
+	done()
 	if err := runChecks(h, time.Minute, r.dir, t.Logf); err != nil {
 		t.Error(err)
 	}
+	done = startPhase("save verdict", t.Logf)
+	defer done()
 	if err := save(filepath.Join(r.dir, "verdict.json"), verdict{Passed: !t.Failed()}); err != nil {
 		t.Error(err)
 	}

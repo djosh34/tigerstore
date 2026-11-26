@@ -316,6 +316,8 @@ type checkerResult struct {
 // Each one fails too if the history is incomplete: no committed log, no
 // watches, or a target that the log does not end at.
 func runChecks(h *history.History, timeout time.Duration, dir string, logf func(string, ...any)) error {
+	done := startPhase("validate checker input", logf)
+	defer done()
 	var missing error
 	if len(h.Ops) == 0 || len(h.Log) == 0 || len(h.Watches) == 0 || h.Target <= 0 {
 		missing = errors.New("incomplete history: need ops, a committed log, watches and a positive target")
@@ -324,11 +326,18 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 		missing = errors.Join(missing, fmt.Errorf("the committed log ends at revision %d, the target is %d", rev, h.Target), e)
 	}
 	missing = errors.Join(missing, h.Validate())
+	done()
+	done = startPhase("checker coverage", logf)
+	defer done()
 	cov, covErr := coverage(h)
 	missing = errors.Join(missing, covErr, save(filepath.Join(dir, "coverage.json"), cov))
+	done()
+	done = startPhase("linearizability input", logf)
+	defer done()
 	lin, pruned, err := h.WithoutLostWrites()
 	missing = errors.Join(missing, err)
 	logf("linearizability input leaves out %d ambiguous writes that did not take effect", pruned)
+	done()
 	var results []checkerResult
 	var errs []error
 	short := check.ShortEnough(lin)
@@ -350,7 +359,11 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 			continue
 		}
 		start := time.Now()
-		own := ch.fn()
+		own := func() error {
+			done := startPhase("checker "+ch.name, logf)
+			defer done()
+			return ch.fn()
+		}()
 		err := errors.Join(missing, own)
 		res := checkerResult{Name: ch.name, Passed: err == nil, Seconds: time.Since(start).Seconds()}
 		if own != nil {
@@ -363,6 +376,8 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 		logf("checker %s passed=%v in %.3fs", ch.name, res.Passed, res.Seconds)
 		results = append(results, res)
 	}
+	done = startPhase("save checker results", logf)
+	defer done()
 	return errors.Join(append(errs, save(filepath.Join(dir, "checks.json"), results))...)
 }
 
