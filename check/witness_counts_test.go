@@ -13,26 +13,28 @@ import (
 // TestWitnessHardHistories checks histories on which the witness from the
 // revisions reached its step limit, with no log and no effects to help
 // it: the search must find an order within the steps given, which since
-// #849 count the index's steps too, 1,200 to 2,500 of them here.
+// #849 count the index's steps too, and since #857 also charge the inner
+// search loops, including restores, sorts and the capacity solver. These
+// bounds include that formerly uncharged work, not just search turns.
 //   - witness-425: #425's seed, saved from main at bd1ade31, where it
 //     timed out after 50,000,000 steps; the seed no longer plays out that
-//     way (#482). It needs 23,712 steps.
+//     way (#482). It needs 70,280 work steps.
 //   - witness-control-80-201: the unplanted control seed 201 of #485's
 //     sweep with 80 s of faults, replayed on exp/485-sim-ceiling at
-//     0a63d065, which timed out after 50,000,000 steps; it needs 9,764
+//     0a63d065, which timed out after 50,000,000 steps; it needs 111,487
 //     (#425, #499).
 //   - witness-control-320-1529: control seed 1529 of the same sweep, with
 //     320 s of faults, replayed the same way, which timed out too: the
 //     bounds of each key alone let two keys count on one free revision
-//     (roomReachable). It needs 15,881.
+//     (roomReachable). It needs 8,416,915 work steps.
 func TestWitnessHardHistories(t *testing.T) {
 	for _, c := range []struct {
 		file  string
 		steps int64
 	}{
-		{"witness-425.json.gz", 28_000},
-		{"witness-control-80-201.json.gz", 12_000},
-		{"witness-control-320-1529.json.gz", 20_000},
+		{"witness-425.json.gz", 80_000},
+		{"witness-control-80-201.json.gz", 125_000},
+		{"witness-control-320-1529.json.gz", 9_000_000},
 	} {
 		t.Run(c.file, func(t *testing.T) {
 			f, err := os.Open("testdata/" + c.file)

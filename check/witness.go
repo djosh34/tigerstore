@@ -153,7 +153,8 @@ type witness struct {
 	observed, toObserve int
 	search              *revisionOrder
 	// stop, if set, stops the check as its deadline does (StopWhen).
-	stop func() bool
+	stop    func() bool
+	stopped bool
 	// scope caches the keys each op's request reads or writes
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
@@ -279,11 +280,18 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 // tick counts a step of work and reports whether the deadline passed or
 // the steps ran out.
 func (w *witness) tick() bool {
-	w.steps++
-	if w.maxSteps > 0 && w.steps > w.maxSteps {
+	if w.stopped {
 		return true
 	}
-	return w.steps%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
+	w.steps++
+	w.stopped = w.maxSteps > 0 && w.steps > w.maxSteps || w.steps%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
+	return w.stopped
+}
+
+// innerStep charges work done by shared replay helpers inside the revision
+// search. The log witness keeps its existing operation-level accounting.
+func (w *witness) innerStep() bool {
+	return w.search != nil && w.search.step()
 }
 
 // summary is the live store's summary, which shares its leases with the
@@ -319,6 +327,9 @@ func (w *witness) stateAt(j int) *state {
 	if w.kvsRev != sm.rev {
 		w.kvs = make([]history.KeyValue, len(w.keys))
 		for k, key := range w.keys {
+			if w.innerStep() {
+				break
+			}
 			if kv, ok := w.past.at(key, sm.rev); ok {
 				w.kvs[k] = kv
 			}
@@ -332,7 +343,11 @@ func (w *witness) stateAt(j int) *state {
 // or its error at state j.
 func (w *witness) answers(i, j int) bool {
 	op := &w.h.Ops[i]
-	o := w.scopedState(i, j).step(w.reqs[i], false)
+	s := w.scopedState(i, j)
+	if w.stopped {
+		return false
+	}
+	o := s.step(w.reqs[i], false)
 	if op.Err != nil {
 		return o.err != nil && sameError(o.err, op.Err)
 	}
@@ -350,6 +365,38 @@ func mutation(op *history.Op) bool {
 		return respChanges(op)
 	}
 	return op.Err.Ambiguous
+}
+
+// mutationWithStep is mutation with a stop inside transaction branches too.
+func mutationWithStep(op *history.Op, stop func() bool) bool {
+	if op.Req.Txn == nil {
+		return mutation(op)
+	}
+	mutates := false
+	for o := range op.Req.Txn.Ops() {
+		if stop() {
+			return false
+		}
+		if o.Range == nil {
+			mutates = true
+			break
+		}
+	}
+	if !mutates {
+		return false
+	}
+	if op.Resp == nil {
+		return op.Err.Ambiguous
+	}
+	for k, o := range branch(op) {
+		if stop() {
+			return false
+		}
+		if o.Put != nil || o.Delete != nil && op.Resp.Txn.Results[k].Delete.Deleted > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // fromLog makes the log's entries the events, each linked to the op that
@@ -477,8 +524,11 @@ func (w *witness) boundAfter() func(t int64) int {
 func (w *witness) observe() error {
 	var ops []int
 	for i := range w.h.Ops {
+		if w.innerStep() {
+			return ErrWitnessTimeout
+		}
 		if !w.at[i].set() && w.seen(i) {
-			if op := &w.h.Ops[i]; op.Resp != nil && mutation(op) {
+			if op := &w.h.Ops[i]; op.Resp != nil && mutationWithStep(op, w.innerStep) {
 				return fmt.Errorf("acked %s changed the store but has no place in the order", w.describe(i))
 			}
 			ops = append(ops, i)
@@ -523,7 +573,13 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 		starts := make([]int, top-base+1)
 		j := len(w.states)
 		for i := top - base; i >= 0; i-- {
+			if w.innerStep() {
+				return ErrWitnessTimeout
+			}
 			for j > 0 && w.states[j-1].rev >= base+i {
+				if w.innerStep() {
+					return ErrWitnessTimeout
+				}
 				j--
 			}
 			starts[i] = j
@@ -542,6 +598,9 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 	ops = slices.Clone(ops)
 	w.sorter.sort(ops, func(i int) int64 { return w.calls[i] })
 	placed := newPlacedMax(w.returns, ops, &w.sorter)
+	if w.stopped {
+		return ErrWitnessTimeout
+	}
 	for x, i := range ops {
 		if w.tick() {
 			return ErrWitnessTimeout
@@ -593,6 +652,9 @@ func (w *witness) placeSeen(ops []int, set bool) error {
 // find returns the first state in [lo, hi] at which op i gets its answer.
 func (w *witness) find(i, lo, hi int) (int, bool) {
 	for j := lo; j <= hi; j++ {
+		if w.innerStep() {
+			return 0, false
+		}
 		if w.answers(i, j) {
 			return j, true
 		}
@@ -603,13 +665,20 @@ func (w *witness) find(i, lo, hi int) (int, bool) {
 // unanswered is the failure of op i, whose revision spans states [f, l],
 // and which real time allows in [lo, hi].
 func (w *witness) unanswered(i, f, l, lo, hi int) error {
+	if w.stopped {
+		return ErrWitnessTimeout
+	}
 	var b strings.Builder
 	b.WriteString(w.describe(i))
 	if lo > hi {
 		fmt.Fprintf(&b, " has no state that real time allows: its revision's states are %d to %d, real time allows %d to %d", f, l, lo, hi)
 		return errors.New(b.String())
 	}
-	o := w.stateAt(lo).step(w.reqs[i], false)
+	s := w.stateAt(lo)
+	if w.stopped {
+		return ErrWitnessTimeout
+	}
+	o := s.step(w.reqs[i], false)
 	fmt.Fprintf(&b, " gets no state from %d to %d that answers it; at state %d (revision %d) the model gives %s", lo, hi, lo, w.states[lo].rev, outputOf(o))
 	fmt.Fprintf(&b, "; the order around it: %s", w.around(lo))
 	return errors.New(b.String())
@@ -693,8 +762,11 @@ func (w *witness) gives(i int, o outcome) bool { return !w.acked(i) || matches(o
 func (w *witness) eventBounds() func(op *history.Op) (int, int) {
 	if !w.slow {
 		if w.times == nil {
-			w.times = &eventTimes{}
+			w.times = &eventTimes{step: w.innerStep}
 			for _, e := range w.events {
+				if w.innerStep() {
+					break
+				}
 				w.times.push(w.h, e.op)
 			}
 		}
@@ -739,19 +811,26 @@ type placedMax struct {
 	rank      []int
 	vals      []int
 	swept, at int
+	step      func() bool
 }
 
 // newPlacedMax is a placedMax of ops, which are in call order, with the
 // ops' returns by op.
 func newPlacedMax(returns []int64, ops []int, sorter *timeSorter) *placedMax {
 	m := len(ops)
-	p := &placedMax{returns: make([]int64, m), rank: make([]int, m), vals: make([]int, m)}
+	p := &placedMax{returns: make([]int64, m), rank: make([]int, m), vals: make([]int, m), step: sorter.step}
 	byReturn := make([]int, m)
 	for k := range byReturn {
+		if p.step != nil && p.step() {
+			return p
+		}
 		byReturn[k] = k
 	}
 	sorter.sort(byReturn, func(k int) int64 { return returns[ops[k]] })
 	for k, x := range byReturn {
+		if p.step != nil && p.step() {
+			return p
+		}
 		p.rank[x] = k
 		p.returns[k] = returns[ops[x]]
 	}
@@ -771,6 +850,9 @@ func (p *placedMax) add(x, j int) {
 // t is never below the last t asked.
 func (p *placedMax) before(t int64) int {
 	for ; p.swept < len(p.returns) && p.returns[p.swept] < t; p.swept++ {
+		if p.step != nil && p.step() {
+			return p.at
+		}
 		p.at = max(p.at, p.vals[p.swept])
 	}
 	return p.at
@@ -784,6 +866,9 @@ func (w *witness) verify() error {
 	// is left out of byReturn.
 	var byCall, byReturn []int
 	for i, p := range w.at {
+		if w.innerStep() {
+			return ErrWitnessTimeout
+		}
 		if p.set() {
 			byCall = append(byCall, i)
 			if err := w.h.Ops[i].Err; err == nil || !err.Ambiguous {
@@ -802,6 +887,9 @@ func (w *witness) verify() error {
 			return ErrWitnessTimeout
 		}
 		for ; k < len(byReturn) && w.returns[byReturn[k]] < w.calls[b]; k++ {
+			if w.innerStep() {
+				return ErrWitnessTimeout
+			}
 			if a := byReturn[k]; by < 0 || w.at[a].compare(latest) > 0 {
 				latest, by = w.at[a], a
 			}

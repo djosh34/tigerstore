@@ -285,21 +285,44 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 	x := r.room
 	n := len(s.keys)
 	var out []int
+	add := func(ops []int) {
+		for _, i := range ops {
+			if r.step() {
+				return
+			}
+			out = append(out, i)
+		}
+	}
 	for k := range n {
+		if r.step() {
+			return nil
+		}
 		if need[k] > 0 {
-			out = append(out, r.putters[k]...)
+			add(r.putters[k])
 		}
 		if need[n+k] > 0 {
-			out = append(out, r.deleters[k]...)
+			add(r.deleters[k])
 			// A key holds a lease only from a put of the history, so its
 			// lease now is one of these.
 			for _, id := range x.leasesOf[k] {
-				out = append(out, x.revokesOf[id]...)
+				if r.step() {
+					return nil
+				}
+				add(x.revokesOf[id])
 			}
 		}
 	}
-	slices.Sort(out)
-	return slices.Compact(out)
+	sortWithStep(out, cmp.Compare[int], r.step)
+	unique := out[:0]
+	for _, i := range out {
+		if r.step() {
+			return nil
+		}
+		if len(unique) == 0 || unique[len(unique)-1] != i {
+			unique = append(unique, i)
+		}
+	}
+	return unique
 }
 
 // unionRevs returns the revisions of a and b, which are each in order and
@@ -335,6 +358,9 @@ func between(revs []int64, lo, hi int64) int {
 // life of it they saw created later, and of each key present now that a
 // count of zero needs gone.
 func (r *revisionOrder) roomReachable(s *state, skip int) bool {
+	if r.step() {
+		return false
+	}
 	x := r.room
 	if x == nil || r.w.slow {
 		return true
@@ -342,6 +368,9 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 	now := s.rev
 	first := sort.Search(len(x.ends), func(j int) bool { return x.ends[j] > now })
 	for _, end := range x.ends[first:] {
+		if r.step() {
+			return false
+		}
 		// end is past now: the difference doesn't overflow (#768).
 		if end-now > countHorizon {
 			break
@@ -349,6 +378,9 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 		need := r.roomNeed(s, end)
 		total := 0
 		for _, v := range need {
+			if r.step() {
+				return false
+			}
 			total += v
 		}
 		if total == 0 || total > maxRoomNeed {
@@ -358,21 +390,27 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 		add := func(a []int) {
 			useful := false
 			for j := range a {
+				if r.step() {
+					return
+				}
 				a[j] = min(a[j], need[j])
 				useful = useful || a[j] > 0
 			}
-			if useful && !slices.ContainsFunc(actions, func(b []int) bool { return slices.Equal(a, b) }) {
+			if useful && !slices.ContainsFunc(actions, func(b []int) bool { return r.step() || slices.Equal(a, b) }) {
 				actions = append(actions, a)
 			}
 		}
 		for _, i := range r.coverers(s, need) {
+			if r.step() {
+				return false
+			}
 			if _, held := r.reserved[i]; i == skip || r.used[i] || r.lb[i] >= end || held {
 				continue
 			}
 			add(slices.Clone(x.actions[i]))
 		}
 		free := int(end-now) - between(x.fixed, now, end)
-		if fewestActions(need, actions, free) > free {
+		if r.w.stopped || fewestActions(need, actions, free, r.step) > free {
 			return false
 		}
 	}
@@ -419,12 +457,18 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 	// The lives that end by end after now, and those created after now by
 	// end: no other one needs anything by end.
 	for _, l := range x.byM[sort.Search(len(x.byM), func(j int) bool { return x.byM[j].m > now }):] {
+		if r.step() {
+			return nil
+		}
 		if l.m > end {
 			break
 		}
 		life(l)
 	}
 	for _, l := range x.byC[sort.Search(len(x.byC), func(j int) bool { return x.byC[j].c > now }):] {
+		if r.step() {
+			return nil
+		}
 		if l.c > end {
 			break
 		}
@@ -433,12 +477,21 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 		}
 	}
 	for _, rev := range r.countRevs[sort.Search(len(r.countRevs), func(j int) bool { return r.countRevs[j] > now }):] {
+		if r.step() {
+			return nil
+		}
 		if rev > end {
 			break
 		}
 		for _, c := range r.counts[rev] {
+			if r.step() {
+				return nil
+			}
 			if c.n == 0 {
 				for k := c.lo; k < c.hi; k++ {
+					if r.step() {
+						return nil
+					}
 					mustDelete(k, rev)
 				}
 			}
@@ -450,13 +503,19 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 // fewestActions returns the fewest actions, each taken any number of
 // times, whose sum covers need, or limit+1 if more. The first coordinate
 // still needed must be covered by one of them, so it branches on those.
-func fewestActions(need []int, actions [][]int, limit int) int {
+func fewestActions(need []int, actions [][]int, limit int, stop func() bool) int {
 	memo := map[string]int{}
 	var solve func([]int) int
 	solve = func(d []int) int {
+		if stop() {
+			return limit + 1
+		}
 		key := make([]byte, len(d))
 		first := -1
 		for j, v := range d {
+			if stop() {
+				return limit + 1
+			}
 			key[j] = byte(v)
 			if v > 0 && first < 0 {
 				first = j
@@ -470,11 +529,17 @@ func fewestActions(need []int, actions [][]int, limit int) int {
 		}
 		best := limit + 1
 		for _, a := range actions {
+			if stop() {
+				return limit + 1
+			}
 			if a[first] == 0 {
 				continue
 			}
 			next := make([]int, len(d))
 			for j, v := range d {
+				if stop() {
+					return limit + 1
+				}
 				next[j] = max(0, v-a[j])
 			}
 			best = min(best, 1+solve(next))
