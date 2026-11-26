@@ -140,7 +140,8 @@ type Stats struct {
 	Conns uint64 `json:"conns"`
 	Open  int    `json:"open"`
 	// Bytes counts bytes read in each direction, and Sent those written
-	// on, after any delay or rate limit.
+	// on, after any delay or rate limit. Sent is updated after Write returns,
+	// so a reply can be read before the corresponding Sent update.
 	ForwardBytes  uint64 `json:"forward_bytes"`
 	BackwardBytes uint64 `json:"backward_bytes"`
 	ForwardSent   uint64 `json:"forward_sent"`
@@ -463,7 +464,13 @@ func (p *Proxy) mutate(q *pair, d Dir, s *state, data []byte, off uint64, first 
 	return data
 }
 
-func (p *Proxy) write(q *pair, d Dir, dst *net.TCPConn, ch chan chunk) {
+// writeConn allows a test to hold a completed write before Sent is updated.
+type writeConn interface {
+	io.Writer
+	CloseWrite() error
+}
+
+func (p *Proxy) write(q *pair, d Dir, dst writeConn, ch chan chunk) {
 	for {
 		var c chunk
 		select {
