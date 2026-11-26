@@ -104,6 +104,11 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v6
         with:
+          name: witness-profile-${{ matrix.shard }}
+          path: ${{ runner.temp }}/sim-out/witness-profile
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
           name: sim-campaign-files-${{ matrix.shard }}
           path: ${{ runner.temp }}/sim-out
   summary:

@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -802,7 +803,32 @@ func independentWithSteps(res *Result, report func(int64, time.Duration), budget
 		if measure {
 			cpuFrom, cpuErr = simrun.CPUTime()
 		}
-		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
+		// Scratch #876: profile every mode, rotating from the stop hook
+		// so late-search windows survive even a stopped search.
+		prof := &strings.Builder{}
+		profileErr := pprof.StartCPUProfile(prof)
+		lastCPU, _ := simrun.CPUTime()
+		part := 0
+		flush := func() {
+			pprof.StopCPUProfile()
+			simrun.Artifact(filepath.Join("sim-out", "witness-profile", fmt.Sprintf("mode%d-part%03d.pprof", mode, part)), []byte(prof.String()))
+			part++
+			prof = &strings.Builder{}
+		}
+		profileStop := check.StopWhen(func() bool {
+			cpu, _ := simrun.CPUTime()
+			if profileErr == nil && cpu-lastCPU >= 2*time.Minute {
+				flush()
+				profileErr = pprof.StartCPUProfile(prof)
+				lastCPU = cpu
+			}
+			return simrun.WallLimitPassed()
+		})
+		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), profileStop, check.StepsUsed(&steps))
+		if profileErr == nil {
+			flush()
+		}
+		simrun.Artifact(filepath.Join("sim-out", "witness-profile", fmt.Sprintf("mode%d.txt", mode)), fmt.Appendf(nil, "mode %d: profile error %v; %d windows; steps %d; verdict %v\n", mode, profileErr, part, steps, err))
 		if measure {
 			// Timing is diagnostic: a failed counter must not change a
 			// check's verdict. Zero means the counter was unavailable.
