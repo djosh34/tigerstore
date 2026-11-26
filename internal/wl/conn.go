@@ -100,6 +100,29 @@ var errClosed = errors.New("connection closed")
 // readSock reads once from the socket into in. It reports whether it
 // read anything.
 func (s *sock) readSock() (bool, error) {
+	got, err := s.readSockOnce()
+	if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR) {
+		return false, nil
+	}
+	return got, err
+}
+
+// readSockBlocking reads from a socket with a receive timeout. EINTR
+// repeats that blocking read; only EAGAIN means the timeout expired.
+// The loop's non-blocking readSock still yields after an interrupt.
+func (s *sock) readSockBlocking() (bool, error) {
+	for {
+		got, err := s.readSockOnce()
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		return got, err
+	}
+}
+
+// readSockOnce leaves interruptions and timeouts to its caller, which
+// knows whether the socket blocks or belongs to the loop.
+func (s *sock) readSockOnce() (bool, error) {
 	if s.ir == s.iw {
 		s.ir, s.iw = 0, 0
 	} else if len(s.in)-s.iw < len(s.in)/4 {
@@ -116,9 +139,6 @@ func (s *sock) readSock() (bool, error) {
 	if n > 0 {
 		s.iw += n
 		return true, nil
-	}
-	if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR) {
-		return false, nil
 	}
 	if err == nil {
 		return false, io.EOF
