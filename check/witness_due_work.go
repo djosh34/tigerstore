@@ -284,7 +284,8 @@ func (r *revisionOrder) dueAt(call, rev, from int64) iter.Seq[optional] {
 // Inner work still offers a stop poll every 64 items, but budget steps
 // weigh it by cost: ordinary replay/search items at 1/1,024, and capacity
 // items at 1/16,384. The latter are short integer-vector/bitmap operations
-// and bulk sort estimates, not operation replays. #872's saved-history
+// and bulk sort estimates or 64-byte diagnostic assembly copies, not
+// operation replays. #872's saved-history
 // measurements give the weights and the simulator budget's conversion.
 const (
 	searchWeight     = 16

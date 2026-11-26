@@ -3,14 +3,15 @@ package check
 import (
 	"fmt"
 	"reflect"
-	"strings"
 )
 
 // Diagnostic JSON is search work too: failed candidate orders can render
 // multi-megabyte range answers over and over. The bounded encoder escapes
 // strings and copies output in at most 4 KiB chunks, including a single
-// arbitrarily large scalar. Accounting uses 64-byte units; the stop hook
-// is polled every 1,024 ticks (at most about 4 MiB of encoded JSON).
+// arbitrarily large scalar. Output is stored in fixed linked chunks, then
+// assembled once with charged, polled copying (no growing output prefix).
+// Accounting uses 64-byte units; the stop hook is polled every 1,024 ticks
+// (at most about 4 MiB of encoded or assembled JSON).
 const (
 	diagnosticBytesPerStep = 2048
 	diagnosticPollBytes    = 64
@@ -18,7 +19,7 @@ const (
 
 type witnessJSONWriter struct {
 	w   *witness
-	b   strings.Builder
+	b   witnessText
 	buf [4096]byte
 	n   int
 }
@@ -39,7 +40,7 @@ func (d *witnessJSONWriter) Write(p []byte) (int, error) {
 			r.diagnosticLeft += chunks * diagnosticPollBytes
 		}
 		r.diagnosticLeft -= len(part)
-		_, _ = d.b.Write(part)
+		d.b.append(d.w, part)
 		written += len(part)
 		p = p[len(part):]
 	}

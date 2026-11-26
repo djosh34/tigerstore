@@ -36,9 +36,16 @@ func TestWitnessJSONScalarWallStop(t *testing.T) {
 	if err := d.quoted(input); !errors.Is(err, ErrWitnessTimeout) {
 		t.Fatalf("large scalar missed wall hook: %v", err)
 	}
-	if observed == 0 || observed >= len(want) || observed > 4<<20 || d.b.String() != want[:observed] {
+	if observed == 0 || observed >= len(want) || observed > 4<<20 {
 		t.Fatalf("escaped/copied whole scalar before polling: %d of %d bytes", observed, len(want))
 	}
+	// Inspect the private prefix only after explicitly clearing the stop
+	// in this test. Production never assembles cancelled output.
+	w.stopped, w.stop = false, nil
+	if d.b.String() != want[:observed] {
+		t.Fatal("private escaped prefix differs from v1 JSON")
+	}
+	w.stopped = true
 	if w.jsonOf(input) != "" {
 		t.Fatal("partial scalar escaped after cancellation")
 	}

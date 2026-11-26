@@ -491,8 +491,11 @@ func (r *revisionOrder) index() error {
 			r.lives[key] = append(r.lives[key], l.lifeTo)
 		}
 	}
-	// An ambiguous op seen writing two revisions wrote neither for sure.
-	revOf := map[int]int64{}
+	// An ambiguous op seen writing multiple revisions holds none for sure.
+	// Count first, then remove only the current entry in a separate pass.
+	// Removing pairs during map traversal left an order-dependent survivor
+	// when three or more revisions named the same op.
+	revOf := map[int]int{}
 	for rev, i := range r.resolved {
 		if r.indexStep() {
 			return ErrWitnessTimeout
@@ -501,19 +504,21 @@ func (r *revisionOrder) index() error {
 			delete(r.resolved, rev)
 			continue
 		}
-		if other, ok := revOf[i]; ok {
-			delete(r.resolved, rev)
-			delete(r.resolved, other)
-			continue
-		}
-		revOf[i] = rev
+		revOf[i]++
 	}
 	for rev, i := range r.resolved {
 		if r.indexStep() {
 			return ErrWitnessTimeout
 		}
+		if revOf[i] > 1 {
+			delete(r.resolved, rev)
+			continue
+		}
 		r.reserved[i] = rev
 	}
+	// Each key's spans have deterministic input order and are merged
+	// independently. Map traversal changes neither the summed charge nor
+	// another key's result; a stopped index discards all partial results.
 	for k, ss := range r.covered {
 		if r.indexStep() {
 			return ErrWitnessTimeout

@@ -52,8 +52,8 @@ func TestWitnessSavedStepsDeterministic(t *testing.T) {
 			t.Fatalf("seed-5058843 used %d then %d steps", first, used)
 		}
 	}
-	if first != 1794 {
-		t.Fatalf("seed-5058843 used %d steps, want 1794", first)
+	if first != 1795 {
+		t.Fatalf("seed-5058843 used %d steps, want 1795 (including final diagnostic copying)", first)
 	}
 }
 
