@@ -317,6 +317,7 @@ type checkerResult struct {
 // watches, or a target that the log does not end at.
 func runChecks(h *history.History, timeout time.Duration, dir string, logf func(string, ...any)) error {
 	done := startPhase("validate checker input", logf)
+	defer done()
 	var missing error
 	if len(h.Ops) == 0 || len(h.Log) == 0 || len(h.Watches) == 0 || h.Target <= 0 {
 		missing = errors.New("incomplete history: need ops, a committed log, watches and a positive target")
@@ -327,10 +328,12 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 	missing = errors.Join(missing, h.Validate())
 	done()
 	done = startPhase("checker coverage", logf)
+	defer done()
 	cov, covErr := coverage(h)
 	missing = errors.Join(missing, covErr, save(filepath.Join(dir, "coverage.json"), cov))
 	done()
 	done = startPhase("linearizability input", logf)
+	defer done()
 	lin, pruned, err := h.WithoutLostWrites()
 	missing = errors.Join(missing, err)
 	logf("linearizability input leaves out %d ambiguous writes that did not take effect", pruned)
@@ -355,10 +358,12 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 			results = append(results, checkerResult{Name: ch.name, Skipped: skipped})
 			continue
 		}
-		done := startPhase("checker "+ch.name, logf)
 		start := time.Now()
-		own := ch.fn()
-		done()
+		own := func() error {
+			done := startPhase("checker "+ch.name, logf)
+			defer done()
+			return ch.fn()
+		}()
 		err := errors.Join(missing, own)
 		res := checkerResult{Name: ch.name, Passed: err == nil, Seconds: time.Since(start).Seconds()}
 		if own != nil {
