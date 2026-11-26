@@ -548,6 +548,11 @@ func (r *revisionOrder) indexCounts() {
 	h, s := r.w.h, r.w.live
 	add := func(rev int64, key, end string, n int64) {
 		lo, hi := s.span(key, end)
+		if len(r.counts[rev]) == 0 {
+			// Preserve history order: a charged adaptive sort must not
+			// receive the nondeterministic traversal order of a Go map.
+			r.countRevs = append(r.countRevs, rev)
+		}
 		r.counts[rev] = append(r.counts[rev], count{rev: rev, lo: lo, hi: hi, n: n})
 	}
 	n := len(s.keys)
@@ -634,11 +639,10 @@ func (r *revisionOrder) indexCounts() {
 		indexSort(r, revs, cmp.Compare[int64])
 	}
 	indexSort(r, r.revokeRevs, cmp.Compare[int64])
-	for rev := range r.counts {
+	for range r.countRevs {
 		if r.indexStep() {
 			return
 		}
-		r.countRevs = append(r.countRevs, rev)
 	}
 	indexSort(r, r.countRevs, cmp.Compare[int64])
 }

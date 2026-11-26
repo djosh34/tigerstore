@@ -1,41 +1,49 @@
 package check
 
 import (
-	"encoding/json"
-	jsonv2 "encoding/json/v2"
-	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
 // Diagnostic JSON is search work too: failed candidate orders can render
-// multi-megabyte range answers over and over. Streaming keeps the encoder's
-// normal 4 KiB flush points visible to both accounting and cancellation.
+// multi-megabyte range answers over and over. The bounded encoder escapes
+// strings and copies output in at most 4 KiB chunks, including a single
+// arbitrarily large scalar. Accounting uses 64-byte units; the stop hook
+// is polled every 1,024 ticks (at most about 4 MiB of encoded JSON).
 const (
 	diagnosticBytesPerStep = 2048
 	diagnosticPollBytes    = 64
 )
 
 type witnessJSONWriter struct {
-	w *witness
-	b strings.Builder
+	w   *witness
+	b   strings.Builder
+	buf [4096]byte
+	n   int
 }
 
 func (d *witnessJSONWriter) Write(p []byte) (int, error) {
 	if d.w.stopped {
 		return 0, ErrWitnessTimeout
 	}
-	bytes := len(p)
-	r := d.w.search
-	if bytes > r.diagnosticLeft {
-		chunks := (bytes - r.diagnosticLeft + diagnosticPollBytes - 1) / diagnosticPollBytes
-		if r.chargeItems(int64(chunks), workUnitsPerStep/(diagnosticBytesPerStep/diagnosticPollBytes)) {
-			return 0, ErrWitnessTimeout
+	written := 0
+	for len(p) > 0 {
+		part := p[:min(len(p), 4096)]
+		r := d.w.search
+		if len(part) > r.diagnosticLeft {
+			chunks := (len(part) - r.diagnosticLeft + diagnosticPollBytes - 1) / diagnosticPollBytes
+			if r.chargeItems(int64(chunks), workUnitsPerStep/(diagnosticBytesPerStep/diagnosticPollBytes)) {
+				return written, ErrWitnessTimeout
+			}
+			r.diagnosticLeft += chunks * diagnosticPollBytes
 		}
-		r.diagnosticLeft += chunks * diagnosticPollBytes
+		r.diagnosticLeft -= len(part)
+		_, _ = d.b.Write(part)
+		written += len(part)
+		p = p[len(part):]
 	}
-	r.diagnosticLeft -= bytes
-	return d.b.Write(p)
+	return written, nil
 }
 
 func (w *witness) jsonOf(v any) string {
@@ -46,11 +54,14 @@ func (w *witness) jsonOf(v any) string {
 		return ""
 	}
 	d := &witnessJSONWriter{w: w}
-	if err := jsonv2.MarshalWrite(d, v, json.DefaultOptionsV1()); err != nil {
-		if w.stopped || errors.Is(err, ErrWitnessTimeout) {
+	if err := d.value(reflect.ValueOf(v)); err != nil {
+		if w.stopped {
 			return ""
 		}
 		return fmt.Sprintf("%+v", v)
+	}
+	if err := d.flush(); err != nil {
+		return ""
 	}
 	return d.b.String()
 }

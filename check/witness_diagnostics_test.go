@@ -46,10 +46,11 @@ func TestWitnessDiagnosticJSONSharesCarry(t *testing.T) {
 		}
 	}
 	// A bulk writer must poll inside a single large Write, not only
-	// between encodings. No cancelled bytes may reach the builder.
+	// between encodings or after copying the entire input. A cancelled
+	// prefix remains private and is discarded by jsonOf.
 	w.stop = func() bool { return true }
 	d := &witnessJSONWriter{w: w}
-	if _, err := d.Write(make([]byte, 8<<20)); !errors.Is(err, ErrWitnessTimeout) || d.b.Len() != 0 || w.workTicks != 1024 {
+	if _, err := d.Write(make([]byte, 8<<20)); !errors.Is(err, ErrWitnessTimeout) || d.b.Len() == 0 || d.b.Len() >= 8<<20 || w.workTicks != 1024 {
 		t.Fatalf("bulk diagnostic delayed cancellation: %v, %d bytes, %d ticks", err, d.b.Len(), w.workTicks)
 	}
 }

@@ -79,6 +79,11 @@ func (r *revisionOrder) try(s *state, req history.Request) (t *state, undo func(
 	c := *s
 	return &c, func() {
 		for j, k := range written {
+			if r.step() {
+				// Cancellation discards the whole search, including the
+				// borrowed state. Do not finish an unbounded rollback.
+				return
+			}
 			s.kvs[k] = before[j]
 		}
 	}

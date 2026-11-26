@@ -745,13 +745,13 @@ func checkers(t *testing.T, res *Result) {
 //	seed-59113215                272       293  1.0773
 //	seed-77148                   777       841  1.0824
 //	seed-888737                  141       158  1.1206
-//	witness-425                23712     25433  1.0726
-//	witness-control-80-201      9764     12337  1.2636
-//	witness-control-320-1529   15881    110378  6.9504
+//	witness-425                23712     25434  1.0727
+//	witness-control-80-201      9764     12340  1.2639
+//	witness-control-320-1529   15881    110659  6.9681
 //	81000 same-revision grants 87330     89394  1.0237
 //	256 gaps, 4096 expiries    13271     62819  4.7336
 //
-// Round the worst ratio, 110,378 / 15,881, up to seven: the old
+// Round the worst ratio, 110,659 / 15,881, up to seven: the old
 // 50,000,000 * 7 = 350,000,000 preserves every measured margin; ordinary
 // checks get 360,000,000, a little above that floor. Long-seed revision
 // checks instead get 180,000,000: run 45803627951 used 219,708,153 steps

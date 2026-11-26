@@ -44,19 +44,22 @@ func TestOrdinaryAndAgedBackstops(t *testing.T) {
 	if budgetTime != 30*time.Minute || simrun.OrdinaryWallLimit != 55*time.Minute {
 		t.Fatal("ordinary budget/backstop sizing changed without new measurements")
 	}
-	for _, kind := range []string{kindFresh, kindAged} {
-		t.Run(kind, func(t *testing.T) {
-			if simrun.OrdinaryWallLimit < budgetTime+setup+margin || (budgetTime+setup)*100 > simrun.OrdinaryWallLimit*85 {
-				t.Fatal("step budget, setup and 15% margin do not fit before the backstop")
-			}
-		})
+	// This arithmetic is shared by the ordinary and aged defaults;
+	// TestResolveWallLimit and TestCampaignWallLimits test their selection.
+	if simrun.OrdinaryWallLimit < budgetTime+setup+margin || (budgetTime+setup)*100 > simrun.OrdinaryWallLimit*85 {
+		t.Fatal("step budget, setup and 15% margin do not fit before the backstop")
 	}
-	// The image and its four forks share a process queue. Even charging
-	// every run its full soft limit and kill grace leaves 15 minutes in
-	// the 340-minute campaign binary (25 in the 350-minute job).
+}
+
+func TestSingleImageQueueEnvelope(t *testing.T) {
+	// Only the measured eight-image layout has one image per process
+	// queue. For that layout, one image and four forks each charged their
+	// soft limit plus grace fit in 325 minutes. This is not a bound on a
+	// campaign's multi-seed process: all its seeds share one 340-minute
+	// binary timeout, and larger queues may contain multiple images.
 	const grace = 10 * time.Minute
 	if time.Duration(1+forksPerImage)*(simrun.OrdinaryWallLimit+grace) >= 340*time.Minute {
-		t.Fatal("aged image/forks do not fit the campaign process timeout")
+		t.Fatal("single-image measurement envelope does not fit its process timeout")
 	}
 }
 
