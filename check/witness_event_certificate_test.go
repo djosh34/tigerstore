@@ -295,6 +295,42 @@ func TestEventCertificateStopsBeforeExhaustion(t *testing.T) {
 	}
 }
 
+func TestEventCertificateStopWithinFusedTraversals(t *testing.T) {
+	for _, phase := range []string{"keys", "candidates"} {
+		t.Run(phase, func(t *testing.T) {
+			w := newWitness(eventDeadHistory(1, 12), time.Now().Add(time.Minute))
+			r := newRevisionOrder(w)
+			w.search = r
+			if err := r.index(); err != nil {
+				t.Fatal(err)
+			}
+			if !r.finish(r.first) {
+				t.Fatal(r.failure)
+			}
+			// Isolate the fused traversals: this manual fixture's clone has
+			// no replay callback. Align the shared carry so the first key
+			// (or candidate) is handled and the next item polls cancellation.
+			beforeItems := 1
+			if phase == "candidates" {
+				beforeItems += len(w.live.keys)
+			}
+			w.workTicks = 1023
+			r.workLeft, r.budgetLeft = uint8(beforeItems), workUnitsPerStep
+			polls, claims := 0, 0
+			w.stop = func() bool { polls++; return true }
+			r.testCertificate = func(int64, eventCertificate, []int) { claims++ }
+			beforeID := w.lastID
+			if r.write(11) || !w.stopped || polls != 1 || claims != 0 || r.failure != nil || len(r.stack) != 0 || w.lastID != beforeID {
+				t.Fatal("stop inside fused traversal became exhaustion or changed the prefix")
+			}
+			wantCredit := uint16(workUnitsPerStep - (beforeItems+1)*ordinaryUnits)
+			if r.budgetLeft != wantCredit || w.workTicks != 1024 {
+				t.Fatal("stop did not interrupt the partial key/candidate traversal at its shared accounting boundary")
+			}
+		})
+	}
+}
+
 func TestEventCertificateParentCachesAndThresholds(t *testing.T) {
 	r := eventUnit(history.Request{Delete: &history.DeleteRequest{Key: "a"}}, eventImage())
 	r.covered["a"] = []span{{9, 11}}
