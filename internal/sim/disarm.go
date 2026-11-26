@@ -120,10 +120,14 @@ func (s *Sim) disarmNoSpaceAfter(n *node, all bool) {
 					}
 					found = true
 					req := &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, MemberID: a.MemberID, Alarm: pb.AlarmType_NOSPACE}
-					_, err := s.call(s.nodes[i], req, s.cfg.ClientTimeout)
+					resp, err := s.call(s.nodes[i], req, s.cfg.ClientTimeout)
 					s.mu.Lock()
 					s.tracef("node %d: an operator disarms its NOSPACE: %v", a.MemberID, err)
-					if err == nil {
+					// wl answers a deactivate with the alarm only if it
+					// was raised: one cleared already, by the other
+					// operator or before a lagging leader applied it, is
+					// not counted again.
+					if r, ok := resp.(*pb.AlarmResponse); err == nil && ok && len(r.Alarms) > 0 {
 						s.stats.Disarms++
 						s.stats.DisarmedAt = s.now()
 					}
