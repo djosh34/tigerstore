@@ -111,6 +111,22 @@ type ckptMeta struct {
 
 func ckptName(index uint64) string { return fmt.Sprintf("%016x.ckpt", index) }
 
+// nextCkptName gives a checkpoint at the newest's own index a new name.
+// Its file and the values in it stay readable until ckptDone, and a
+// removal queued for an older name must never remove a newer file.
+// CURRENT holds the whole name, and cleanup recognizes the .ckpt suffix.
+func nextCkptName(index uint64, prev string) string {
+	name := ckptName(index)
+	if prev == name {
+		return fmt.Sprintf("%016x-%016x.ckpt", index, uint64(1))
+	}
+	var before, seq uint64
+	if _, err := fmt.Sscanf(prev, "%016x-%016x.ckpt", &before, &seq); err == nil && before == index {
+		return fmt.Sprintf("%016x-%016x.ckpt", index, seq+1)
+	}
+	return name
+}
+
 // ckptState is one state of a key, as a checkpoint holds it.
 type ckptState struct {
 	deleted                 bool
@@ -377,7 +393,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 		_ = st.ckpts[gen].Close()
 		st.setCkpt(gen, nil)
 	}
-	name := ckptName(index)
+	name := nextCkptName(index, n.ckptName)
 	tmp := name + ".tmp"
 	st.hold()
 	r := &ckptRun{

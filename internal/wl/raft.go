@@ -446,7 +446,8 @@ func (n *node) afterApply() error {
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !n.ringDue() {
+	ringDue := n.ringDue()
+	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !ringDue {
 		return nil
 	}
 	index := n.applied
@@ -456,6 +457,15 @@ func (n *node) maybeCkpt() error {
 		index = c
 	}
 	off := s.offOf(index)
+	if s.snap != nil && index == s.snap.GetMetadata().GetIndex() {
+		if !ringDue {
+			return nil
+		}
+		// The ring may need a forced cut at the newest's own index
+		// (#815). Storage may have compacted that entry already; the
+		// checkpoint keeps its record's place for just this purpose.
+		off = n.ckptFrom + walEntHdr
+	}
 	if off < 0 {
 		return nil
 	}
