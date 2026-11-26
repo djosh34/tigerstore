@@ -64,6 +64,9 @@ func (n *node) addOp(h handle, kind uint8, msg []byte) {
 		fl = alarmFlags(kind, msg)
 	}
 	n.batchFlags = append(n.batchFlags, fl)
+	if n.putTimings != nil {
+		n.tracePutAdd(h, n.fwdSeq, n.batchOps-1)
+	}
 }
 
 // addTxn adds a Txn. A failure branch of reads only changes nothing,
@@ -127,6 +130,9 @@ func (n *node) proposeBatch(now time.Time) {
 	// A follower's batch comes back from the leader by name.
 	seq := binary.LittleEndian.Uint64(data[4:])
 	f := &n.fwd[seq&(fwdSlots-1)]
+	if n.putTimings != nil {
+		n.forgetPutTimings(f.seq)
+	}
 	f.seq, f.data = seq, data
 	f.handles = append(f.handles[:0], n.batchOwn...)
 	f.pledged, f.pledgeEpoch = n.batchPledge, n.pledgeEpoch
@@ -148,10 +154,16 @@ func (n *node) proposeBatch(now time.Time) {
 	if len(n.leases.deadline) > 0 {
 		n.renewProposed(data)
 	}
+	if n.putTimings != nil {
+		n.tracePutBatch(data, "propose_begin", 0)
+	}
 	if n.lead != n.id && n.lead != 0 {
 		n.sendBatch(data)
 	}
 	if err := n.rn.Propose(data); err != nil {
+		if n.putTimings != nil {
+			n.tracePutBatch(data, "proposal_rejected", 0)
+		}
 		msg := n.droppedMsg()
 		for _, h := range n.batchOwn {
 			n.replyErrorH(h, codeUnavailable, msg)
@@ -160,6 +172,13 @@ func (n *node) proposeBatch(now time.Time) {
 		// The batch never comes to the log: the room its writes were
 		// taken for is free again (ringRefuses).
 		n.releasePledge(f)
+		if n.putTimings != nil && n.lead == 0 {
+			// No leader means this proposal never took effect. A leader
+			// change is ambiguous, so its metadata still allows a late apply.
+			n.forgetPutTimings(seq)
+		}
+	} else if n.putTimings != nil {
+		n.tracePutBatch(data, "proposed", 0)
 	}
 }
 

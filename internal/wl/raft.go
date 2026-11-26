@@ -56,6 +56,17 @@ func (n *node) ready() error {
 			// made of it may be sent, persisted or applied.
 			return err
 		}
+		if n.putTimings != nil {
+			// This Ready first hands committed entries to the local apply
+			// thread. Observe that before its append/send/apply work.
+			for _, m := range rd.Messages {
+				if m.GetTo() == raft.LocalApplyThread {
+					for _, e := range m.GetEntries() {
+						n.tracePutBatch(e.GetData(), "commit", e.GetIndex())
+					}
+				}
+			}
+		}
 		if rd.SoftState != nil {
 			was := n.leading()
 			if rd.Lead != n.lead {

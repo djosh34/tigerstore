@@ -27,7 +27,8 @@ func runWL(ec *embed.Config, ident identity, pcfg peer.Config, ctls *tls.Config,
 		Name: ec.Name, ID: ident.id, ClusterID: ident.cluster, DataDir: ec.Dir,
 		ClientTLS: ctls, PeerListeners: pcfg.Listeners, MemoryBudget: budget, DiskBudget: diskBudget, LogRing: logRing,
 		CORS: ec.CORS, HostWhitelist: ec.HostWhitelist, Pprof: ec.EnablePprof,
-		Logger: log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds|log.LUTC),
+		Logger:         log.New(os.Stderr, "tigerstore-wl ", log.LstdFlags|log.Lmicroseconds|log.LUTC),
+		TraceLargePuts: os.Getenv("TIGERSTORE_TRACE_LARGE_PUTS") == "1",
 	}
 	// https and unixs URLs serve TLS; http and unix URLs serve clients
 	// without it, as etcd's do.
