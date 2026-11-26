@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -40,7 +41,7 @@ func TestMutationWeightAndBudget(t *testing.T) {
 
 func TestMutationWeightInReplay(t *testing.T) {
 	for _, budget := range []int64{0, 3} {
-		t.Run(fmt.Sprint(budget), func(t *testing.T) {
+		t.Run(strconv.FormatInt(budget, 10), func(t *testing.T) {
 			start := &history.Start{Rev: 1}
 			for i := range 100 {
 				start.KVs = append(start.KVs, history.KeyValue{Key: fmt.Sprintf("k%03d", i), Version: 1, CreateRevision: 1, ModRevision: 1})
