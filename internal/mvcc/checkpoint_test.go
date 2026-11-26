@@ -87,6 +87,63 @@ func TestCheckpointCopyIsFrozen(t *testing.T) {
 	}
 }
 
+// TestStartAtNearTheBound starts a store at a revision just under the
+// bound Load takes: it reads its keys as seeded, refuses reads before its
+// revision as compacted, takes a write at the next revision, and copies
+// out as a checkpoint that loads to the same index. At the bound it
+// refuses to start (#502).
+func TestStartAtNearTheBound(t *testing.T) {
+	at := int64(maxLoadRev - 5)
+	seeds := []Seed{
+		{Key: []byte("a"), Value: []byte("x"), Create: 3, Mod: at, Version: 4, Lease: 1<<62 + 7},
+		{Key: []byte("b"), Create: at - 1, Mod: at - 1, Version: 1},
+	}
+	s := New(&Heap{})
+	if err := s.StartAt(at, seeds); err != nil {
+		t.Fatal(err)
+	}
+	if s.Rev() != at || s.CompactRev() != at {
+		t.Fatalf("revision %d compacted at %d, want %d both", s.Rev(), s.CompactRev(), at)
+	}
+	resp := get(t, s, &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}})
+	if len(resp.Kvs) != 2 {
+		t.Fatalf("%d keys, want 2", len(resp.Kvs))
+	}
+	for i, kv := range resp.Kvs {
+		w := seeds[i]
+		if string(kv.Key) != string(w.Key) || string(kv.Value) != string(w.Value) || kv.CreateRevision != w.Create || kv.ModRevision != w.Mod || kv.Version != w.Version || kv.Lease != w.Lease {
+			t.Fatalf("key %d is %v, want %+v", i, kv, w)
+		}
+	}
+	if _, err := s.Range(&pb.RangeRequest{Key: []byte("a"), Revision: at - 1}); err == nil {
+		t.Fatal("a read before the start revision did not fail as compacted")
+	}
+	if r := put(t, s, "a", "y"); r.Header.Revision != at+1 {
+		t.Fatalf("the write after the start is at revision %d, want %d", r.Header.Revision, at+1)
+	}
+	if kv := get(t, s, &pb.RangeRequest{Key: []byte("a")}).Kvs[0]; kv.Version != 5 || kv.CreateRevision != 3 {
+		t.Fatalf("the rewritten key is %v, want version 5 created at 3", kv)
+	}
+	s.Freeze()
+	b, _, done := s.CopyFrozen(nil, 1<<20)
+	if !done {
+		t.Fatal("the copy did not end")
+	}
+	loaded := New(&Heap{})
+	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(b)), s.Rev(), s.CompactRev()); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Hash() != s.Hash() {
+		t.Fatal("the copy of a started store loads to another index")
+	}
+	if err := New(&Heap{}).StartAt(maxLoadRev, seeds); !errors.Is(err, ErrBadCheckpoint) {
+		t.Fatalf("a start at revision %d returned %v, want %v", int64(maxLoadRev), err, ErrBadCheckpoint)
+	}
+	if err := New(&Heap{}).StartAt(at, append([]Seed{{Create: 1, Mod: 1, Version: 1}}, seeds...)); !errors.Is(err, ErrBadCheckpoint) {
+		t.Fatalf("a start with an empty key returned %v, want %v", err, ErrBadCheckpoint)
+	}
+}
+
 // TestCheckpointChunkOfAHotKey copies a key with 20,000 versions in
 // chunks of 1 KiB: each chunk stops inside the key's versions, the chunks
 // load as one checkpoint, and a walk of the refs holds no list of the

@@ -77,6 +77,13 @@ func wlMembers(voters int) []wl.Member {
 func (s *Sim) startWL(n *node, p *proc) error {
 	voters := s.cfg.voters()
 	ms := wlMembers(voters)
+	if s.synth != nil {
+		// A synthetic image's members have IDs near the largest
+		// (syntheticImage), its nodes' since the fork took them.
+		for i := range ms {
+			ms[i].ID = s.nodes[i].id
+		}
+	}
 	join := n.idx == voters
 	if n.joins {
 		// A voter an operator replaced joins as the member added for it.

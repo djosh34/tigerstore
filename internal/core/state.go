@@ -126,6 +126,36 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 	return st
 }
 
+// NewStateAt returns a state whose store starts at revision at, compacted
+// at at, with seeds (mvcc.Store.StartAt), and with leases, their TTLs by
+// their IDs, each holding the seeds that name it, granted in ID order.
+// It is the simulator's model of a store restored from a snapshot at a
+// revision no run of writes reaches (#502).
+func NewStateAt(minTTL int64, v mvcc.Values, at int64, seeds []mvcc.Seed, leases map[int64]int64) (*State, error) {
+	st := NewState(minTTL, v)
+	if err := st.kv.StartAt(at, seeds); err != nil {
+		return nil, err
+	}
+	for _, id := range slices.Sorted(maps.Keys(leases)) {
+		if _, err := st.grant(&pb.LeaseGrantRequest{ID: id, TTL: leases[id]}); err != nil {
+			return nil, fmt.Errorf("lease %d: %w", id, err)
+		}
+	}
+	for _, k := range seeds {
+		if k.Lease == 0 {
+			continue
+		}
+		l, ok := st.leases[k.Lease]
+		if !ok {
+			return nil, fmt.Errorf("key %q names lease %d, which is not among the leases", k.Key, k.Lease)
+		}
+		st.leaseSum -= l.hash()
+		l.keys.ReplaceOrInsert(string(k.Key))
+		st.leaseSum += l.hash()
+	}
+	return st, nil
+}
+
 // Store is the key index.
 func (st *State) Store() *mvcc.Store { return st.kv }
 
