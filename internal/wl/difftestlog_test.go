@@ -95,19 +95,35 @@ func TestDifftestArtifactRetentionPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := string(b)
-	before, _, ok := strings.Cut(s, "name: difftest-${{ strategy.job-index }}")
-	if !ok {
-		t.Fatal("difftest artifact step missing")
-	}
-	step := s[strings.LastIndex(before, "      - if:"):]
-	step = strings.SplitN(step, "\n\n", 2)[0]
-	for _, want := range []string{
-		"if: always() && (matrix.server == 'tigerstore' || failure())",
-		"retention-days: ${{ failure() && 30 || 14 }}",
+	for _, policy := range []struct {
+		name, condition, days string
+	}{
+		{"difftest-${{ strategy.job-index }}", "failure()", "30"},
+		{"difftest-${{ strategy.job-index }}-success", "success() && matrix.server == 'tigerstore'", "14"},
 	} {
-		if !strings.Contains(step, want) {
-			t.Errorf("artifact policy lacks %q:\n%s", want, step)
-		}
+		t.Run(policy.name, func(t *testing.T) {
+			var step string
+			for candidate := range strings.SplitSeq(string(b), "\n      - ") {
+				if strings.Contains(candidate, "\n          name: "+policy.name+"\n") {
+					if step != "" {
+						t.Fatal("duplicate artifact step")
+					}
+					step = candidate
+				}
+			}
+			if step == "" {
+				t.Fatal("artifact step missing")
+			}
+			for _, want := range []string{"if: " + policy.condition + "\n", "retention-days: " + policy.days + "\n"} {
+				if !strings.Contains(step+"\n", want) {
+					t.Errorf("artifact policy lacks %q:\n%s", want, step)
+				}
+			}
+			// Status functions are valid in steps.if, not in an action's
+			// with.retention-days. Keep both retention values literal.
+			if strings.Contains(step, "retention-days: ${{") {
+				t.Fatal("retention-days must not contain a status expression")
+			}
+		})
 	}
 }
