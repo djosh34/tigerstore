@@ -132,7 +132,22 @@ func startEvents(st *history.Start) []history.Event {
 
 func (s *state) clone() *state {
 	c := *s
-	c.kvs = slices.Clone(s.kvs)
+	if s.stop == nil {
+		c.kvs = slices.Clone(s.kvs)
+		return &c
+	}
+	// Full copies used by witness trials/restores must poll too. A
+	// cancelled copy is partial and the stopped witness discards it.
+	if s.cancelled() {
+		return &c
+	}
+	c.kvs = make([]history.KeyValue, len(s.kvs))
+	for i, kv := range s.kvs {
+		if s.cancelled() {
+			break
+		}
+		c.kvs[i] = kv
+	}
 	return &c
 }
 
@@ -264,6 +279,13 @@ func (s *state) cancelled() bool { return s.stop != nil && s.stop() }
 
 // read answers a range at the current revision, or nil if replay stopped.
 func (s *state) read(r *history.RangeRequest) *history.RangeResponse {
+	return s.readBefore(r, nil)
+}
+
+// readBefore overlays the first value of each key a transaction changed.
+// Unchanged keys still live in s, so a read at the transaction's start
+// revision needs no copy of the rest of the store.
+func (s *state) readBefore(r *history.RangeRequest, before map[string]history.KeyValue) *history.RangeResponse {
 	resp := &history.RangeResponse{}
 	lo, hi := s.span(r.Key, r.End)
 	for i := lo; i < hi; i++ {
@@ -271,6 +293,11 @@ func (s *state) read(r *history.RangeRequest) *history.RangeResponse {
 			return nil
 		}
 		kv := s.kvs[i]
+		if before != nil {
+			if old, ok := before[s.keys[i]]; ok {
+				kv = old
+			}
+		}
 		if kv.Version == 0 {
 			continue
 		}
@@ -347,6 +374,9 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 		// changes none still goes (#768). It is tried on a copy first,
 		// as it changes the store in place.
 		c := s.clone()
+		if s.cancelled() {
+			return outcome{err: errReplayStopped}
+		}
 		o := c.applyTxn(t, false)
 		if o.err == errReplayStopped {
 			return o
@@ -394,15 +424,17 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 			return outcome{err: errUnsupported}
 		}
 	}
-	// A read at the txn's own start revision sees the store before the
-	// txn, as etcd keeps a positive requested revision.
-	var before *state
+	// A read at the txn's own start revision sees each key's value from
+	// before the first write to it. Keep only changed keys, not a clone
+	// of every key even for a one-key range. Older reads use past alone.
+	start := s.rev
+	needsBefore := false
 	for _, op := range ops {
 		if s.cancelled() {
 			return outcome{err: errReplayStopped}
 		}
-		if op.Range != nil && op.Range.Revision > 0 {
-			before = s.clone()
+		if op.Range != nil && op.Range.Revision > 0 && op.Range.Revision == start {
+			needsBefore = true
 			break
 		}
 	}
@@ -412,6 +444,10 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 	// An event's previous value is the key at the revision before the
 	// txn, as etcd reads it, not what an earlier op of the txn wrote.
 	was := map[string]history.KeyValue{}
+	var before map[string]history.KeyValue
+	if needsBefore {
+		before = was
+	}
 	prior := func(key string, cur history.KeyValue) history.KeyValue {
 		if kv, ok := was[key]; ok {
 			return kv
@@ -425,10 +461,10 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 			return outcome{err: errReplayStopped}
 		}
 		switch {
-		case op.Range != nil && op.Range.Revision > 0 && op.Range.Revision < before.rev:
+		case op.Range != nil && op.Range.Revision > 0 && op.Range.Revision < start:
 			resp.Results[i].Range = s.past.readWithStop(s.keys, op.Range, op.Range.Revision, s.stop)
 		case op.Range != nil && op.Range.Revision > 0:
-			resp.Results[i].Range = before.read(op.Range)
+			resp.Results[i].Range = s.readBefore(op.Range, before)
 		case op.Range != nil:
 			// Reads at the current revision see the txn's earlier
 			// writes.
@@ -437,6 +473,10 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 			p := op.Put
 			j := s.index(p.Key)
 			prev := s.kvs[j]
+			old := prev
+			if needsBefore || withEvents {
+				old = prior(p.Key, prev)
+			}
 			kv := history.KeyValue{Key: p.Key, Value: p.Value, CreateRevision: next, ModRevision: next, Version: 1, Lease: p.Lease}
 			if prev.Version != 0 {
 				kv.CreateRevision = prev.CreateRevision
@@ -450,7 +490,7 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 			}
 			resp.Results[i].Put = pr
 			if withEvents {
-				events = append(events, putEvent(kv, prior(p.Key, prev)))
+				events = append(events, putEvent(kv, old))
 			}
 		default:
 			d := op.Delete
@@ -464,6 +504,10 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 				if prev.Version == 0 {
 					continue
 				}
+				old := prev
+				if needsBefore || withEvents {
+					old = prior(prev.Key, prev)
+				}
 				s.kvs[j] = history.KeyValue{}
 				changed = true
 				dr.Deleted++
@@ -471,7 +515,7 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 					dr.PrevKVs = append(dr.PrevKVs, prev)
 				}
 				if withEvents {
-					events = append(events, deleteEvent(prev.Key, prior(prev.Key, prev), next))
+					events = append(events, deleteEvent(prev.Key, old, next))
 				}
 			}
 			resp.Results[i].Delete = dr

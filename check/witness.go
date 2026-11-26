@@ -369,7 +369,12 @@ func (w *witness) stateAt(j int) *state {
 		}
 		w.kvsRev = sm.rev
 	}
-	return &state{keys: w.keys, kvs: slices.Clone(w.kvs), leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: w.replayStop}
+	var stop func() bool
+	if w.search != nil {
+		stop = w.replayStop
+	}
+	s := state{keys: w.keys, kvs: w.kvs, leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: stop}
+	return s.clone()
 }
 
 // answers reports whether op i, which changed nothing, gets its response

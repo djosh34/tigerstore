@@ -2,6 +2,7 @@ package check
 
 import (
 	"cmp"
+	"iter"
 	"math/bits"
 	"slices"
 	"sort"
@@ -282,46 +283,123 @@ func (r *revisionOrder) indexRoom() {
 // in order and once each. The ambiguous revokes of a busy history are its
 // leases' expiries, so only those of a lease a key holds or a put puts it
 // on count.
-func (r *revisionOrder) coverers(s *state, need []int) []int {
-	x := r.room
-	n := len(s.keys)
-	var out []int
-	add := func(ops []int) {
-		if !r.capacityCharge(int64(len(ops))) {
+func (r *revisionOrder) coverers(s *state, need []int) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		x := r.room
+		n := len(s.keys)
+		var local [2 * maxRoomKeys][]int
+		lists := local[:0]
+		count := 0
+		add := func(ops []int) {
+			if len(ops) > 0 {
+				lists = append(lists, ops)
+				count += len(ops)
+			}
+		}
+		for k := range n {
+			if r.step() {
+				return
+			}
+			if need[k] > 0 {
+				add(r.putters[k])
+			}
+			if need[n+k] > 0 {
+				add(r.deleters[k])
+				// A key holds a lease only from a put of the history, so
+				// its lease now is one of these.
+				for _, id := range x.leasesOf[k] {
+					if r.capacityStep() {
+						return
+					}
+					add(x.revokesOf[id])
+				}
+			}
+		}
+		if count > maxCovererSort {
+			// Each input follows the history's op order (indexCounts,
+			// indexRoom). Merge them without copying and sorting every
+			// candidate in one uninterruptible library call.
+			r.mergeCoverers(lists, count, yield)
+			return
+		}
+		var out []int
+		for _, ops := range lists {
+			if r.capacityCharge(int64(len(ops))) {
+				return
+			}
 			out = append(out, ops...)
 		}
-	}
-	for k := range n {
-		if r.step() {
-			return nil
+		// Keep the native sort for small inputs only. Its entire input
+		// is bounded, and the charged n log n estimate is below one
+		// stop-poll interval; large inputs use the polled merge above.
+		if r.capacityCharge(int64(count) * int64(bits.Len(uint(count)))) {
+			return
 		}
-		if need[k] > 0 {
-			add(r.putters[k])
+		slices.Sort(out)
+		if r.capacityCharge(int64(count)) {
+			return
 		}
-		if need[n+k] > 0 {
-			add(r.deleters[k])
-			// A key holds a lease only from a put of the history, so its
-			// lease now is one of these.
-			for _, id := range x.leasesOf[k] {
-				if r.capacityStep() {
-					return nil
-				}
-				add(x.revokesOf[id])
+		for _, i := range slices.Compact(out) {
+			if !yield(i) {
+				return
 			}
 		}
 	}
-	// Charge the sort's n log n work before entering it, polling at each
-	// budget step, not at each comparison. A merge sort with per-item
-	// callbacks made this bound dominate a saved hard history (#872).
-	work := int64(len(out))
-	if r.capacityCharge(work * int64(bits.Len(uint(len(out))))) {
-		return nil
+}
+
+const maxCovererSort = 2048
+
+// mergeCoverers walks sorted op lists with a min-heap, yielding each op
+// once. Keep the conservative n log n estimate of the old sort, but pay
+// it per consumed candidate, not before the whole call. It covers the
+// bounded heap walk too and keeps long-run budget sizing conservative.
+// There is no candidate-sized scratch buffer or unbounded native sort.
+func (r *revisionOrder) mergeCoverers(lists [][]int, count int, yield func(int) bool) {
+	for p := len(lists)/2 - 1; p >= 0; p-- {
+		if r.capacityCharge(int64(bits.Len(uint(len(lists))))) {
+			return
+		}
+		covererDown(lists, p)
 	}
-	slices.Sort(out)
-	if r.capacityCharge(work) {
-		return nil
+	work := int64(bits.Len(uint(count)) + 2)
+	last, have := 0, false
+	for len(lists) > 0 {
+		if r.capacityCharge(work) {
+			return
+		}
+		i := lists[0][0]
+		if !have || i != last {
+			last, have = i, true
+			if !yield(i) {
+				return
+			}
+		}
+		lists[0] = lists[0][1:]
+		if len(lists[0]) == 0 {
+			lists[0] = lists[len(lists)-1]
+			lists = lists[:len(lists)-1]
+		}
+		covererDown(lists, 0)
 	}
-	return slices.Compact(out)
+}
+
+// A heap walk has at most bits.Len(len(lists)) levels, fewer than 64 on
+// any supported target. Its caller charges that bound before each walk.
+func covererDown(lists [][]int, p int) {
+	for {
+		child := 2*p + 1
+		if child >= len(lists) {
+			return
+		}
+		if child+1 < len(lists) && lists[child+1][0] < lists[child][0] {
+			child++
+		}
+		if lists[p][0] <= lists[child][0] {
+			return
+		}
+		lists[p], lists[child] = lists[child], lists[p]
+		p = child
+	}
 }
 
 // unionRevs returns the revisions of a and b, which are each in order and
@@ -399,7 +477,7 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 				actions = append(actions, a)
 			}
 		}
-		for _, i := range r.coverers(s, need) {
+		for i := range r.coverers(s, need) {
 			if r.capacityStep() {
 				return false
 			}

@@ -133,7 +133,8 @@ type revisionOrder struct {
 	// then, and countRevs those revisions in order. putRevs and delRevs
 	// are, per key, the revisions whose acked writer may create or delete
 	// it, in order, and putters and deleters the ambiguous mutations that
-	// may; revokers are the revokes, which may delete any key (reachable).
+	// may, in op-index order; revokers are the revokes, which may delete
+	// any key (reachable).
 	counts            map[int64][]count
 	countRevs         []int64
 	putRevs, delRevs  [][]int64
@@ -165,7 +166,8 @@ type revisionOrder struct {
 	indexLeft    uint8
 }
 
-// progress says where the search is, for the report of a timeout.
+// progress says where the search is, for the report of a timeout. A
+// rejection of an earlier branch is not a failure of the unfinished search.
 func (r *revisionOrder) progress() string {
 	if !r.indexed {
 		return "the revision index was being built"
@@ -177,9 +179,6 @@ func (r *revisionOrder) progress() string {
 		if f.next > 0 && f.next <= len(f.cands) {
 			fmt.Fprintf(&b, ", the last %s", r.w.describeBrief(f.cands[f.next-1]))
 		}
-	}
-	if r.failure != nil {
-		fmt.Fprintf(&b, "; the furthest it got was revision %d, where %v", r.at, r.failure)
 	}
 	return b.String()
 }
