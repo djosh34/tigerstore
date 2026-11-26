@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -331,16 +332,31 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	reads, cancelReads := context.WithTimeout(context.Background(), fetchShareReads)
 	defer cancelReads()
 	started = time.Now()
-	errs := make(chan error, keys/100)
+	type result struct {
+		err           error
+		took, longest time.Duration
+		busy          int
+	}
+	results := make(chan result, keys/100)
 	for first := 0; first < keys; first += 100 {
 		go func() {
-			r, err := c.Get(reads, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			began := time.Now()
+			var longest time.Duration
+			get := func() (*clientv3.GetResponse, error) {
+				at := time.Now()
+				r, err := c.Get(reads, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+				longest = max(longest, time.Since(at))
+				return r, err
+			}
+			busy := 0
+			r, err := get()
 			// Eighty replies of 1.6 MB at once pass the connection's
 			// share of a 96 MiB budget: the node refuses the next as etcd
 			// does, and the client tries again (CI's coverage run).
 			for err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) && reads.Err() == nil {
+				busy++
 				time.Sleep(20 * time.Millisecond)
-				r, err = c.Get(reads, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+				r, err = get()
 			}
 			if err == nil && len(r.Kvs) != 100 {
 				err = fmt.Errorf("the range from /f/%04d read %d keys, want 100", first, len(r.Kvs))
@@ -353,7 +369,7 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 					}
 				}
 			}
-			errs <- err
+			results <- result{err: err, took: time.Since(began), longest: longest, busy: busy}
 		}()
 	}
 	// The first error cancels the rest, and every range and the watcher
@@ -361,9 +377,16 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	// with the cluster, and waited for good.
 	var failed error
 	took := time.Duration(0)
+	var times []time.Duration
+	var longest time.Duration
+	busy := 0
 	for range keys / 100 {
-		if err := <-errs; err != nil && failed == nil {
-			failed, took = err, time.Since(started)
+		r := <-results
+		times = append(times, r.took)
+		longest = max(longest, r.longest)
+		busy += r.busy
+		if r.err != nil && failed == nil {
+			failed, took = r.err, time.Since(started)
 			cancelReads()
 		}
 	}
@@ -372,7 +395,9 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	if failed != nil {
 		t.Fatalf("the ranges, %v into their %v: %v", took.Round(time.Millisecond), fetchShareReads, failed)
 	}
-	t.Logf("the %d ranges took %v", keys/100, time.Since(started).Round(time.Millisecond))
+	slices.Sort(times)
+	t.Logf("the %d ranges took %v; per range: p50 %v, p95 %v, max %v", len(times), time.Since(started).Round(time.Millisecond), times[len(times)/2-1].Round(time.Millisecond), times[len(times)*95/100-1].Round(time.Millisecond), times[len(times)-1].Round(time.Millisecond))
+	t.Logf("the longest call took %v; %d busy answers were retried", longest.Round(time.Millisecond), busy)
 	b, after := fetched()
 	if after-before < keys/2 {
 		t.Fatalf("the reads fetched %d values off the loop, want most of the %d", after-before, keys)

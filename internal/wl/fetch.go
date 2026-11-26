@@ -94,19 +94,33 @@ func (st *store) trimFetched(since time.Time, max int64) {
 // awayRead is a range that waits for values read off the loop: its
 // stream and its request.
 type awayRead struct {
-	h   handle
-	msg []byte
+	h    handle
+	msg  []byte
+	wait []int64 // the values it waits for, nil when it waits for room
 }
 
 // awaitValues has the range of h, msg, wait for the values the store
 // found away, and fetches them.
 func (n *node) awaitValues(h handle, msg []byte) {
-	n.awayReads = append(n.awayReads, awayRead{h: h, msg: bytes.Clone(msg)})
+	r := awayRead{h: h, msg: bytes.Clone(msg), wait: make([]int64, len(n.st.away))}
+	for i, v := range n.st.away {
+		r.wait[i] = v.off
+	}
+	n.awayReads = append(n.awayReads, r)
 	n.fetchAway()
 }
 
-// fetchAway reads the values the store found away off the loop, but for
-// those a fetch under way reads already.
+// valueFetch is a batch of values to read off the loop, from the store
+// and checkpoint files that named them when the read found them away.
+type valueFetch struct {
+	st    *store
+	ckpts [2]ckptFile
+	vs    []logValue
+	bytes int64
+}
+
+// fetchAway queues the values the store found away to read off the loop,
+// but for those a fetch under way or queued reads already.
 func (n *node) fetchAway() {
 	st := n.st
 	var vs []logValue
@@ -127,19 +141,49 @@ func (n *node) fetchAway() {
 		size += int64(v.len)
 	}
 	n.stats.fetchMost = max(n.stats.fetchMost, size)
-	ckpts := st.ckpts
-	n.shell.offLoop(func() func() error {
-		got := make([]fetchedValue, len(vs))
-		for i, v := range vs {
-			got[i].val = make([]byte, v.len)
-			if inCkpt(v.off) {
-				got[i].err = readCkptValue(ckpts[ckptGenOf(v.off)], got[i].val, v.off)
-			} else {
-				got[i].err = n.wal.readDurable(got[i].val, v.off)
-			}
+	n.fetchQueue = append(n.fetchQueue, valueFetch{st: st, ckpts: st.ckpts, vs: vs, bytes: size})
+	n.pumpFetch()
+}
+
+// pumpFetch bounds the values being read, including their handoff to the
+// loop, by fetchedMax too. A goroutine per range left eighty batches of
+// 1.6 MB waiting for the loop, and the small-budget node collected for
+// most of its time (#833). Only places wait in the queue, not values. One
+// batch may pass the share, alone: takeFetched must serve its waiting
+// reads before trimming it.
+func (n *node) pumpFetch() {
+	for len(n.fetchQueue) > 0 {
+		f := n.fetchQueue[0]
+		if n.fetchBytes > 0 && f.bytes > fetchedMax(n.st.budget)-n.fetchBytes {
+			return
 		}
-		return func() error { return n.takeFetched(st, ckpts, vs, got) }
-	})
+		n.fetchQueue[0] = valueFetch{}
+		n.fetchQueue = n.fetchQueue[1:]
+		if len(n.fetchQueue) == 0 {
+			n.fetchQueue = nil
+		}
+		n.fetchBytes += f.bytes
+		st, ckpts, vs := f.st, f.ckpts, f.vs
+		n.shell.offLoop(func() func() error {
+			got := make([]fetchedValue, len(vs))
+			for i, v := range vs {
+				got[i].val = make([]byte, v.len)
+				if inCkpt(v.off) {
+					got[i].err = readCkptValue(ckpts[ckptGenOf(v.off)], got[i].val, v.off)
+				} else {
+					got[i].err = n.wal.readDurable(got[i].val, v.off)
+				}
+			}
+			return func() error {
+				err := n.takeFetched(st, ckpts, vs, got)
+				n.fetchBytes -= f.bytes
+				if err == nil {
+					n.pumpFetch()
+				}
+				return err
+			}
+		})
+	}
 }
 
 // readCkptValue reads the value at off of checkpoint f, off the loop. The
@@ -176,6 +220,19 @@ func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fe
 	for _, r := range reads {
 		c, s := n.clientOf(r.h)
 		if c == nil {
+			continue
+		}
+		waiting := false
+		for _, off := range r.wait {
+			if n.fetching[off] {
+				waiting = true
+				break
+			}
+		}
+		if waiting {
+			// Another batch has not read this range's values yet. Do not
+			// scan and build its records on every unrelated completion.
+			n.awayReads = append(n.awayReads, r)
 			continue
 		}
 		var req rangeReq

@@ -107,7 +107,7 @@ func TestAWaitBehindItsOwnClientIsTriedAgain(t *testing.T) {
 	if n.msgRoom(c, 41<<20) {
 		t.Fatal("the reply fits")
 	}
-	n.waitRoom(c, s, nil)
+	n.waitRoom(c, s, nil, 0)
 	c.flow.bytes = 0 // the bytes before it left
 	n.giveRoom(c, false)
 	n.serveRoomWait()
@@ -212,7 +212,7 @@ func TestAClosedClientsWaitingRangeLeavesThePool(t *testing.T) {
 	n.socks, n.gens = []any{c}, []uint16{1}
 	before := n.cout
 	req := appendBytesField(appendBytesField(nil, 1, []byte("/p/")), 2, []byte("/p0"))
-	n.waitRoom(c, s, req)
+	n.waitRoom(c, s, req, 0)
 	c.dropAll()
 	n.gens[0]++
 	n.serveRoomWait()

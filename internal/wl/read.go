@@ -257,7 +257,7 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 			return
 		}
 		// The reserve has no room for it: it waits, unbuilt (reserve.go).
-		n.waitRoom(c, s, msg)
+		n.waitRoom(c, s, msg, body-sizeBytesField(1, n.hdrSize()))
 		return
 	}
 	n.gs.rangesN++
