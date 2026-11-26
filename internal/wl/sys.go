@@ -111,6 +111,10 @@ type Hooks interface {
 	// CheckpointDone is that checkpoint, done: its file, name in the
 	// node's checkpoint directory, is durable and the newest.
 	CheckpointDone(index uint64, name string)
+	// NoRoom is a checkpoint the node does not write, or drops partway,
+	// for lack of room on its disk: it raises NOSPACE and stays up
+	// (ckptRoom, #769).
+	NoRoom()
 	// Turn ends each turn of the loop with what Raft shows; it may hold
 	// the loop. values are the values the store names in the log's
 	// durable part, in the order of their place. A hook that keeps

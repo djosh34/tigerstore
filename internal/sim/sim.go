@@ -132,6 +132,10 @@ type Config struct {
 	// it turns the value cache on and bounds Range answers. Zero leaves
 	// both off.
 	MemoryBytes int64
+	// Quota is each wl node's QuotaBackendBytes, 0 for wl's default: the
+	// store the run can reach, past which a put is refused with NOSPACE,
+	// as etcd's (fitDisk).
+	Quota int64
 	// SegmentBytes is the size of the nodes' log segments, 8 KiB if 0.
 	SegmentBytes int64
 	// Objects, if set, makes the clients run the Kubernetes-shaped load
@@ -272,9 +276,13 @@ type Faults struct {
 	// DiskBudget is each node's disk budget (node.Config.DiskBudget): the
 	// node cleans to stay below it, and refuses writes with the NOSPACE
 	// alarm at it. DiskCapacity is how many bytes its disk holds; a write
-	// past it fails with ENOSPC. Zero turns either off.
+	// past it fails with ENOSPC. Zero turns either off. GrowDisk has an
+	// operator who finds a node with no room for a checkpoint, and no
+	// fault on its disk, grow every disk eight times and disarm its
+	// NOSPACE (growDisk, #769).
 	DiskBudget   int64
 	DiskCapacity int
+	GrowDisk     bool
 	// Corrupt damages one node's synced bytes at a crash, once per run
 	// and only sometimes; that node must refuse to start.
 	Corrupt bool
@@ -456,6 +464,14 @@ type node struct {
 
 	// graySync makes its fsyncs slow while it is gray.
 	graySync bool
+	// disarming is set while an operator is on the way to disarm the
+	// NOSPACE the node raised for lack of room (disarmNoSpace). diskFull
+	// is set while a fault holds its disk full (Sim.diskFull), and
+	// shortArmed from a short write armed on it until the node's NoRoom
+	// sees it happened. noRoomAt is when the node last found no room
+	// for a checkpoint with no disk fault on it.
+	disarming, diskFull, shortArmed bool
+	noRoomAt                        int64
 	// pausedUntil holds the process back; frozen holds it for good, for
 	// the checks at the end. wake is closed and replaced when either
 	// changes, or the stall ends.
@@ -656,6 +672,9 @@ type Sim struct {
 	// loses its quorum, its first write (writeFirst), by which its windows
 	// moved.
 	firstWritten int64
+	// growing is set once an operator is on the way to grow the disks
+	// (Faults.GrowDisk), which it does once.
+	growing bool
 	// quorumLostAt is when a majority of the voters was fenced for good
 	// (Config.LoseQuorum), or the last fence for good of a run whose nodes
 	// can elect no leader at its end (lostQuorum), 0 while a quorum
@@ -866,9 +885,16 @@ type Stats struct {
 	KillLosses int
 	Disk       simfs.Counts
 	// LogCuts counts the log's segments a running node removed behind a
-	// checkpoint, NoSpace the calls the NOSPACE alarm refused, and
-	// OutOfSpace the nodes that stopped on a write that ran out of space.
-	LogCuts, NoSpace, OutOfSpace int
+	// checkpoint, NoSpace the calls the NOSPACE alarm refused,
+	// OutOfSpace the nodes that stopped on a write that ran out of space,
+	// NoRoom the checkpoints a node held or dropped for lack of room,
+	// raising NOSPACE and staying up (#769), Disarms the NOSPACE alarms
+	// an operator disarmed after (disarmNoSpace), and DiskGrowths the
+	// times an operator grew the disks (Faults.GrowDisk), and
+	// GrownCheckpoints the checkpoints done after; DisarmedAt is when the
+	// last disarm was answered.
+	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms, DiskGrowths, GrownCheckpoints int
+	DisarmedAt                                                                   int64
 	// Netem counts the writes each kind of link fault hit (netemKind),
 	// Resets the resets of the connections between two nodes,
 	// and BlockedWrites the writes that waited for room in a connection's
@@ -2107,6 +2133,8 @@ func (s *Sim) exited(p *proc, err error) {
 			s.stats.ReadOnlyStops++
 		}
 		n.disk.Fault = nil
+		// A short write that stopped the node made no NOSPACE to disarm.
+		n.shortArmed = false
 		if s.cfg.syncFaultExits || s.rng.IntN(2) == 0 {
 			// The process exits and starts again on a machine that keeps
 			// its page cache, where a failed sync left bytes that never
@@ -2576,6 +2604,7 @@ func (s *Sim) heal() {
 		n.disk.ClearFaults()
 		s.remount(n)
 		n.disk.Capacity = s.diskCapacity()
+		n.diskFull, n.shortArmed = false, false
 		if n.proc == nil && !n.fenced {
 			down = append(down, n)
 		}
