@@ -269,8 +269,9 @@ func TestReadsKeepTheSlabWithinItsLimit(t *testing.T) {
 // The deadlines of TestFetchedValuesStayWithinTheirShare's puts and of its
 // ranges, each its own (#832). One of 2 minutes for both was passed twice
 // in CI's test job. Measured under -race here, with every fsync made 5 ms
-// slower, the puts took 13 to 20 s and the ranges 7 to 35 s: one range of
-// 100 values can take about 10 s (#833). CI's runner is slower still. The
+// slower, before #833's fetch fix, the puts took 13 to 20 s and the
+// ranges 7 to 35 s. The fix keeps these bounds, not tighter ones taken
+// from a fast local run: CI's runner is slower still. The
 // two together leave test-wl-slow's other tests a third of its package
 // timeout of 10 minutes.
 const fetchSharePuts, fetchShareReads = 2 * time.Minute, 3 * time.Minute
@@ -379,12 +380,13 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	took := time.Duration(0)
 	var times []time.Duration
 	var longest time.Duration
-	busy := 0
+	busy, mostBusy := 0, 0
 	for range keys / 100 {
 		r := <-results
 		times = append(times, r.took)
 		longest = max(longest, r.longest)
 		busy += r.busy
+		mostBusy = max(mostBusy, r.busy)
 		if r.err != nil && failed == nil {
 			failed, took = r.err, time.Since(started)
 			cancelReads()
@@ -397,7 +399,7 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	}
 	slices.Sort(times)
 	t.Logf("the %d ranges took %v; per range: p50 %v, p95 %v, max %v", len(times), time.Since(started).Round(time.Millisecond), times[len(times)/2-1].Round(time.Millisecond), times[len(times)*95/100-1].Round(time.Millisecond), times[len(times)-1].Round(time.Millisecond))
-	t.Logf("the longest call took %v; %d busy answers were retried", longest.Round(time.Millisecond), busy)
+	t.Logf("the longest call took %v; %d busy answers were retried, at most %d per range", longest.Round(time.Millisecond), busy, mostBusy)
 	b, after := fetched()
 	if after-before < keys/2 {
 		t.Fatalf("the reads fetched %d values off the loop, want most of the %d", after-before, keys)

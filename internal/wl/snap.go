@@ -225,6 +225,11 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 			n.w.unsynced = append(n.w.unsynced, int32(i))
 		}
 	}
+	// Waiters keep their requests, not the old store or its read plans.
+	// An old result already off the loop is ignored by its store tag.
+	n.fetchTag, n.fetching = st.tag, map[int64]bool{}
+	n.pumpFetch()
+	n.serveAway(false)
 	n.stats.snapsInstalled++
 	n.logf("installed a snapshot at index %d, revision %d, %d keys", meta.GetIndex(), st.rev, st.nkeys)
 	n.simInstallDone(meta.GetIndex())

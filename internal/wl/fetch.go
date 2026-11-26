@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -94,35 +95,118 @@ func (st *store) trimFetched(since time.Time, max int64) {
 // awayRead is a range that waits for values read off the loop: its
 // stream and its request.
 type awayRead struct {
-	h    handle
-	msg  []byte
-	wait []int64 // the values it waits for, nil when it waits for room
+	h   handle
+	msg []byte
 }
 
 // awaitValues has the range of h, msg, wait for the values the store
 // found away, and fetches them.
 func (n *node) awaitValues(h handle, msg []byte) {
-	r := awayRead{h: h, msg: bytes.Clone(msg), wait: make([]int64, len(n.st.away))}
-	for i, v := range n.st.away {
-		r.wait[i] = v.off
+	if n.awayServing {
+		if n.awayPlanning {
+			// The head read owns a whole batch. Sharing individual
+			// offsets with other batches split overlapping ranges across
+			// trims, so that none ever had every value at once (#887).
+			n.awayActive = n.st.tag
+			n.queueFetch(slices.Clone(n.st.away), true)
+		}
+		n.st.away = n.st.away[:0]
+		n.awayMissed = true
+		return
 	}
-	n.awayReads = append(n.awayReads, r)
-	n.fetchAway()
+	if c, _ := n.clientOf(h); c != nil {
+		c.growOut(len(msg))
+		c.heldCounted += int64(len(msg))
+	}
+	n.awayReads = append(n.awayReads, awayRead{h: h, msg: bytes.Clone(msg)})
+	n.st.away = n.st.away[:0]
+	n.serveAway(false)
+}
+
+// serveAway serves the cold ranges in arrival order. Only the head plans
+// a fetch, and it plans with an empty fetched cache: its batch must not
+// depend on an earlier result surviving a trim. A completed batch is
+// consumed before any trim, even when it is larger than fetchedMax.
+// Later ranges keep only their requests, not a list of offsets each.
+func (n *node) serveAway(ready bool) {
+	if n.awayServing || n.awayActive != nil && n.awayActive == n.st.tag && !ready {
+		return
+	}
+	n.awayActive = nil
+	for len(n.awayReads) > 0 {
+		r := n.awayReads[0]
+		c, s := n.clientOf(r.h)
+		if c != nil {
+			var req rangeReq
+			if err := parseRange(r.msg, &req); err == nil {
+				if !ready {
+					clear(n.st.fetched)
+					n.st.fetchedBytes, n.st.fetchedOrder = 0, nil
+				}
+				n.awayServing, n.awayPlanning, n.awayMissed = true, !ready, false
+				n.serveRange(c, s, &req, r.msg)
+				n.awayServing = false
+				if n.awayActive != nil {
+					return
+				}
+				if n.awayMissed {
+					// A write or checkpoint moved values during the read.
+					// Replan the same head, not just its missing subset.
+					ready = false
+					continue
+				}
+			}
+			c.growOut(-len(r.msg))
+			c.heldCounted -= int64(len(r.msg))
+		}
+		n.awayReads[0] = awayRead{}
+		n.awayReads = n.awayReads[1:]
+		ready = false
+	}
+	n.awayReads = nil
+}
+
+// dropAway drops a client's waiting ranges, all for sid 0, else that
+// stream's. The active head stays as an empty marker until its result
+// arrives; it must not wake the next head with the wrong batch.
+func (n *node) dropAway(c *client, sid uint32) {
+	k := 0
+	for i, r := range n.awayReads {
+		idx, gen, stream := r.h.parts()
+		if idx == c.idx && gen == c.gen && (sid == 0 || stream == sid) {
+			c.growOut(-len(r.msg))
+			c.heldCounted -= int64(len(r.msg))
+			if i == 0 && n.awayActive != nil {
+				n.awayReads[k] = awayRead{h: noHandle}
+				k++
+			}
+			continue
+		}
+		n.awayReads[k] = r
+		k++
+	}
+	clear(n.awayReads[k:])
+	n.awayReads = n.awayReads[:k]
 }
 
 // valueFetch is a batch of values to read off the loop, from the store
 // and checkpoint files that named them when the read found them away.
 type valueFetch struct {
-	st    *store
-	ckpts [2]ckptFile
-	vs    []logValue
-	bytes int64
+	tag       *byte // identity only, never a pointer back to the store
+	ckpts     [2]ckptFile
+	vs        []logValue
+	bytes     int64
+	rangeRead bool
 }
 
 // fetchAway queues the values the store found away to read off the loop,
 // but for those a fetch under way or queued reads already.
 func (n *node) fetchAway() {
 	st := n.st
+	if n.fetchTag != st.tag {
+		n.fetchTag = st.tag
+		n.fetching = map[int64]bool{}
+	}
 	var vs []logValue
 	for _, v := range st.away {
 		if !n.fetching[v.off] {
@@ -134,14 +218,16 @@ func (n *node) fetchAway() {
 	if len(vs) == 0 {
 		return
 	}
-	n.stats.fetches++
-	n.stats.fetched += len(vs)
+	n.queueFetch(vs, false)
+}
+
+// queueFetch keeps one plan; only its places wait for read room.
+func (n *node) queueFetch(vs []logValue, rangeRead bool) {
 	size := int64(0)
 	for _, v := range vs {
 		size += int64(v.len)
 	}
-	n.stats.fetchMost = max(n.stats.fetchMost, size)
-	n.fetchQueue = append(n.fetchQueue, valueFetch{st: st, ckpts: st.ckpts, vs: vs, bytes: size})
+	n.fetchQueue = append(n.fetchQueue, valueFetch{tag: n.st.tag, ckpts: n.st.ckpts, vs: vs, bytes: size, rangeRead: rangeRead})
 	n.pumpFetch()
 }
 
@@ -154,6 +240,11 @@ func (n *node) fetchAway() {
 func (n *node) pumpFetch() {
 	for len(n.fetchQueue) > 0 {
 		f := n.fetchQueue[0]
+		if f.tag != n.st.tag {
+			n.fetchQueue[0] = valueFetch{}
+			n.fetchQueue = n.fetchQueue[1:]
+			continue // a snapshot replaced the store before this read began
+		}
 		if n.fetchBytes > 0 && f.bytes > fetchedMax(n.st.budget)-n.fetchBytes {
 			return
 		}
@@ -163,7 +254,10 @@ func (n *node) pumpFetch() {
 			n.fetchQueue = nil
 		}
 		n.fetchBytes += f.bytes
-		st, ckpts, vs := f.st, f.ckpts, f.vs
+		n.stats.fetches++
+		n.stats.fetched += len(f.vs)
+		n.stats.fetchMost = max(n.stats.fetchMost, f.bytes)
+		tag, ckpts, vs := f.tag, f.ckpts, f.vs
 		n.shell.offLoop(func() func() error {
 			got := make([]fetchedValue, len(vs))
 			for i, v := range vs {
@@ -175,7 +269,7 @@ func (n *node) pumpFetch() {
 				}
 			}
 			return func() error {
-				err := n.takeFetched(st, ckpts, vs, got)
+				err := n.takeFetched(tag, ckpts, vs, got, f.rangeRead)
 				n.fetchBytes -= f.bytes
 				if err == nil {
 					n.pumpFetch()
@@ -197,49 +291,30 @@ func readCkptValue(f ckptFile, p []byte, off int64) error {
 	return err
 }
 
-// takeFetched keeps the values a fetch of store st read, from its log and
-// its checkpoints ckpts, and serves the ranges that waited again. A store
+// takeFetched keeps the values read for the store identified by tag,
+// from its log and checkpoints ckpts, and serves the range that waited. A store
 // installed since names other places, and a checkpoint file written since
 // in a generation holds other values at the same places.
-func (n *node) takeFetched(st *store, ckpts [2]ckptFile, vs []logValue, got []fetchedValue) error {
-	for _, v := range vs {
-		delete(n.fetching, v.off)
+func (n *node) takeFetched(tag *byte, ckpts [2]ckptFile, vs []logValue, got []fetchedValue, rangeRead bool) error {
+	if tag != n.st.tag {
+		return nil
 	}
-	if st == n.st {
-		for i, v := range vs {
-			if inCkpt(v.off) && st.ckpts[ckptGenOf(v.off)] != ckpts[ckptGenOf(v.off)] {
-				// Read from a checkpoint the store has let go of since.
-				continue
-			}
-			got[i].at = n.now
-			st.keepFetched(v.off, got[i])
+	st := n.st
+	if !rangeRead {
+		for _, v := range vs {
+			delete(n.fetching, v.off)
 		}
 	}
-	reads := n.awayReads
-	n.awayReads = nil
-	for _, r := range reads {
-		c, s := n.clientOf(r.h)
-		if c == nil {
+	for i, v := range vs {
+		if inCkpt(v.off) && st.ckpts[ckptGenOf(v.off)] != ckpts[ckptGenOf(v.off)] {
+			// Read from a checkpoint the store has let go of since.
 			continue
 		}
-		waiting := false
-		for _, off := range r.wait {
-			if n.fetching[off] {
-				waiting = true
-				break
-			}
-		}
-		if waiting {
-			// Another batch has not read this range's values yet. Do not
-			// scan and build its records on every unrelated completion.
-			n.awayReads = append(n.awayReads, r)
-			continue
-		}
-		var req rangeReq
-		if err := parseRange(r.msg, &req); err != nil {
-			continue
-		}
-		n.serveRange(c, s, &req, r.msg)
+		got[i].at = n.now
+		st.keepFetched(v.off, got[i])
+	}
+	if rangeRead {
+		n.serveAway(true)
 	}
 	// The watches that wait catch up too, before the trim: trimmed first,
 	// a fetch larger than fetchedMax lost values a watch needed, which it

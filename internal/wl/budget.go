@@ -69,15 +69,27 @@ func sizeFor(budget int64) sizes {
 // heap, and on the heap every follower's send buffer full, the entries
 // Raft's storage holds, the leader's uncommitted proposals, the kept
 // stream buffers, the client pool and its reserve (#727), and the values
-// fetched off the loop that it keeps (fetchedMax), with the quarter more
-// Go needs to collect in (store.goNeed). A client connection's own
+// fetched off the loop that it keeps (fetchedMax) and reads or hands off
+// (fetchWorkMax), with the quarter more Go needs to collect in
+// (store.goNeed). A client connection's own
 // buffers are per connection and left out, as etcd leaves them out.
 func (z sizes) worst(budget int64, followers int) int64 {
 	// A send buffer grows to at most four times what waits in it, its
 	// backlog and one message on top (sock.openRec).
 	replication := int64(followers) * (4*(z.peerBacklog(followers)+maxPeerMsg) + maxPlain + recOverhead + 8)
-	heap := replication + z.held + int64(z.uncommitted) + int64(z.kept)*keptBufMax + z.clientPool + z.reserve() + fetchedMax(budget)
+	heap := replication + z.held + int64(z.uncommitted) + int64(z.kept)*keptBufMax + z.clientPool + z.reserve() + fetchedMax(budget) + fetchWorkMax(budget)
 	return z.mapped() + heap + heap/4
+}
+
+// fetchWorkMax counts the second fetch buffer, separate from the kept
+// cache: in-flight reads and results not yet taken by the loop. They fit
+// fetchedMax, except for one batch alone. A consumer stops at oneShot
+// (at most the lone client's share), plus the last value; a watch may
+// also read that event's value before it. Values fit maxRequestBytes;
+// gRPC's extra overhead in maxMsg holds no extra value bytes. Count both
+// values in the overshoot, not just oneShot or the ordinary share.
+func fetchWorkMax(budget int64) int64 {
+	return max(fetchedMax(budget), max(maxMsg, sizeFor(budget).connOut(1))+2*maxRequestBytes)
 }
 
 // keeps reports whether a node with budget bytes keeps it with followers:
@@ -89,7 +101,7 @@ func keeps(budget int64, followers int) bool {
 }
 
 // leastBudget is the least memory budget, in whole MiB, that a node keeps
-// with followers: 110 MiB for a cluster of three. For up to 8 followers
+// with followers: 121 MiB for a cluster of three. For up to 8 followers
 // it keeps every budget above it, and every smaller cluster
 // (TestTheBuffersFitTheBudget); Config.check and budgetKeeps hold the
 // budget to it.

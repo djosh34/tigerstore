@@ -90,24 +90,40 @@ func TestTheBuffersFitTheBudget(t *testing.T) {
 	}
 }
 
-// The least budgets of #760's table: a cluster of three keeps 110 MiB,
-// and its members that bootstrap it start with at least 137 MiB, room for
-// a learner as well (startFollowers); a learner that joins them starts at
-// the same 137 MiB. A cluster of seven needs 220 MiB.
+// The least budgets after counting both fetch buffers (#887's review):
+// three voters keep 121 MiB, and bootstrap with at least 149 MiB, room
+// for a learner as well (startFollowers). A learner that joins them
+// starts at the same 149 MiB. Seven voters need 237 MiB.
 func TestTheLeastBudgetsAreTheTables(t *testing.T) {
 	for _, c := range []struct {
 		followers int
 		mib       int64
-	}{{1, 83}, {2, 110}, {3, 137}, {4, 164}, {5, 191}, {6, 220}} {
+	}{{1, 94}, {2, 121}, {3, 149}, {4, 177}, {5, 206}, {6, 237}} {
 		if got := leastBudget(c.followers); got != c.mib<<20 {
 			t.Errorf("%d followers: a least budget of %d MiB, want %d MiB", c.followers, got>>20, c.mib)
 		}
 	}
-	if got := leastBudget(startFollowers(3, false)); got != 137<<20 {
-		t.Errorf("three voters start with a least budget of %d MiB, want 137 MiB", got>>20)
+	if got := leastBudget(startFollowers(3, false)); got != 149<<20 {
+		t.Errorf("three voters start with a least budget of %d MiB, want 149 MiB", got>>20)
 	}
-	if got := leastBudget(startFollowers(4, true)); got != 137<<20 {
-		t.Errorf("a learner that joins three voters starts with a least budget of %d MiB, want 137 MiB", got>>20)
+	if got := leastBudget(startFollowers(4, true)); got != 149<<20 {
+		t.Errorf("a learner that joins three voters starts with a least budget of %d MiB, want 149 MiB", got>>20)
+	}
+}
+
+// The kept cache and the in-flight/result buffer can coexist. At 96 MiB
+// they are 3 MiB and at most 5 MiB, including an oversized batch alone;
+// the original one-node fetch tests still start at 96 MiB with the same
+// 3 MiB kept-share assertion.
+func TestTheBudgetCountsBothFetchBuffers(t *testing.T) {
+	const budget = 96 << 20
+	z := sizeFor(budget)
+	heap := z.held + int64(z.uncommitted) + int64(z.kept)*keptBufMax + z.clientPool + z.reserve() + 3<<20 + 5<<20
+	if want := z.mapped() + heap + heap/4; z.worst(budget, 0) < want {
+		t.Fatalf("the buffers count %d bytes, want at least %d for both fetch buffers", z.worst(budget, 0), want)
+	}
+	if fetchedMax(budget) != 3<<20 || !keeps(budget, startFollowers(1, false)) {
+		t.Fatal("96 MiB no longer keeps the original node and its 3 MiB fetched share")
 	}
 }
 

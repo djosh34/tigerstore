@@ -222,13 +222,13 @@ func TestAClusterRunsOnTheSeam(t *testing.T) {
 // catch-up needs more of them than the loop keeps (fetchedMax, a
 // thirty-second of the budget), with a page cache that never holds them,
 // as one under pressure: here 300 values of history, 9.4 MiB, past the
-// 4.5 MiB a budget of 144 MiB keeps, above the least three nodes start
+// 5 MiB a budget of 160 MiB keeps, above the least three nodes start
 // with (#760). Trimmed before the watch caught up, the
 // values it needed went, it fetched them again, and the trim took them
 // again, turn after turn, for good (#689's area-3 review).
 func TestAWatchCatchesUpWithAPageCacheThatHoldsNothing(t *testing.T) {
 	c := newSimCluster(t)
-	c.budget = 144 << 20
+	c.budget = 160 << 20
 	for i := range 3 {
 		c.start(t, i)
 	}

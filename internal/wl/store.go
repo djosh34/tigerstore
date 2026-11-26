@@ -69,6 +69,9 @@ type logReader interface {
 }
 
 type store struct {
+	// tag identifies this store without keeping its tables alive. A
+	// waiter or queued fetch needs only this identity across an install.
+	tag        *byte
 	rev        int64
 	compactRev int64
 	// compacted is set once a compaction applied, and kept in
@@ -189,6 +192,7 @@ const (
 
 func newStore() (*store, error) {
 	st := &store{
+		tag:    new(byte),
 		rev:    1, // etcd's empty store is at revision 1
 		mask:   hashStart - 1,
 		seed:   maphash.MakeSeed(),

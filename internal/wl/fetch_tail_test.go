@@ -20,9 +20,15 @@ func (s *heldFetchShell) offLoop(work func() func() error) { s.work = append(s.w
 
 // coldFetchLog never serves a value from the page cache. The fetch reads
 // the same bytes through the node's log file, not this reader.
-type coldFetchLog struct{ *memLog }
+type coldFetchLog struct {
+	*memLog
+	reads int
+}
 
-func (*coldFetchLog) readNoWait([]byte, int64) error { return errAway }
+func (l *coldFetchLog) readNoWait([]byte, int64) error {
+	l.reads++
+	return errAway
+}
 
 // Completed fetches count too: until the loop takes a result, no next
 // batch allocates its values. Unrelated ranges are not read again on a
@@ -34,7 +40,8 @@ func TestValueFetchesWaitForTheLoopToTakeThePreviousBatch(t *testing.T) {
 	defer func() { _ = st.close() }()
 	n.st = st
 	st.setBudget(1, 0) // no record survives a read, nor a fetched value a trim
-	st.log = &coldFetchLog{log}
+	cold := &coldFetchLog{memLog: log}
+	st.log = cold
 	n.sizes = sizeFor(96 << 20)
 	n.connOut = 512 << 10
 	n.fetching = map[int64]bool{}
@@ -55,6 +62,7 @@ func TestValueFetchesWaitForTheLoopToTakeThePreviousBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	n.wal = &wal{rfds: []int{int(f.Fd())}}
+	var counted int64
 	for i := range 3 {
 		s := firstStream
 		if i > 0 {
@@ -66,6 +74,10 @@ func TestValueFetchesWaitForTheLoopToTakeThePreviousBatch(t *testing.T) {
 			t.Fatal(err)
 		}
 		n.serveRange(c, s, &req, msg)
+		counted += int64(len(msg))
+	}
+	if c.heldCounted != counted {
+		t.Fatalf("the cold requests count %d bytes in the pool, want %d", c.heldCounted, counted)
 	}
 	for i := range 3 {
 		if len(sh.work) != 1 {
@@ -76,8 +88,12 @@ func TestValueFetchesWaitForTheLoopToTakeThePreviousBatch(t *testing.T) {
 		if st.loads != uint64(2*i) || len(n.awayReads) != 3-i {
 			t.Fatal("a range advanced before the loop took its values")
 		}
+		before := cold.reads
 		if err := take(); err != nil {
 			t.Fatal(err)
+		}
+		if cold.reads-before > 2 {
+			t.Fatalf("a handoff scanned %d cold values, more than the next head's two", cold.reads-before)
 		}
 		if st.loads != uint64(2*(i+1)) || len(n.awayReads) != 2-i {
 			t.Fatalf("completion %d: %d loads and %d waiting ranges", i, st.loads, len(n.awayReads))
@@ -86,7 +102,7 @@ func TestValueFetchesWaitForTheLoopToTakeThePreviousBatch(t *testing.T) {
 			t.Fatal("the fetched values passed their share")
 		}
 	}
-	if len(sh.work) != 0 || len(n.fetching) != 0 || n.stats.fetched != 6 {
+	if len(sh.work) != 0 || len(n.fetching) != 0 || n.stats.fetched != 6 || c.heldCounted != 0 {
 		t.Fatal("the ranges fetched values again or left a fetch behind")
 	}
 }

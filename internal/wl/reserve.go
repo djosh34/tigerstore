@@ -96,7 +96,7 @@ func (n *node) giveRoom(c *client, closed bool) {
 // stay the same. No record or value is kept.
 type roomRead struct {
 	awayRead
-	st              *store
+	tag             *byte
 	rev, compactRev int64
 	body            int
 }
@@ -108,9 +108,9 @@ func (n *node) waitRoom(c *client, s *stream, msg []byte, body int) {
 	// Its request, kept, counts in the client's pool (B9).
 	c.growOut(len(msg))
 	c.heldCounted += int64(len(msg))
-	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), st: n.st, body: body}
+	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), body: body}
 	if n.st != nil {
-		r.rev, r.compactRev = n.st.rev, n.st.compactRev
+		r.tag, r.rev, r.compactRev = n.st.tag, n.st.rev, n.st.compactRev
 	}
 	n.roomWait = append(n.roomWait, r)
 }
@@ -123,6 +123,7 @@ func (n *node) cannotFit(m int64) bool { return m-n.connOut > n.sizes.reserve() 
 // dropClientWaits lets go of the ranges client c, closed, waited for room
 // with: their requests count in the pool.
 func (n *node) dropClientWaits(c *client) {
+	n.dropAway(c, 0)
 	k := 0
 	for _, r := range n.roomWait {
 		if idx, gen, _ := r.h.parts(); idx == c.idx && gen == c.gen {
@@ -141,6 +142,7 @@ func (n *node) dropClientWaits(c *client) {
 // dropWaits lets go of what stream sid of client c waits for room with:
 // the client reset it.
 func (n *node) dropWaits(c *client, sid uint32) {
+	n.dropAway(c, sid)
 	h := mkHandle(c, sid)
 	k := 0
 	for _, r := range n.roomWait {
@@ -183,7 +185,7 @@ func (n *node) serveRoomWait() {
 		if c == nil {
 			continue
 		}
-		if r.st != nil && r.st == n.st && r.rev == n.st.rev && r.compactRev == n.st.compactRev {
+		if r.tag != nil && r.tag == n.st.tag && r.rev == n.st.rev && r.compactRev == n.st.compactRev {
 			// A little room came back, not necessarily enough for this
 			// reply. Reading its values again just to find that out built
 			// gigabytes of discarded records under concurrent ranges

@@ -141,10 +141,15 @@ type node struct {
 	readSeq     uint64
 	// Ranges that wait for values read off the loop, and the places of
 	// the values fetches read (fetch.go).
-	awayReads  []awayRead
-	fetching   map[int64]bool
-	fetchQueue []valueFetch
-	fetchBytes int64
+	awayReads    []awayRead
+	awayActive   *byte // the store tag of the head's outstanding batch
+	awayServing  bool
+	awayPlanning bool
+	awayMissed   bool
+	fetching     map[int64]bool
+	fetchTag     *byte
+	fetchQueue   []valueFetch
+	fetchBytes   int64
 	// bigs are the range replies sent in pieces (bigrange.go).
 	bigs []*bigRange
 	// selKeys is txnRange's scratch (replysize.go).
