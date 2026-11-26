@@ -25,7 +25,10 @@ import (
 // which holds less once there are 1,500 objects or so: its nodes age
 // under NOSPACE, holding their checkpoints (#769), until an operator
 // grows the disks and disarms (Faults.GrowDisk), and the aging must
-// recover (#846's ruling).
+// recover (#846's ruling). One seed in four finishes by granting 3,000
+// to 12,000 leases of 120 s, with keys on a quarter of them, so the image
+// holds thousands of live leases (#502). The forks renew, revoke and
+// expire them; a new leader gives each its whole TTL after the idle gap.
 func agingConfig(seed uint64) Config {
 	rng := rand.New(rand.NewPCG(seed, 0x61676564))
 	cfg := kubeConfig(seed, false)
@@ -50,6 +53,10 @@ func agingConfig(seed uint64) Config {
 	// aged before.
 	if rng.IntN(5) == 0 {
 		cfg.Faults.DiskCapacity, cfg.Quota, cfg.Faults.GrowDisk = int(2*cfg.Faults.DiskBudget), 0, true
+	}
+	// Drawn after the disk variant too: the older draws do not move.
+	if rng.IntN(4) == 0 {
+		cfg.ImageLeases = 3000 + rng.IntN(9001)
 	}
 	return cfg
 }
@@ -130,6 +137,33 @@ func TestAgedFork(t *testing.T) {
 	}, nil)
 }
 
+// TestAgedLeases builds an image with 3,000 live leases and keys on a
+// quarter of them, then runs one short fork, every checker on both runs.
+// The calm fork keeps some alive, revokes some, decides expiries and
+// commits the removal of thousands of imaged leases.
+func TestAgedLeases(t *testing.T) {
+	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
+		aging := agingConfig(seed)
+		aging.Nodes, aging.Objects, aging.Duration = 1, 300, 5*Second
+		aging.ImageLeases = 3000
+		st := agedForks(t, seed, aging, 1, func(aging Config, seed uint64) Config {
+			cfg := forkConfig(aging, seed)
+			cfg.Duration = 150 * Second
+			cfg.Faults = Faults{DiskBudget: aging.Faults.DiskBudget, DiskCapacity: aging.Faults.DiskCapacity}
+			return cfg
+		})
+		if st.ImageLeases < aging.ImageLeases {
+			t.Errorf("image holds %d live leases, want at least %d", st.ImageLeases, aging.ImageLeases)
+		}
+		if save, _ := forkMode(t, 1); !save {
+			if st.ImageKeepAlives == 0 || st.ImageRevokes == 0 || st.ImageExpiryDecisions == 0 || st.ImageRemovals < 2000 {
+				t.Errorf("imaged leases: %d keepalives, %d client revokes, %d expiry decisions, %d committed removals; want renewals, revokes, expiry decisions and thousands of committed removals", st.ImageKeepAlives, st.ImageRevokes, st.ImageExpiryDecisions, st.ImageRemovals)
+			}
+		}
+		return st
+	}, nil)
+}
+
 // agedForks runs aging, takes its image and runs forks of it, and
 // returns their stats added up.
 func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Config, uint64) Config) Stats {
@@ -150,6 +184,9 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 		res, err := runWith(t, aging, func(s *Sim) error {
 			var err error
 			img, err = s.capture()
+			if err == nil && len(img.start.Leases) < aging.ImageLeases {
+				return fmt.Errorf("image holds %d live leases, want at least %d", len(img.start.Leases), aging.ImageLeases)
+			}
 			return err
 		})
 		if err != nil {
@@ -166,6 +203,7 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			}
 		}
 		checkers(t, res)
+		res.Stats.ImageLeases = len(img.start.Leases)
 		t.Logf("aging seed %d: %d objects, %s, %d voters, memory budget %d: %d writes to revision %d, %d keys and %d leases at the image; %+v",
 			seed, aging.Objects, seconds(aging.Duration), aging.voters(), aging.MemoryBytes, img.ops, img.start.Rev, len(img.start.KVs), len(img.start.Leases), res.Stats)
 	}) {
@@ -217,7 +255,7 @@ func saveImage(t *testing.T, img *image) Stats {
 	if err != nil {
 		t.Fatalf("saving the image: %v", err)
 	}
-	return Stats{}
+	return Stats{ImageLeases: len(img.start.Leases)}
 }
 
 // savedImage is the image the driver gave this fork's run as its input
@@ -248,7 +286,7 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 	// fork's slot; under the race detector each run keeps a clock of its
 	// own (synctest's bubble), and no gap reaches a fork.
 	start := img.at
-	var total Stats
+	total := Stats{ImageLeases: len(img.start.Leases)}
 	for i := range forks {
 		if only >= 0 && i != only {
 			continue
@@ -273,11 +311,15 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 			res := run(t, cfg)
 			checkers(t, res)
 			st := res.Stats
-			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; hashes %s",
-				i, cfg.Seed, seed, after(i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, runHashes(res))
+			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; imaged leases: %d keepalives, %d client revokes, %d expiry decisions, %d committed removals; hashes %s",
+				i, cfg.Seed, seed, after(i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, st.ImageKeepAlives, st.ImageRevokes, st.ImageExpiryDecisions, st.ImageRemovals, runHashes(res))
 			total.OK += st.OK
 			total.Failed += st.Failed
 			total.Ambiguous += st.Ambiguous
+			total.ImageKeepAlives += st.ImageKeepAlives
+			total.ImageRevokes += st.ImageRevokes
+			total.ImageExpiryDecisions += st.ImageExpiryDecisions
+			total.ImageRemovals += st.ImageRemovals
 		})
 	}
 	return total

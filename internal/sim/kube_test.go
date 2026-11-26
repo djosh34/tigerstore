@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -248,32 +249,59 @@ func TestKubeListsPageOnPurpose(t *testing.T) {
 	}
 }
 
-// TestImagedLeasesExpireByTTL checks leasesExpire for a synthetic image's
-// lease of 120 s, which counts as renewed at the run's start: it may not
-// expire 100 s in, and may expire 130 s in. It may live to the end, kept
-// alive or not: each new leader gives it its whole TTL again (#502).
+// TestImagedLeasesExpireByTTL checks synthetic and aged images' leases
+// of 120 s, which count as renewed at the run's start: they may not
+// expire 100 s in, and may expire 130 s in. Recorded leader changes or
+// recent renewals may keep them alive, but a stable leader must expire
+// them, even if a client renewed them early in the run (#502).
 func TestImagedLeasesExpireByTTL(t *testing.T) {
-	end := 1000 * Second
+	end := 600 * Second
 	imaged := map[int64]int64{9: 120}
 	kept := []*Record{{Call: end - 30*Second, Return: end - 30*Second + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: 9}, Resp: &pb.LeaseKeepAliveResponse{ID: 9, TTL: 120}}}
+	// Leaders changing every 100 s restart the full 120 s TTL. A client
+	// renewal at 5 s must not make survival to 600 s an error.
+	keptEarly := []*Record{{Call: 5 * Second, Return: 5*Second + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: 9}, Resp: &pb.LeaseKeepAliveResponse{ID: 9, TTL: 120}}}
+	leaders := []int64{100 * Second, 200 * Second, 300 * Second, 400 * Second, 500 * Second}
+	ambiguous := []*Record{{Call: 5 * Second, Return: end - 30*Second, req: &pb.LeaseKeepAliveRequest{ID: 9}, Err: errClientTimeout, Ambiguous: true}}
+	missing := []*Record{{Call: end - 30*Second, Return: end - 30*Second + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: 9}, Resp: &pb.LeaseKeepAliveResponse{ID: 9, TTL: 0}}}
 	for _, c := range []struct {
 		name    string
 		history []*Record
 		alive   []int64
 		expired int64
+		leaders []int64
 		ok      bool
 	}{
-		{"lives to the end with no keepalive", nil, []int64{9}, 0, true},
-		{"lives to the end kept alive", kept, []int64{9}, 0, true},
-		{"expires 100 s in", nil, nil, 100 * Second, false},
-		{"expires 130 s in", nil, nil, 130 * Second, true},
+		{"stable leader, no keepalive", nil, []int64{9}, 0, nil, false},
+		{"lives through leader changes without a keepalive", nil, []int64{9}, 0, leaders, true},
+		{"lives through leader changes after a keepalive at 5 s", keptEarly, []int64{9}, 0, leaders, true},
+		{"stable leader, still alive after a keepalive at 5 s", keptEarly, []int64{9}, 0, nil, false},
+		{"old leader change is no excuse", keptEarly, []int64{9}, 0, []int64{100 * Second}, false},
+		{"leader change after end is no excuse", keptEarly, []int64{9}, 0, []int64{700 * Second}, false},
+		{"expires 6 s after a keepalive", keptEarly, nil, 11 * Second, leaders, false},
+		{"lives to the end kept alive", kept, []int64{9}, 0, nil, true},
+		{"renewal may take effect until the call returns", ambiguous, []int64{9}, 0, nil, true},
+		{"missing lease response is no renewal", missing, []int64{9}, 0, nil, false},
+		{"expires 100 s in", nil, nil, 100 * Second, nil, false},
+		{"expires 130 s in", nil, nil, 130 * Second, nil, true},
 	} {
 		at, order := map[int64]int64{}, []int64(nil)
 		if c.expired > 0 {
 			at[9], order = c.expired, []int64{9}
 		}
-		if err := leasesExpire(c.history, imaged, at, order, c.alive, end, 50); (err == nil) != c.ok {
-			t.Errorf("%s: %v", c.name, err)
+		for _, kind := range []string{"synthetic", "aged"} {
+			s := &Sim{cfg: Config{Faults: Faults{DriftPerMille: 50}}, endAt: end, expiredAt: at, expiredOrder: order, leaseLeaders: c.leaders}
+			res := &Result{History: c.history}
+			if kind == "synthetic" {
+				s.synth = &synthStore{leases: imaged}
+			} else {
+				// An aged image's grants precede the fork's history.
+				s.cfg.from = &image{start: &history.Start{Leases: []int64{9}}}
+				res.Log, res.base = []proto.Message{&pb.LeaseGrantRequest{ID: 9, TTL: 120}}, 1
+			}
+			if err := s.checkLeasesExpire(res, c.alive); (err == nil) != c.ok {
+				t.Errorf("%s image, %s: %v", kind, c.name, err)
+			}
 		}
 	}
 }
@@ -316,9 +344,13 @@ func TestLeasesExpireByTTL(t *testing.T) {
 		if c.keptAt > 0 {
 			h = append(slices.Clone(h), keepAlive(4, 120, c.keptAt))
 		}
-		err := leasesExpire(h, nil, at, order, c.alive, end, 50)
-		if (err == nil) != c.ok {
-			t.Errorf("%s: %v", c.name, err)
+		// The existing non-image bound does not change, even when an
+		// actual leader change would extend an imaged lease's TTL.
+		for _, leaders := range [][]int64{nil, {end - Second}} {
+			err := leasesExpire(h, nil, at, order, c.alive, end, 50, leaders)
+			if (err == nil) != c.ok {
+				t.Errorf("%s, leader resets %v: %v", c.name, leaders, err)
+			}
 		}
 	}
 }
