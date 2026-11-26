@@ -213,11 +213,12 @@ type node struct {
 	ckptNotBefore time.Time
 	// ckptRoomAt: after a checkpoint found no room on the disk, the next
 	// looks again at this time, not at every turn (ckptRetry, #769).
-	// ckptShort is set from then until the disk has more room than
-	// ckptShortFree or the store is smaller than ckptShortSize.
+	// ckptShort is set, after a checkpoint that asked for ckptShortNeed
+	// bytes the disk did not have, until it has them or the store is
+	// smaller than ckptShortSize.
 	ckptRoomAt                   time.Time
 	ckptShort                    bool
-	ckptShortFree, ckptShortSize int64
+	ckptShortNeed, ckptShortSize int64
 	// ckptLog is the log written after the newest checkpoint before the
 	// next is taken (Config.CheckpointLog).
 	ckptLog  int64

@@ -305,10 +305,55 @@ func TestACheckpointThatRunsOutOfRoomIsDropped(t *testing.T) {
 	if !n.ckptRoomAt.Equal(n.now.Add(ckptRoomRetry)) {
 		t.Fatalf("the next checkpoint may start at %v, want %v", n.ckptRoomAt, n.now.Add(ckptRoomRetry))
 	}
+	// The room it asked for seemed to fit: it tries again a second
+	// later, whatever the disk's free space, which a short write leaves
+	// as it was (TestScenarios seed 448 on #846).
+	if n.ckptRetry() {
+		t.Fatal("the next checkpoint tried at once")
+	}
+	n.now = n.now.Add(ckptRoomRetry)
+	if !n.ckptRetry() {
+		t.Fatal("the next checkpoint did not try again a second after an ENOSPC")
+	}
 	n.snapWaiters = nil
 	writeCkptAt(t, n, 6)
 	if n.ckptName != ckptName(6) {
 		t.Fatalf("the checkpoint after is %s, want %s", n.ckptName, ckptName(6))
+	}
+}
+
+// A checkpoint the disk had no room for tries again once the disk has the
+// room it asked for, not before, or once the store is smaller.
+func TestACheckpointThatFoundNoRoomTriesAgainOnceThereIs(t *testing.T) {
+	var room atomic.Int64
+	was := freeSpaceOf
+	freeSpaceOf = func(string) (int64, error) { return room.Load(), nil }
+	t.Cleanup(func() { freeSpaceOf = was })
+	n, l := ckptNode(t)
+	putValue(t, n.st, l, "/a", strings.Repeat("v", 1000))
+	n.now, n.applied = time.Unix(1000, 0), 5
+	n.id, n.ring = 1, newTestRing(t) // which the alarm's proposal takes
+	if err := n.startCkpt(5, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	for n.ckpt != nil {
+		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	need := n.ckptShortNeed
+	if !n.ckptShort || need <= 0 || n.ckptName != "" {
+		t.Fatalf("a checkpoint on a disk with no room: short %v, need %d, current %q", n.ckptShort, need, n.ckptName)
+	}
+	n.now = n.now.Add(ckptRoomRetry)
+	room.Store(need - 1)
+	if n.ckptRetry() {
+		t.Fatalf("the checkpoint tried again with %d bytes free of the %d it asked for", need-1, need)
+	}
+	n.now = n.now.Add(ckptRoomRetry)
+	room.Store(need)
+	if !n.ckptRetry() {
+		t.Fatalf("the checkpoint did not try again with the %d bytes it asked for", need)
 	}
 }
 

@@ -27,13 +27,18 @@ import (
 
 // ckptRoomRetry is how long a node that found no room for a checkpoint
 // waits before it looks again. It scans the store again only once the
-// disk has more room or the store got smaller (ckptRetry): a full log
-// ring needs the checkpoint as soon as there is room.
+// disk has the room the checkpoint asked for or the store got smaller
+// (ckptRetry): a full log ring needs the checkpoint as soon as there is
+// room.
 const ckptRoomRetry = time.Second
 
 // ckptRetry reports whether the checkpoint that found no room may be
-// tried again now: once ckptRoomRetry passed, and the disk has more free
-// space than it had then, or the store is smaller.
+// tried again now: once ckptRoomRetry passed, and the disk has the room
+// it asked for, or the store is smaller. One dropped on ENOSPC partway,
+// which the room it asked for had seemed to fit, tries again then: a
+// short write, or a disk full for a while, leaves the room as it was,
+// and waiting for more than that left the node without a checkpoint for
+// good, its log's ring full (TestScenarios seed 448 on #846).
 func (n *node) ckptRetry() bool {
 	if n.now.Before(n.ckptRoomAt) {
 		return false
@@ -42,7 +47,7 @@ func (n *node) ckptRetry() bool {
 		return true
 	}
 	free, err := n.sys.freeSpace(n.ckptDir)
-	if err == nil && free <= n.ckptShortFree && n.st.quotaSize() >= n.ckptShortSize {
+	if err == nil && free < n.ckptShortNeed && n.st.quotaSize() >= n.ckptShortSize {
 		n.ckptRoomAt = n.now.Add(ckptRoomRetry)
 		return false
 	}
@@ -67,7 +72,7 @@ func (n *node) ckptFits(r *ckptRun) bool {
 	if free >= need {
 		return true
 	}
-	n.dropCkpt(fmt.Errorf("it needs about %d bytes and the disk has %d free", need, free))
+	n.dropCkpt(fmt.Errorf("it needs about %d bytes and the disk has %d free", need, free), need)
 	return false
 }
 
@@ -141,13 +146,15 @@ func cleanCkptDirAtStart(sys sysEnv, dataDir string) error {
 func isNoSpace(err error) bool { return errors.Is(err, syscall.ENOSPC) }
 
 // ckptNoSpace drops the checkpoint being written, which met ENOSPC.
-func (n *node) ckptNoSpace(err error) { n.dropCkpt(err) }
+func (n *node) ckptNoSpace(err error) { n.dropCkpt(err, 0) }
 
 // dropCkpt drops the checkpoint being written, for lack of room (why): it
 // removes what it wrote, raises NOSPACE, and leaves the next to try
-// ckptRoomRetry later. The checkpoint stays wanted, so that the clients
-// waiting for it get the next.
-func (n *node) dropCkpt(why error) {
+// ckptRoomRetry later, and, if it asked for need bytes the disk did not
+// have, once the disk has them or the store is smaller (ckptRetry). The
+// checkpoint stays wanted, so that the clients waiting for it get the
+// next.
+func (n *node) dropCkpt(why error, need int64) {
 	r := n.ckpt
 	if r == nil {
 		return
@@ -166,9 +173,7 @@ func (n *node) dropCkpt(why error) {
 	n.snapWaiters = append(waiters, n.snapWaiters...)
 	n.storage.wantCkpt = true
 	n.ckptRoomAt = n.now.Add(ckptRoomRetry)
-	if free, err := n.sys.freeSpace(n.ckptDir); err == nil {
-		n.ckptShort, n.ckptShortFree, n.ckptShortSize = true, free, n.st.quotaSize()
-	}
+	n.ckptShort, n.ckptShortNeed, n.ckptShortSize = need > 0, need, n.st.quotaSize()
 	n.logf("checkpoint at index %d: %v: dropped, NOSPACE, and no checkpoint until there is room", r.meta.index, why)
 	n.raiseNoSpace()
 	n.simNoRoom()
