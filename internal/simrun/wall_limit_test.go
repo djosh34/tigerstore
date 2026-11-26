@@ -10,7 +10,7 @@ import (
 )
 
 func TestResolveWallLimit(t *testing.T) {
-	const long = 155 * time.Minute
+	const long = 160 * time.Minute
 	for _, tc := range []struct {
 		test, env string
 		policy    time.Duration
@@ -51,12 +51,12 @@ func TestResolveWallLimit(t *testing.T) {
 func TestSeedWallPolicyDoesNotChangeEnvironment(t *testing.T) {
 	selectLimit := func(seed uint64) time.Duration {
 		if seed == 7 {
-			return 155 * time.Minute
+			return 160 * time.Minute
 		}
 		return 0
 	}
 	opts := seedOptionsOf([]SeedOption{WithWallLimit(selectLimit)})
-	if opts.wallLimit(7) != 155*time.Minute || opts.wallLimit(8) != 0 {
+	if opts.wallLimit(7) != 160*time.Minute || opts.wallLimit(8) != 0 {
 		t.Fatal("per-seed selector changed another seed's default")
 	}
 	r := Run{Test: "TestCampaign", Seed: 7, Env: []string{"SIM_SEED=7", "SIM_SEEDS=1"}}

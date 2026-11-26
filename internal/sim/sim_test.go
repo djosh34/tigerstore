@@ -745,14 +745,17 @@ func checkers(t *testing.T, res *Result) {
 // Round the worst ratio, 110,295 / 15,881, up to seven: the old
 // 50,000,000 * 7 = 350,000,000 preserves every measured margin.
 // Fresh, aged and busy seeds retain this ratio-derived budget. For the
-// four-hour long seeds only, part 2a provisionally allows twice the upper
-// estimate of two billion steps, pending seed 1's full measured count.
+// four-hour long seeds only, run 45795895733 on e8b9858f reported 70,222,032
+// steps at revision 250,251 of 634,611 before its 30-minute wall stopped
+// it. The projected full count is 178M, NOT a completed measurement.
+// Part 2a uses max(350M, 2 * 178M), rounded up to 10M: 360M.
 // Part 2b will use max(witnessStepLimit, 2 * measuredFullSteps) and resize
 // the long-only wall backstop (longSeedWallLimit) from the runner's rate.
 const (
 	witnessStepLimit         int64 = 350_000_000
-	provisionalLongFullSteps int64 = 2_000_000_000
-	longWitnessStepLimit           = max(witnessStepLimit, 2*provisionalLongFullSteps)
+	provisionalLongFullSteps int64 = 178_000_000
+	longStepQuantum          int64 = 10_000_000
+	longWitnessStepLimit           = (max(witnessStepLimit, 2*provisionalLongFullSteps) + longStepQuantum - 1) / longStepQuantum * longStepQuantum
 )
 
 var (

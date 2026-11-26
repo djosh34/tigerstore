@@ -15,18 +15,18 @@ import (
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
-// The runner reached 241,510 of 634,611 revisions in about 24 search
-// minutes on 6288f117: roughly 63 minutes for the full check. Part 2a's
-// provisional two-billion-step estimate gives about 0.53M steps/s; use
-// the more conservative 0.50M/s until the full weighted count is known.
-// Four billion steps then take 133m20s. Add six minutes for the run and
-// other checks, fifteen minutes of margin, and round up to five minutes:
-// 155m soft / 165m non-yield kill, below the campaign binary's 340m.
-// Part 2b must replace the estimate with the full runner measurement.
+// On e8b9858f, Actions run 45795895733 logged 70,222,032 weighted steps
+// after about 24 search minutes, at revision 250,251 of 634,611. That is
+// about 48,700 steps/s and a projected 178M full count, not a completion.
+// The provisional 360M budget takes 123m13s at that partial-run rate.
+// Add six minutes for the run and other checks, thirty minutes of margin,
+// and round up to five minutes: 160m soft / 170m non-yield kill, below
+// the campaign binary's 340m. Part 2b must use a completed seed 1's
+// measured full count and runner timing for the final budget and limit.
 const (
-	longWitnessEstimatedRate = 500_000
+	longWitnessEstimatedRate = 48_700
 	longSeedSetupAllowance   = 6 * time.Minute
-	longSeedWallMargin       = 15 * time.Minute
+	longSeedWallMargin       = 30 * time.Minute
 	longSeedWallQuantum      = 5 * time.Minute
 	longBudgetTime           = time.Duration((longWitnessStepLimit+longWitnessEstimatedRate-1)/longWitnessEstimatedRate) * time.Second
 	longSeedWallLimit        = time.Duration(int64((longBudgetTime+longSeedSetupAllowance+longSeedWallMargin+longSeedWallQuantum-1)/longSeedWallQuantum) * int64(longSeedWallQuantum))
