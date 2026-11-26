@@ -116,8 +116,10 @@ type stream struct {
 	kind uint8
 	open bool
 	gzip bool // the client's messages are gzip'd
-	// snapRetries counts copies of this Snapshot interrupted by log cuts.
-	snapRetries uint8
+	// snapRequested admits only one Snapshot message. snapRetries counts
+	// its copies interrupted by log cuts; both start anew with the stream.
+	snapRequested bool
+	snapRetries   uint8
 	// began is the turn of the call's request, for its time; readonly
 	// says a Txn has no write, etcd's ReadonlyTxn.
 	began    time.Time

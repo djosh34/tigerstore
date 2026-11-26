@@ -267,9 +267,9 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 			l.logger.Printf("send a snapshot to %d: %v", to, err)
 		}
 		l.post(func() error {
-			if errors.Is(err, ErrBadValue) {
-				// The disk damaged a value the snapshot holds: the node
-				// stops instead of serving it.
+			if snapshotDamage(err) {
+				// The disk damaged the checkpoint or one of its values:
+				// the node stops instead of serving it.
 				return err
 			}
 			// A copy that read a retired segment (errLogCut) failed,

@@ -446,7 +446,9 @@ func (n *node) afterApply() error {
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
 	s := n.storage
-	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !n.ringDue() {
+	n.pruneSnapWaiters()
+	clientDue := len(n.snapWaiters) > 0
+	if n.ckpt != nil || n.ckptDir == "" || (n.wal.off-n.ckptFrom < n.ckptEvery() || n.now.Before(n.ckptNotBefore)) && !s.wantCkpt && !clientDue && !n.ringDue() {
 		return nil
 	}
 	index := n.applied
@@ -455,14 +457,14 @@ func (n *node) maybeCkpt() error {
 		// applied one its store is at.
 		index = c
 	}
-	if s.wantCkpt && len(n.snapWaiters) > 0 && s.snap != nil && index == s.snap.GetMetadata().GetIndex() {
+	if clientDue && s.snap != nil && index == s.snap.GetMetadata().GetIndex() {
 		// No apply followed the newest checkpoint. It is already a
 		// fresh source for a client whose older copy lost its log to
 		// a cut; rewriting its file at the same index is not safe.
 		waiters := n.snapWaiters
-		n.snapWaiters, s.wantCkpt = nil, false
+		n.snapWaiters = nil
 		meta := s.snap.GetMetadata()
-		n.startClientSnaps(waiters, n.ckptName, ckptMeta{index: index, term: meta.GetTerm(), rev: n.st.rev})
+		n.startClientSnaps(waiters, n.ckptName, ckptMeta{index: index, term: meta.GetTerm()})
 		return nil
 	}
 	off := s.offOf(index)

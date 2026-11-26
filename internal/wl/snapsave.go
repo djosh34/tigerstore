@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -49,9 +50,26 @@ type clientSnap struct {
 // snapshotRequest takes a client's Snapshot: the node takes a checkpoint
 // for it, and sends it once written.
 func (n *node) snapshotRequest(c *client, s *stream) {
-	s.snapRetries = 0
+	if s.snapRequested {
+		n.replyError(c, s.id, codeInvalidArgument, "etcdserver: snapshot: only one request per stream")
+		return
+	}
+	s.snapRequested = true
 	n.snapWaiters = append(n.snapWaiters, mkHandle(c, s.id))
-	n.storage.wantCkpt = true
+}
+
+// pruneSnapWaiters drops clients that went away after asking for a
+// checkpoint, without changing Raft's independent wantCkpt demand.
+func (n *node) pruneSnapWaiters() {
+	k := 0
+	for _, h := range n.snapWaiters {
+		if c, _ := n.clientOf(h); c != nil {
+			n.snapWaiters[k] = h
+			k++
+		}
+	}
+	clear(n.snapWaiters[k:])
+	n.snapWaiters = n.snapWaiters[:k]
 }
 
 // startClientSnaps hands the checkpoint just written to the clients that
@@ -103,8 +121,39 @@ func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 		if err == nil {
 			_, err = f.Seek(0, io.SeekStart)
 		}
+		if err == nil {
+			// The verified copy is the authority for its header, even
+			// when the caller reused the newest quiet checkpoint.
+			cs.head, err = copiedClientSnapHead(f, l.n.clusterID)
+		}
+		if err == nil {
+			_, err = f.Seek(0, io.SeekStart)
+		}
 		l.post(func() error { return l.n.clientSnapCopied(cs, err) })
 	}()
+}
+
+// copiedClientSnapHead reads the metadata of a verified, self-contained
+// checkpoint, not the store whose revision may since have changed.
+func copiedClientSnapHead(f file, cluster uint64) ([]byte, error) {
+	cr := &ckptReader{r: bufio.NewReader(f)}
+	if err := cr.skip(uint64(len(ckptMagic))); err != nil {
+		return nil, err
+	}
+	var v [3]uint64
+	for i := range v {
+		var err error
+		if v[i], err = cr.uvarint(); err != nil {
+			return nil, err
+		}
+	}
+	return clientSnapHead(cluster, ckptMeta{index: v[0], term: v[1], rev: int64(v[2])}), nil
+}
+
+// snapshotDamage reports errors that must stop the node, not retry a
+// copy or report a failed send to Raft as if the disk were sound.
+func snapshotDamage(err error) bool {
+	return errors.Is(err, ErrBadValue) || errors.Is(err, ErrCorruptCheckpoint)
 }
 
 // clientSnapCopied takes back a client's copy. Only a retired log segment
@@ -117,7 +166,7 @@ func (n *node) clientSnapCopied(cs *clientSnap, err error) error {
 		if cs.f != nil {
 			_ = cs.f.Close()
 		}
-		if errors.Is(err, ErrBadValue) {
+		if snapshotDamage(err) {
 			n.replyErrorH(cs.h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
 			return err
 		}
@@ -128,7 +177,6 @@ func (n *node) clientSnapCopied(cs *clientSnap, err error) error {
 			if s.snapRetries < clientSnapRetries {
 				s.snapRetries++
 				n.snapWaiters = append(n.snapWaiters, cs.h)
-				n.storage.wantCkpt = true
 				return nil
 			}
 			err = fmt.Errorf("retry limit (%d) reached after log cuts; retry the snapshot request", clientSnapRetries)

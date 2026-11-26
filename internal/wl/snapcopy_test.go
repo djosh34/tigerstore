@@ -174,7 +174,7 @@ func TestAClientSnapshotRetriesACopyWhoseLogWasCut(t *testing.T) {
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
 	}
-	if len(n.snapWaiters) != 1 || n.snapWaiters[0] != h || !n.storage.wantCkpt || len(n.clientSnaps) != 0 {
+	if len(n.snapWaiters) != 1 || n.snapWaiters[0] != h || n.storage.wantCkpt || len(n.clientSnaps) != 0 {
 		t.Fatal("the cut copy did not queue a fresh checkpoint for its client")
 	}
 	n.shell = &copyShell{l: l}
@@ -278,11 +278,11 @@ func TestSnapshotCopiesDistinguishSharedDamageFromACut(t *testing.T) {
 				n.wal = &wal{}
 				putValue(t, n.st, ml, "/shared", "value")
 				writeCkptAt(t, n, 14)
-				current, err := n.sys.openFile(filepath.Join(n.ckptDir, n.ckptName), os.O_RDONLY, 0)
+				first, err := n.sys.openFile(filepath.Join(n.ckptDir, n.ckptName), os.O_RDONLY, 0)
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer func() { _ = current.Close() }()
+				defer func() { _ = first.Close() }()
 				// Keep the first file independently of main's same-index
 				// rename-over. The two files still share the WAL byte.
 				held, err := n.sys.createTemp(n.ckptDir, "held-*.ckpt")
@@ -290,10 +290,15 @@ func TestSnapshotCopiesDistinguishSharedDamageFromACut(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer func() { _ = held.Close() }()
-				if _, err := io.Copy(held, current); err != nil {
+				if _, err := io.Copy(held, first); err != nil {
 					t.Fatal(err)
 				}
 				writeCkptAt(t, n, 14)
+				current, err := n.sys.openFile(filepath.Join(n.ckptDir, n.ckptName), os.O_RDONLY, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = current.Close() }()
 				src := current
 				if old {
 					src = held
@@ -355,21 +360,35 @@ func TestASnapshotCutRetryHasALimit(t *testing.T) {
 	n := copyRingNode(t)
 	c, s, h := snapshotClient(t, n)
 	l := copyLoop(n)
+	sh := &heldCopyShell{l: l}
+	n.shell = sh
+	n.snapshotRequest(c, s)
 	for attempt := 1; attempt <= 4; attempt++ {
-		src := retiredCopy(t, n)
-		n.snapWaiters, n.storage.wantCkpt = nil, false
-		l.prepareClientSnap(h, src, nil)
+		stageCopyValue(t, n)
+		if err := n.maybeCkpt(); err != nil {
+			t.Fatal(err)
+		}
+		for n.ckpt != nil {
+			if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(sh.pending) != 1 || len(n.snapWaiters) != 0 || n.storage.wantCkpt {
+			t.Fatalf("attempt %d did not schedule exactly one client copy independently of Raft", attempt)
+		}
+		retireCopy(t, n)
+		sh.release(t)
 		waitStrays(t)
 		if err := l.runPosts(); err != nil {
 			t.Fatal(err)
 		}
 		if attempt < 4 {
-			if c.get(s.id) == nil || len(n.snapWaiters) != 1 || n.snapWaiters[0] != h || !n.storage.wantCkpt {
-				t.Fatalf("attempt %d did not retry the live stream", attempt)
+			if c.get(1) == nil || len(n.snapWaiters) != 1 || n.snapWaiters[0] != h || n.storage.wantCkpt {
+				t.Fatalf("attempt %d did not requeue exactly the live stream", attempt)
 			}
 			continue
 		}
-		if c.get(s.id) != nil || len(n.snapWaiters) != 0 || n.storage.wantCkpt || !bytes.Contains(c.out, []byte("retry limit")) {
+		if c.get(1) != nil || len(n.snapWaiters) != 0 || n.storage.wantCkpt || !bytes.Contains(c.out, []byte("retry limit")) {
 			t.Fatal("four consecutive real cuts did not end with a clear retry-limit error")
 		}
 	}
