@@ -162,6 +162,10 @@ The `test` job runs every package but the simulator with `-race`, but for `inter
 
 `core.TestMembershipChangesMatchRaft` is the component test of the membership checks: random member adds, learner adds, removals, promotions and updates on random clusters. Every change the checks let through must be one raft's `confchange` takes, since raft panics on any error, and the members after it must equal raft's configuration; a refused change goes to raft as a change of nobody, as in etcd.
 
+# Large-put differential diagnostics
+
+Difftest's tigerstore runs opt into [large-put request timelines](large-put-timings.md). Successful tigerstore server logs are kept per suite in the `difftest-*` artifacts for 14 days, and failed runs for 30 days (successful etcd runs remain unretained), so a later timeout can be compared with passing proposals, commits, applies and queued replies. Production tracing remains off by default.
+
 # Differential fuzzing against etcd
 
 `scripts/difffuzz.sh` starts a fresh etcd v3.7.2 and a fresh 3-node tigerstore side by side, both with client TLS, and runs the difftest's `TestDiffFuzz` against both. It sends random sequences of 30 requests, each under keys of its own: puts with leases, previous values and the ignore flags; reads of one key, of ranges and of everything from a key, at the current, past, future, zero and negative revisions, with limits and count- or keys-only; deletes; transactions with up to two compares on every target and up to three puts, deletes and reads in each branch; compactions; lease grants with picked and asked-for IDs and revokes, also of leases nobody granted; and watches from past revisions. Every answer is compared as the difftest records it: revisions relative to the sequence's start, lease IDs by the order the sequence granted them, values byte for byte, transaction results, and error codes and messages. A mismatch is shrunk, by removing ever smaller runs of requests while one remains, and saved as a named case in `difftest/testdata/fuzz`, which `TestDiffFuzzFound` replays on every run.

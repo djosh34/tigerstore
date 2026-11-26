@@ -168,6 +168,9 @@ func run(ctx context.Context, cfg Config) error {
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
 		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
 	}
+	if cfg.TraceLargePuts {
+		n.putTimings = &putTimings{pending: make(map[uint64][]*putTiming)}
+	}
 	n.startRun(run)
 	if n.sideSecret, err = newSideSecret(); err != nil {
 		return err
@@ -908,12 +911,18 @@ func (l *loop) closeSock(idx int) {
 		n.cancelSides(idx)
 		for i := range v.slots {
 			st := &v.slots[i]
+			if n.putTimings != nil {
+				n.tracePutClosed(st)
+			}
 			if st.open && st.watch {
 				n.closeWatchStream(v, st)
 			}
 			st.fail = nil
 		}
 		for _, st := range v.over {
+			if n.putTimings != nil {
+				n.tracePutClosed(st)
+			}
 			if st.watch {
 				n.closeWatchStream(v, st)
 			}
@@ -1319,8 +1328,8 @@ func (l *loop) clientTick() {
 		}
 	}
 	l.serveWaiting()
-	if out := n.sizes.connOut(n.active); out > n.connOut && (len(n.roomWait) > 0 || len(n.heldReplies) > 0) {
-		// The shares grew: what waited for room may fit now.
+	if out := n.sizes.connOut(n.active); out != n.connOut && (len(n.roomWait) > 0 || len(n.heldReplies) > 0) {
+		// Growth may let a reply fit; shrinkage may require pieces.
 		n.roomFreed = true
 	}
 	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)

@@ -513,6 +513,12 @@ jobs:
           name: difftest-${{ strategy.job-index }}
           path: ${{ runner.temp }}/difftest
           retention-days: 30
+      - if: success() && matrix.server == 'tigerstore'
+        uses: actions/upload-artifact@v6
+        with:
+          name: difftest-${{ strategy.job-index }}-success
+          path: ${{ runner.temp }}/difftest
+          retention-days: 14
 
   # Each fuzz test of a hand-written decoder runs for 20 s from its saved
   # corpus in testdata/fuzz, one after the other. A failing input
