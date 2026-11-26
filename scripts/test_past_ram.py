@@ -42,6 +42,11 @@ class ClassificationTests(unittest.TestCase):
                                 (671084544, 10551, 758075392)]),
             ]]
 
+    def reclaim_exit(self):
+        # The historical artifact predates driver_exit_seconds. Model the
+        # harness observing exit on the next (two-second) poll, on its clock.
+        return dict(driver_exit=1, driver_exit_seconds=self.reclaim_samples()[-1]["seconds"] + 2)
+
     def test_proof_rejects_unconfirmed_reclaim(self):
         result = self.result("etcd", "proof")
         result["failure"] = "driver exited 1; see progress.jsonl and driver.log"
@@ -52,6 +57,28 @@ class ClassificationTests(unittest.TestCase):
                          failure="etcdserver: request timed out")]
         past_ram.classify(result, progress)
         self.assertEqual(result["outcome"], "failed")
+
+    def test_reclaim_uses_only_harness_clock_for_recency(self):
+        samples = self.reclaim_samples()
+        last_sample = samples[-1]["seconds"]
+        for case, elapsed, driver_seconds, outcome in [
+            # Driver preload starts one second after the harness clock:
+            # the timeout happens 0.2s after the last sample on that clock.
+            ("offset clocks", last_sample + 0.2, last_sample - 0.8, "reference-preload-limit"),
+            # A startup offset must not make old samples appear recent.
+            ("stale samples", last_sample + 30, last_sample + 0.2, "failed"),
+        ]:
+            with self.subTest(case=case):
+                result = self.result("etcd", "proof")
+                result.update(failure="driver exited 1; see progress.jsonl and driver.log",
+                              driver_exit=1, driver_exit_seconds=elapsed)
+                result["last_acknowledged"].update(objects=280960, live_bytes=411341174)
+                result["final_cgroups"] = [dict(events=dict(oom_kill=0, max=n))
+                                           for n in (8949, 11465, 10553)]
+                progress = [dict(phase="preload-failed", seconds=driver_seconds,
+                                 failure="etcdserver: request timed out")]
+                past_ram.classify(result, progress, samples)
+                self.assertEqual(result["outcome"], outcome)
 
     def test_four_observed_limits(self):
         # Counts and final cgroup events from run 38951406613. The poll loop
@@ -92,6 +119,7 @@ class ClassificationTests(unittest.TestCase):
                 result["failure"] = "driver exited 1; see progress.jsonl and driver.log"
                 result["last_acknowledged"].update(objects=count, live_bytes=live)
                 result["final_cgroups"] = [dict(events=dict(oom_kill=0, max=n)) for n in hits]
+                result.update(self.reclaim_exit())
                 result.update(copy.deepcopy(change or {}))
                 past_ram.classify(result, [dict(phase=phase), dict(phase="preload-failed", failure=message,
                                                               seconds=34.131909638)], self.reclaim_samples())
@@ -123,8 +151,10 @@ class ClassificationTests(unittest.TestCase):
                     self.assertIsNotNone(result["failure"])
                     self.assertNotIn("limit", result)
             if mode == "proof":
-                with self.subTest(mode=mode, case="explicit preload control"):
-                    self.assertEqual(run(dict(preload_bytes=16 << 20))["outcome"], "failed")
+                for change in (dict(preload_bytes=16 << 20), dict(driver_exit=None),
+                               dict(driver_exit_seconds=None)):
+                    with self.subTest(mode=mode, change=change):
+                        self.assertEqual(run(change)["outcome"], "failed")
 
     def test_proof_requires_recent_reclaim_on_every_member(self):
         for member in range(3):
@@ -152,6 +182,7 @@ class ClassificationTests(unittest.TestCase):
                 for mode in ("proof", "max"):
                     result = self.result("etcd", mode)
                     result["failure"] = "driver exited 1; see progress.jsonl and driver.log"
+                    result.update(self.reclaim_exit())
                     result["last_acknowledged"].update(objects=280960, live_bytes=411341174)
                     result["final_cgroups"] = [dict(events=dict(oom_kill=0, max=n))
                                                for n in (8949, 11465, 10553)]
@@ -166,6 +197,7 @@ class ClassificationTests(unittest.TestCase):
         # Proof accepts no smaller measured size than max for the same data.
         for limit in ("cgroup-oom", "cgroup-reclaim"):
             reference = self.result("etcd", "proof")
+            reference.update(self.reclaim_exit())
             reference["last_acknowledged"].update(objects=280960, live_bytes=411341174)
             reference["final_cgroups"] = [
                 dict(events=dict(oom_kill=int(limit == "cgroup-oom" and i == 1), max=n))

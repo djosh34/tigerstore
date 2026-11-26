@@ -35,15 +35,16 @@ def healthy(port):
         return json.loads(response.read().decode()).get("health") == "true"
 
 
-def reclaim_near_timeout(samples, memory, stopped):
+def reclaim_near_timeout(samples, memory, exited):
     """Require sustained memory pressure and page reads, not old max events."""
-    if len(samples) < 3 or stopped is None:
+    if len(samples) < 3 or exited is None:
         return False
     recent = samples[-3:]
     times = [sample.get("seconds", -1) for sample in recent]
-    # The final poll must be within four seconds of the failed write, with
-    # three consecutive polls spanning at most six seconds.
-    if (not 0 <= stopped - times[-1] <= 4
+    # Sample and observed driver-exit times share the harness's clock.
+    # Progress seconds use the driver's later preload start, not this clock.
+    # Require three consecutive polls and an exit observed shortly afterward.
+    if (not 0 <= exited - times[-1] <= 4
             or not 0 < times[-1] - times[0] <= 6
             or any(not 0 < b - a <= 4 for a, b in zip(times, times[1:]))
             or any(len(sample.get("nodes", [])) != 3 for sample in recent)):
@@ -91,7 +92,8 @@ def classify(result, progress, samples=()):
                and all(g["events"].get("max", 0) > 0 for g in groups)
                and bool(progress) and progress[-1].get("failure") == "etcdserver: request timed out"
                and (result["mode"] == "max"
-                    or reclaim_near_timeout(samples, result["memory"], progress[-1].get("seconds"))))
+                    or (result.get("driver_exit") == 1
+                        and reclaim_near_timeout(samples, result["memory"], result.get("driver_exit_seconds")))))
     if (len(groups) != 3 or not (oom or reclaim)
             or ack.get("objects", 0) <= 0 or ack.get("live_bytes", 0) <= 0
             or ack.get("phase") != "preload" or result["kills"]
@@ -277,6 +279,8 @@ def main():
                     result["censored"] = True
                     raise RuntimeError("runner time limit, not a store capacity result")
                 time.sleep(2)
+            # Same origin as sample.seconds, unlike the driver's progress clock.
+            result["driver_exit_seconds"] = time.monotonic() - started
             result["driver_exit"] = driver.returncode
             if driver.returncode:
                 raise RuntimeError(f"driver exited {driver.returncode}; see progress.jsonl and driver.log")
