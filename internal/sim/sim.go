@@ -888,13 +888,13 @@ type Stats struct {
 	// checkpoint, NoSpace the calls the NOSPACE alarm refused,
 	// OutOfSpace the nodes that stopped on a write that ran out of space,
 	// NoRoom the checkpoints a node held or dropped for lack of room,
-	// raising NOSPACE and staying up (#769), Disarms the NOSPACE alarms
-	// an operator disarmed after (disarmNoSpace), and DiskGrowths the
-	// times an operator grew the disks (Faults.GrowDisk), and
-	// GrownCheckpoints the checkpoints done after; DisarmedAt is when the
-	// last disarm was answered.
-	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms, DiskGrowths, GrownCheckpoints int
-	DisarmedAt                                                                   int64
+	// raising NOSPACE and staying up (#769), NoRoomOwn those with no disk
+	// fault active, Disarms the NOSPACE alarms an operator disarmed after
+	// (disarmNoSpace), DiskGrowths the times an operator grew the disks
+	// (Faults.GrowDisk), and GrownCheckpoints the checkpoints done after;
+	// DisarmedAt is when the last disarm was answered.
+	LogCuts, NoSpace, OutOfSpace, NoRoom, NoRoomOwn, Disarms, DiskGrowths, GrownCheckpoints int
+	DisarmedAt                                                                              int64
 	// Netem counts the writes each kind of link fault hit (netemKind),
 	// Resets the resets of the connections between two nodes,
 	// and BlockedWrites the writes that waited for room in a connection's
