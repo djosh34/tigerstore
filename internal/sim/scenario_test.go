@@ -257,6 +257,8 @@ func TestReplaceFenced(t *testing.T) {
 		checkers(t, res)
 		if st := res.Stats; st.Replaced == 0 {
 			t.Fatalf("seed %d: no node replaced: %d fenced", seed, st.Fenced)
+		} else if st.QuorumLostAt != 0 {
+			t.Fatalf("seed %d: replacement lost the quorum at %s; this run must converge", seed, seconds(st.QuorumLostAt))
 		}
 		return res.Stats
 	}, nil)
