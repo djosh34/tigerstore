@@ -237,10 +237,10 @@ func TestKubeListsPageOnPurpose(t *testing.T) {
 	}
 }
 
-// TestImagedLeasesExpireByTTL checks leasesExpire for a synthetic image's
-// lease of 120 s, which counts as renewed at the run's start: it may not
-// expire 100 s in, and may expire 130 s in. It may live to the end, kept
-// alive or not: each new leader gives it its whole TTL again (#502).
+// TestImagedLeasesExpireByTTL checks synthetic and aged images' leases
+// of 120 s, which count as renewed at the run's start: they may not
+// expire 100 s in, and may expire 130 s in. They may live to the end,
+// kept alive or not: each new leader gives them their whole TTL (#502).
 func TestImagedLeasesExpireByTTL(t *testing.T) {
 	end := 1000 * Second
 	imaged := map[int64]int64{9: 120}
@@ -262,7 +262,14 @@ func TestImagedLeasesExpireByTTL(t *testing.T) {
 			at[9], order = c.expired, []int64{9}
 		}
 		if err := leasesExpire(c.history, imaged, at, order, c.alive, end, 50); (err == nil) != c.ok {
-			t.Errorf("%s: %v", c.name, err)
+			t.Errorf("synthetic image, %s: %v", c.name, err)
+		}
+		// An aged image's grants are in the log before base, not the
+		// fork's history: its checker must recover their TTLs from there.
+		s := &Sim{cfg: Config{from: &image{}, Faults: Faults{DriftPerMille: 50}}, endAt: end, expiredAt: at, expiredOrder: order}
+		res := &Result{History: c.history, Log: []proto.Message{&pb.LeaseGrantRequest{ID: 9, TTL: 120}}, base: 1}
+		if err := s.checkLeasesExpire(res, c.alive); (err == nil) != c.ok {
+			t.Errorf("aged image, %s: %v", c.name, err)
 		}
 	}
 }

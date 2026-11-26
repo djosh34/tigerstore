@@ -636,12 +636,45 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 	var imaged map[int64]int64
 	if s.synth != nil {
 		imaged = s.synth.leases
+	} else if s.cfg.from != nil {
+		// An aged image's grants precede the fork's history. Its first
+		// leader gives those leases their whole TTL too, and a keepalive
+		// in this history must use that TTL, not an unknown lease's zero.
+		imaged = map[int64]int64{}
+		for _, op := range res.Log[:res.base] {
+			switch r := op.(type) {
+			case *pb.LeaseGrantRequest:
+				imaged[r.ID] = r.TTL
+			case *pb.LeaseRevokeRequest:
+				delete(imaged, r.ID)
+			}
+		}
 	}
 	if err := leasesExpire(res.History, imaged, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
 	if err := revokesKeepPromises(res.History, s.revokedAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
+	}
+	for id := range imaged {
+		if at, ok := s.expiredAt[id]; ok && at >= 0 {
+			res.Stats.ImageExpiries++
+		}
+	}
+	for _, r := range res.History {
+		if r.Err != nil {
+			continue
+		}
+		switch resp := r.Resp.(type) {
+		case *pb.LeaseKeepAliveResponse:
+			if resp != nil && resp.TTL > 0 && imaged[resp.ID] > 0 {
+				res.Stats.ImageKeepAlives++
+			}
+		case *pb.LeaseRevokeResponse:
+			if imaged[r.req.(*pb.LeaseRevokeRequest).ID] > 0 {
+				res.Stats.ImageRevokes++
+			}
+		}
 	}
 	for _, op := range res.Log {
 		switch op.(type) {
@@ -661,7 +694,7 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 // less the clock envelope of driftPerMille. A renewal after the expiry
 // does not count: the revoke a leader proposed may never commit, as when
 // it loses its term, and the next leader starts the lease's TTL over.
-// imaged, a synthetic image's leases' TTLs by their IDs, count as renewed
+// imaged, an image's leases' TTLs by their IDs, count as renewed
 // at the run's start, so none expires before its TTL from there: the
 // first leader gives each its whole TTL. But one that lives at the end
 // is no error, as one of an ambiguous grant is not: each new leader gives

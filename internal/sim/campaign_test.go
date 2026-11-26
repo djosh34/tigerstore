@@ -157,6 +157,12 @@ func TestCampaign(t *testing.T) {
 		switch r.Kind {
 		case kindAged:
 			// Each fork carries its share of the image's cost.
+			if !images[seed] {
+				ran["live leases at aged images"] += r.Stats.ImageLeases
+				if r.Stats.ImageLeases >= 1000 {
+					ran["aged images with thousands of leases"]++
+				}
+			}
 			images[seed] = true
 			ran["aged images"] = len(images)
 			ran["aged forks"] += r.Forks

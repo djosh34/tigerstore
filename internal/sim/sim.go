@@ -149,6 +149,9 @@ type Config struct {
 	// BulkBytes, if set, is how much the run loads before its clients
 	// start (bulkLoad).
 	BulkBytes int64
+	// ImageLeases, if set, is how many leases the run grants after its
+	// clients finish, before taking an aged image (loadImageLeases).
+	ImageLeases int
 	// HotKeys sends half the writes of the Kubernetes-shaped load to each
 	// client's first object, a hot key with many versions.
 	HotKeys bool
@@ -794,6 +797,12 @@ type Sim struct {
 
 // Stats counts what happened in a run.
 type Stats struct {
+	// ImageLeases counts live leases at an aged image, once per image,
+	// not the leases its forks grant or the sum over its forks.
+	ImageLeases int
+	// ImageKeepAlives and ImageRevokes count successful client renewals
+	// and revokes of imaged leases; ImageExpiries counts those that expire.
+	ImageKeepAlives, ImageRevokes, ImageExpiries int
 	// KeptPages counts the synced pages the nodes' disks moved to the
 	// runner's disk (keptPages).
 	KeptPages             int
@@ -1350,6 +1359,14 @@ func (s *Sim) run() error {
 		case <-time.After(time.Duration(end - s.now())):
 		case <-s.failed():
 		}
+	}
+	if s.cfg.ImageLeases > 0 {
+		if err := s.loadImageLeases(); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.endAt = s.now()
+		s.mu.Unlock()
 	}
 	s.mu.Lock()
 	s.checkRequestedQuorumLoss(false)
