@@ -155,6 +155,9 @@ type witness struct {
 	// stop, if set, stops the check as its deadline does (StopWhen).
 	stop    func() bool
 	stopped bool
+	// replayStop is innerStep's method value, allocated once rather than
+	// again for every scoped state answered during replay.
+	replayStop func() bool
 	// scope caches the keys each op's request reads or writes
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
@@ -263,6 +266,7 @@ func (p place) compare(q place) int {
 
 func newWitness(h *history.History, deadline time.Time) *witness {
 	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firsts: make([]firstAnswer, len(h.Ops))}
+	w.replayStop = w.innerStep
 	w.reqs = make([]history.Request, len(h.Ops))
 	w.calls, w.returns = make([]int64, len(h.Ops)), make([]int64, len(h.Ops))
 	for i := range h.Ops {
@@ -304,6 +308,9 @@ func (w *witness) summary() summary {
 // apply adds an event sent by op and replays it.
 func (w *witness) apply(op int, req *history.Request) outcome {
 	o := w.live.step(*req, true)
+	if w.stopped {
+		return o
+	}
 	w.past.add(o.events)
 	for _, e := range o.events {
 		w.appended = append(w.appended, e.KV.Key)
@@ -336,7 +343,7 @@ func (w *witness) stateAt(j int) *state {
 		}
 		w.kvsRev = sm.rev
 	}
-	return &state{keys: w.keys, kvs: slices.Clone(w.kvs), leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past}
+	return &state{keys: w.keys, kvs: slices.Clone(w.kvs), leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: w.replayStop}
 }
 
 // answers reports whether op i, which changed nothing, gets its response

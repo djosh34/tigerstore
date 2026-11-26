@@ -3,6 +3,7 @@ package check
 import (
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,9 @@ func assertSearchStopped(t *testing.T, r *revisionOrder, calls *int) {
 	if !r.w.stopped || *calls != 2 || r.w.steps != 2048 {
 		t.Fatalf("stopped=%v, polls=%d, steps=%d; want stop at the second poll, within 2*1024*64 work items", r.w.stopped, *calls, r.w.steps)
 	}
+	if r.failure != nil || strings.Contains(r.w.stoppedAt(), "cannot write it") || strings.Contains(r.w.stoppedAt(), "the furthest it got") {
+		t.Fatalf("stop invented a failure explanation: %s", r.w.stoppedAt())
+	}
 	before := r.w.steps
 	if err := r.search(); !errors.Is(err, ErrWitnessTimeout) {
 		t.Fatalf("search lost its inner phase's cancellation: %v", err)
@@ -44,6 +48,9 @@ func TestSearchStopInsideDue(t *testing.T) {
 			if phase != "build" {
 				for range r.due(1000, 1) {
 				}
+			}
+			if phase == "lateDue" {
+				_ = r.dueTree()
 			}
 			calls := armSearchStop(r)
 			switch phase {

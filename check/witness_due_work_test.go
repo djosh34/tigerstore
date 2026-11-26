@@ -191,36 +191,34 @@ func TestDueWorkScale(t *testing.T) {
 // All the gaps remain open until the final read verifies the order.
 func TestDueGapHistoryScale(t *testing.T) {
 	const leases, gaps = 4096, 256
-	h := &history.History{Start: &history.Start{Rev: 1}}
-	for i := range leases {
-		id := int64(i + 1)
-		h.Start.Leases = append(h.Start.Leases, id)
-		h.Ops = append(h.Ops,
-			history.Op{Client: len(h.Ops), Call: 1, Return: 2, Req: history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: id}}, Err: errUnavailable},
-			history.Op{Client: len(h.Ops) + 1, Call: 3, Return: 4, Req: history.Request{Put: &history.PutRequest{Key: "k", Lease: id}}, Err: errLeaseNotFound},
-		)
-	}
-	for i := range gaps {
-		h.Ops = append(h.Ops, history.Op{Client: len(h.Ops), Call: int64(5 + i*2), Return: int64(6 + i*2), Req: history.Request{Put: &history.PutRequest{Key: "k", Value: "v"}}, Err: errUnavailable})
-	}
-	h.Ops = append(h.Ops, history.Op{
-		Client: len(h.Ops), Call: 1000, Return: 1001,
-		Req:  history.Request{Range: &history.RangeRequest{Key: "k"}},
-		Resp: &history.Response{Revision: gaps + 1, Range: &history.RangeResponse{Count: 1, KVs: []history.KeyValue{{Key: "k", Value: "v", CreateRevision: 2, ModRevision: gaps + 1, Version: gaps}}}},
+	h := dueGapHistory(t, leases, gaps)
+	// BenchmarkWitnessBudgetHistories runs this same history and allocation
+	// measurement on base 37e51817: 2,189,414,600 B/op. The bound is below
+	// that reference, with room above the retained path's 2,184,659,568.
+	// Restoring the old per-call candidate allocation must break it.
+	const bytesBound = 2_187_000_000
+	var w *witness
+	var searchErr error
+	result := testing.Benchmark(func(b *testing.B) {
+		for range b.N {
+			w = newWitness(h, time.Now().Add(time.Minute))
+			w.maxSteps = 1_000_000
+			if searchErr = w.fromRevisions(); searchErr != nil {
+				b.Fatalf("%v after %d steps; %s", searchErr, w.steps, w.search.progress())
+			}
+		}
 	})
-	if err := h.Validate(); err != nil {
-		t.Fatal(err)
+	if searchErr != nil {
+		t.Fatal(searchErr)
 	}
-	w := newWitness(h, time.Now().Add(time.Minute))
-	w.maxSteps = 1_000_000
-	start := time.Now()
-	if err := w.fromRevisions(); err != nil {
-		t.Fatalf("%v after %d steps; %s", err, w.steps, w.search.progress())
+	if bytes := result.AllocedBytesPerOp(); bytes > bytesBound {
+		t.Fatalf("search allocated %d bytes, bound %d; old reference 2,189,414,600", bytes, bytesBound)
 	}
 	if len(w.search.stack) != gaps || len(w.search.optional) != leases {
 		t.Fatalf("got %d gaps and %d expiries", len(w.search.stack), len(w.search.optional))
 	}
-	t.Logf("searched %d ops, %d revisions, %d open gaps, %d expiries in %s, %d steps", len(h.Ops), gaps, len(w.search.stack), leases, time.Since(start), w.steps)
+	t.Logf("searched %d ops, %d revisions, %d open gaps, %d expiries in %s, %d steps", len(h.Ops), gaps, len(w.search.stack), leases, result.T, w.steps)
+	t.Logf("whole search allocated %d B/op, below %d; base exceeded that bound", result.AllocedBytesPerOp(), bytesBound)
 }
 
 func BenchmarkDueWork(b *testing.B) {

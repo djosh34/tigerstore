@@ -2,6 +2,7 @@ package check
 
 import (
 	"cmp"
+	"math/bits"
 	"slices"
 	"sort"
 
@@ -286,11 +287,8 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 	n := len(s.keys)
 	var out []int
 	add := func(ops []int) {
-		for _, i := range ops {
-			if r.step() {
-				return
-			}
-			out = append(out, i)
+		if !r.charge(int64(len(ops))) {
+			out = append(out, ops...)
 		}
 	}
 	for k := range n {
@@ -312,17 +310,18 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 			}
 		}
 	}
-	sortWithStep(out, cmp.Compare[int], r.step)
-	unique := out[:0]
-	for _, i := range out {
-		if r.step() {
-			return nil
-		}
-		if len(unique) == 0 || unique[len(unique)-1] != i {
-			unique = append(unique, i)
-		}
+	// Charge the sort's n log n work before entering it, polling at each
+	// budget step, not at each comparison. A merge sort with per-item
+	// callbacks made this bound dominate a saved hard history (#872).
+	work := int64(len(out))
+	if r.charge(work * int64(bits.Len(uint(len(out))))) {
+		return nil
 	}
-	return unique
+	slices.Sort(out)
+	if r.charge(work) {
+		return nil
+	}
+	return slices.Compact(out)
 }
 
 // unionRevs returns the revisions of a and b, which are each in order and

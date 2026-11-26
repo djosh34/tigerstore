@@ -18,15 +18,15 @@ import (
 // bounds include that formerly uncharged work, not just search turns.
 //   - witness-425: #425's seed, saved from main at bd1ade31, where it
 //     timed out after 50,000,000 steps; the seed no longer plays out that
-//     way (#482). It needs 70,280 work steps.
+//     way (#482). It needs 73,284 work steps.
 //   - witness-control-80-201: the unplanted control seed 201 of #485's
 //     sweep with 80 s of faults, replayed on exp/485-sim-ceiling at
-//     0a63d065, which timed out after 50,000,000 steps; it needs 111,487
+//     0a63d065, which timed out after 50,000,000 steps; it needs 110,761
 //     (#425, #499).
 //   - witness-control-320-1529: control seed 1529 of the same sweep, with
 //     320 s of faults, replayed the same way, which timed out too: the
 //     bounds of each key alone let two keys count on one free revision
-//     (roomReachable). It needs 8,416,915 work steps.
+//     (roomReachable). It needs 8,041,749 work steps.
 func TestWitnessHardHistories(t *testing.T) {
 	for _, c := range []struct {
 		file  string

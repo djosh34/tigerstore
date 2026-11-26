@@ -1371,15 +1371,12 @@ func (r *revisionOrder) slotOrder(ops []int) []int {
 func (r *revisionOrder) answered(ops []int) bool {
 	w := r.w
 	s := w.live.clone()
-	for k, i := range ops {
-		if r.step() {
+	latestCall := int64(math.MinInt64)
+	for _, i := range ops {
+		if r.step() || w.acked(i) && w.returns[i] < latestCall {
 			return false
 		}
-		for _, j := range ops[:k] {
-			if r.step() || w.acked(i) && w.returns[i] < w.calls[j] {
-				return false
-			}
-		}
+		latestCall = max(latestCall, w.calls[i])
 		if o := s.step(w.reqs[i], false); o.err != nil || !w.gives(i, o) {
 			return false
 		}
@@ -1472,11 +1469,13 @@ func (r *revisionOrder) readsFit(o optional) bool {
 	if compact {
 		call = w.calls[o.op]
 	}
+	reading := make(map[int]bool, len(o.reads))
 	for _, k := range o.reads {
 		if r.step() {
 			return false
 		}
 		call = max(call, w.calls[k])
+		reading[k] = true
 	}
 	ops := slices.Clone(o.reads)
 	for i := range w.h.Ops {
@@ -1484,7 +1483,7 @@ func (r *revisionOrder) readsFit(o optional) bool {
 			return false
 		}
 		op := &w.h.Ops[i]
-		if op.Return < call && !w.at[i].set() && w.seen(i) && (op.Resp == nil || !mutationWithStep(op, r.step)) && !slices.ContainsFunc(o.reads, func(j int) bool { return r.step() || j == i }) {
+		if op.Return < call && !w.at[i].set() && w.seen(i) && (op.Resp == nil || !mutationWithStep(op, r.step)) && !reading[i] {
 			ops = append(ops, i)
 		}
 	}
@@ -1674,6 +1673,9 @@ func (r *revisionOrder) restoreOrder(m mark) {
 
 // dead notes why the search cannot go on at revision rev.
 func (r *revisionOrder) dead(rev int64, err error) bool {
+	if r.w.stopped {
+		return false
+	}
 	if r.failure == nil || rev >= r.at {
 		r.failure, r.at = err, rev
 	}
@@ -1693,6 +1695,7 @@ func (r *revisionOrder) search() (err error) {
 	}()
 	defer func() { w.sorter.step = nil }()
 	w.sorter.step = r.step
+	w.live.stop = r.step
 	if r.step() {
 		return ErrWitnessTimeout
 	}
@@ -1773,6 +1776,9 @@ func (r *revisionOrder) write(rev int64) bool {
 			return false
 		}
 		o := w.apply(i, &w.reqs[i])
+		if w.stopped {
+			return false
+		}
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, outputOf(o), w.around(len(w.events))))
 		}
@@ -1787,6 +1793,9 @@ func (r *revisionOrder) write(rev int64) bool {
 			w.apply(i, &w.reqs[i])
 			r.use(i)
 			return true
+		}
+		if w.stopped {
+			return false
 		}
 		return r.dead(rev, fmt.Errorf("%s, whose value a client saw at revision %d, cannot write it in the order so far; the order around it: %s", w.describe(i), rev, w.around(len(w.events))))
 	}
@@ -1814,6 +1823,9 @@ func (r *revisionOrder) write(rev int64) bool {
 		f.next++
 		return true
 	}
+	if w.stopped {
+		return false
+	}
 	r.stack = r.stack[:len(r.stack)-1]
 	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, w.around(len(w.events))))
 }
@@ -1840,13 +1852,13 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	possible := r.ambiguous
 	if !r.w.slow {
 		possible = slices.Clone(r.writing)
-		var leases []int64
+		leases := map[int64]bool{}
 		for _, kv := range r.w.live.kvs {
 			if r.step() {
 				return nil
 			}
-			if kv.Version != 0 && kv.Lease != 0 && !slices.ContainsFunc(leases, func(id int64) bool { return r.step() || id == kv.Lease }) {
-				leases = append(leases, kv.Lease)
+			if kv.Version != 0 && kv.Lease != 0 && !leases[kv.Lease] {
+				leases[kv.Lease] = true
 				possible = append(possible, r.revokesOfLease[kv.Lease]...)
 			}
 		}
@@ -1911,13 +1923,15 @@ func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 // revision at.
 func (r *revisionOrder) grantsFor(ids []int64, at int64) []int {
 	var grants []int
+	seen := map[int64]bool{}
 	for _, id := range ids {
 		if r.step() {
 			return nil
 		}
-		if r.w.live.hasLease(id) || slices.ContainsFunc(grants, func(g int) bool { return r.step() || r.w.reqs[g].LeaseGrant.ID == id }) {
+		if seen[id] || r.w.live.hasLease(id) {
 			continue
 		}
+		seen[id] = true
 		// The one called first, which real time allows wherever it
 		// allows another.
 		first := -1
@@ -2088,6 +2102,9 @@ func (r *revisionOrder) finish(rev int64) bool {
 			return false
 		}
 		o := w.apply(i, &w.reqs[i])
+		if w.stopped {
+			return false
+		}
 		if o.err != nil || !w.gives(i, o) {
 			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
 		}

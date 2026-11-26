@@ -722,12 +722,18 @@ func checkers(t *testing.T, res *Result) {
 }
 
 // Under gosim the clock stands still while a check computes, so the
-// checks are bounded by the steps of their search too. A typical check of
-// a run takes 4,000 to 10,000 steps. The witness checker's bound is about
-// a minute of its steps natively; Porcupine's search steps cost more.
-// A check also stops once the run passed its limit of real time.
+// checks are bounded by steps too. #872 charges inner replay and search
+// work that the old 50,000,000-step witness budget left uncharged. Across
+// all nine saved check/testdata histories, including the three hard ones,
+// the new/37e51817 ratios are 1.00 to 506.38; 81,000 same-revision grants
+// take 1.38 times the old steps after removing answered's quadratic scan.
+// The worst is 8,041,749 / 15,881 on witness-control-320-1529.json.gz.
+// Round that ratio up to 507: 50,000,000 * 507 = 25,350,000,000 steps.
+// At that history's native rate (about 2 s) this buys roughly two hours
+// of work. The one-minute native deadline and the run's real-time wallStop
+// still stop a check sooner; Porcupine keeps its own, costlier step bound.
 var (
-	witnessSteps   = check.MaxSteps(50_000_000)
+	witnessSteps   = check.MaxSteps(25_350_000_000)
 	porcupineSteps = check.MaxSteps(1_000_000)
 	wallStop       = check.StopWhen(simrun.WallLimitPassed)
 )

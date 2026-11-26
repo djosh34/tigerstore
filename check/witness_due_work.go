@@ -18,18 +18,18 @@ import (
 // while walking an outer query. Each nesting level borrows its own buffer.
 // Without that snapshot a nested query could change the outer query's set.
 type dueWork struct {
-	candidates        []optional
-	gone, by          []int
-	rank              []int
-	available         []uint64
-	timed, revision   []uint64
-	zeroTime, zeroRev []uint64
-	timeAt, revAt     int
-	valid             bool
-	remaining         int
-	hasZeroTime       bool
-	hasZeroRev        bool
-	buffers           [][]uint64
+	candidates                []optional
+	gone, by                  []int
+	rank                      []int
+	available                 []uint64
+	timed, revision           []uint64
+	zeroTime, zeroRev         []uint64
+	timeAt, revAt             int
+	valid                     bool
+	remaining                 int
+	timedLeft, revisionLeft   int
+	zeroTimeLeft, zeroRevLeft int
+	buffers                   [][]uint64
 }
 
 func (r *revisionOrder) newDueWork() *dueWork {
@@ -63,11 +63,9 @@ func (r *revisionOrder) newDueWork() *dueWork {
 			return d
 		}
 		if o.gone < 0 {
-			d.hasZeroTime = true
 			d.zeroTime[j/64] |= uint64(1) << (j % 64)
 		}
 		if o.by <= 0 {
-			d.hasZeroRev = true
 			d.zeroRev[j/64] |= uint64(1) << (j % 64)
 		}
 	}
@@ -89,19 +87,37 @@ func (d *dueWork) remove(j int) {
 	if d.available[j/64]&bit != 0 {
 		d.available[j/64] &^= bit
 		d.remaining--
+		for _, set := range []struct {
+			words []uint64
+			left  *int
+		}{{d.timed, &d.timedLeft}, {d.revision, &d.revisionLeft}, {d.zeroTime, &d.zeroTimeLeft}, {d.zeroRev, &d.zeroRevLeft}} {
+			if set.words[j/64]&bit != 0 {
+				*set.left--
+			}
+		}
 	}
 }
 
 func (d *dueWork) reset(r *revisionOrder) {
 	clear(d.available)
 	d.remaining = 0
+	d.timedLeft, d.revisionLeft, d.zeroTimeLeft, d.zeroRevLeft = 0, 0, 0, 0
 	for j, o := range d.candidates {
 		if r.step() {
 			return
 		}
 		if !r.used[o.op] {
 			d.remaining++
-			d.available[j/64] |= uint64(1) << (j % 64)
+			bit := uint64(1) << (j % 64)
+			d.available[j/64] |= bit
+			for _, set := range []struct {
+				words []uint64
+				left  *int
+			}{{d.timed, &d.timedLeft}, {d.revision, &d.revisionLeft}, {d.zeroTime, &d.zeroTimeLeft}, {d.zeroRev, &d.zeroRevLeft}} {
+				if set.words[j/64]&bit != 0 {
+					*set.left++
+				}
+			}
 		}
 	}
 	d.valid = true
@@ -109,21 +125,29 @@ func (d *dueWork) reset(r *revisionOrder) {
 
 // move changes one due set by only the candidates its threshold crossed,
 // forwards or backwards: trial calls need not increase along an order.
-func (d *dueWork) move(r *revisionOrder, order []int, at *int, set []uint64, holds func(optional) bool) {
+func (d *dueWork) move(r *revisionOrder, order []int, at *int, set []uint64, left *int, holds func(optional) bool) {
 	for *at > 0 && !holds(d.candidates[order[*at-1]]) {
 		if r.step() {
 			return
 		}
 		*at--
 		j := order[*at]
-		set[j/64] &^= uint64(1) << (j % 64)
+		bit := uint64(1) << (j % 64)
+		set[j/64] &^= bit
+		if d.available[j/64]&bit != 0 {
+			*left--
+		}
 	}
 	for *at < len(order) && holds(d.candidates[order[*at]]) {
 		if r.step() {
 			return
 		}
 		j := order[*at]
-		set[j/64] |= uint64(1) << (j % 64)
+		bit := uint64(1) << (j % 64)
+		set[j/64] |= bit
+		if d.available[j/64]&bit != 0 {
+			*left++
+		}
 		*at++
 	}
 }
@@ -139,16 +163,18 @@ func (d *dueWork) query(r *revisionOrder, call, rev int64, yield func(optional) 
 		return
 	}
 	timed, revision := d.zeroTime, d.zeroRev
+	timedLeft, revisionLeft := d.zeroTimeLeft, d.zeroRevLeft
 	if call != 0 {
-		d.move(r, d.gone, &d.timeAt, d.timed, func(o optional) bool { return o.gone < call })
-		timed = d.timed
+		d.move(r, d.gone, &d.timeAt, d.timed, &d.timedLeft, func(o optional) bool { return o.gone < call })
+		timed, timedLeft = d.timed, d.timedLeft
 	}
 	if rev != 0 {
-		d.move(r, d.by, &d.revAt, d.revision, func(o optional) bool { return o.by <= rev })
-		revision = d.revision
+		d.move(r, d.by, &d.revAt, d.revision, &d.revisionLeft, func(o optional) bool { return o.by <= rev })
+		revision, revisionLeft = d.revision, d.revisionLeft
 	}
-	if (call == 0 && !d.hasZeroTime || call != 0 && d.timeAt == 0) &&
-		(rev == 0 && !d.hasZeroRev || rev != 0 && d.revAt == 0) {
+	// Thresholds may match only candidates already used or compacted.
+	// Keep the available counts too, so an unchanged empty query is O(1).
+	if timedLeft == 0 && revisionLeft == 0 {
 		return
 	}
 	// Match the old slice's snapshot even if a nested putIn advances
@@ -226,6 +252,27 @@ func (r *revisionOrder) due(call, rev int64) iter.Seq[optional] {
 	}
 }
 
+// charge accounts for a bulk operation without a callback per item. It
+// polls tick at each budget step before the copy, sort or compaction runs.
+func (r *revisionOrder) charge(work int64) bool {
+	if r.w.stopped {
+		return true
+	}
+	if work <= int64(r.workLeft) {
+		r.workLeft -= uint8(work)
+		return false
+	}
+	work -= int64(r.workLeft)
+	for work > 0 {
+		if r.w.tick() {
+			return true
+		}
+		work -= 64
+	}
+	r.workLeft = uint8(-work)
+	return false
+}
+
 // step bounds work inside a search phase as indexStep does in the index.
 // A search work item is at most one candidate, key, bitmap word, or sort
 // comparison. Every 64 items spend a step of the shared budget; cancellation
@@ -238,6 +285,5 @@ func (r *revisionOrder) step() bool {
 		r.workLeft--
 		return false
 	}
-	r.workLeft = 63
-	return r.w.tick()
+	return r.charge(1)
 }
