@@ -80,9 +80,21 @@ func sameRead(st *mvcc.Store, req *pb.RangeRequest, got *pb.RangeResponse) error
 		q.Revision = got.Header.Revision
 	}
 	q.Serializable = false
-	want, err := st.Range(q)
-	if err != nil {
-		return fmt.Errorf("re-reading at revision %d: %w", q.Revision, err)
+	var want *pb.RangeResponse
+	if req.Serializable && req.Revision == 0 && got.Header.Revision == 1 && st.CompactRev() > 1 {
+		// Only a model that starts from a synthetic image's store
+		// (replay) is compacted, and before its revision it has only
+		// revision 1, the empty store: a member added with an empty
+		// disk serves a serializable read of its newest revision from
+		// it until the image reaches it, as etcd's does (#502). A read
+		// that asks for revision 1, or a linearizable one, must fail as
+		// compacted, as the model's does.
+		want = &pb.RangeResponse{}
+	} else {
+		var err error
+		if want, err = st.Range(q); err != nil {
+			return fmt.Errorf("re-reading at revision %d: %w", q.Revision, err)
+		}
 	}
 	g := proto.CloneOf(got)
 	g.Header, want.Header = nil, nil
@@ -474,14 +486,22 @@ func isRejection(err error) bool {
 		errors.Is(err, rpctypes.ErrGRPCLeaseNotFound) || errors.Is(err, rpctypes.ErrGRPCNoSpace)
 }
 
-// replay applies the committed log to a fresh state, without compactions,
-// so every revision stays readable. It returns the log as the checkers
-// read it: an expiry that applied becomes the LeaseRevoke it amounts to,
-// and one that no longer applied, because a keepalive came first, is left
-// out, as are alarms and the writes the NOSPACE alarm refused. With it
-// come the revisions right after each of its entries.
-func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) {
-	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)), &mvcc.Heap{})
+// replay applies the committed log to a fresh state, or to a synthetic
+// image's store if from is set, without compactions, so every revision
+// stays readable. It returns the log as the checkers read it: an expiry
+// that applied becomes the LeaseRevoke it amounts to, and one that no
+// longer applied, because a keepalive came first, is left out, as are
+// alarms and the writes the NOSPACE alarm refused. With it come the
+// revisions right after each of its entries.
+func replay(from *synthStore, log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) {
+	minTTL := core.MinLeaseTTL(core.DefaultConfig(1, nil))
+	st := core.NewState(minTTL, &mvcc.Heap{})
+	if from != nil {
+		var err error
+		if st, err = core.NewStateAt(minTTL, &mvcc.Heap{}, from.rev, from.seeds, from.leases); err != nil {
+			return nil, nil, nil, fmt.Errorf("the synthetic image's store: %w", err)
+		}
+	}
 	var out []proto.Message
 	var revs []int64
 	for i, op := range log {
@@ -613,7 +633,11 @@ func (c Config) maxLeaseTTL() int64 {
 // counts the revokes in the log, expiries included, and the lease
 // checkpoints.
 func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
-	if err := leasesExpire(res.History, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
+	var imaged map[int64]int64
+	if s.synth != nil {
+		imaged = s.synth.leases
+	}
+	if err := leasesExpire(res.History, imaged, s.expiredAt, s.expiredOrder, alive, s.endAt, s.cfg.Faults.DriftPerMille); err != nil {
 		return err
 	}
 	if err := revokesKeepPromises(res.History, s.revokedAt, s.cfg.Faults.DriftPerMille); err != nil {
@@ -637,9 +661,19 @@ func (s *Sim) checkLeasesExpire(res *Result, alive []int64) error {
 // less the clock envelope of driftPerMille. A renewal after the expiry
 // does not count: the revoke a leader proposed may never commit, as when
 // it loses its term, and the next leader starts the lease's TTL over.
-func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []int64, end, driftPerMille int64) error {
+// imaged, a synthetic image's leases' TTLs by their IDs, count as renewed
+// at the run's start, so none expires before its TTL from there: the
+// first leader gives each its whole TTL. But one that lives at the end
+// is no error, as one of an ambiguous grant is not: each new leader gives
+// it its whole TTL again, and through a run's faults the leaders may
+// change more often than that, up to after healing (image 18 of #843).
+func leasesExpire(history []*Record, imaged, expiredAt map[int64]int64, order, alive []int64, end, driftPerMille int64) error {
 	renewed := map[int64]int64{}
 	ttl := map[int64]int64{}
+	last := map[int64]int64{}
+	for id, t := range imaged {
+		ttl[id], renewed[id] = t, 0
+	}
 	for _, r := range history {
 		// A failed call through gRPC (wl's clients) records a nil
 		// response of its type.
@@ -675,7 +709,6 @@ func leasesExpire(history []*Record, expiredAt map[int64]int64, order, alive []i
 				id, ttl[id], at/Millisecond, t/Millisecond)
 		}
 	}
-	last := map[int64]int64{}
 	for _, r := range history {
 		switch req := r.req.(type) {
 		case *pb.LeaseGrantRequest:

@@ -42,6 +42,9 @@ TestScenarios 1273 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 1278 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 1279 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 1282 https://github.com/djosh34/tigerstore/issues/769
+TestAgedForks 4 https://github.com/djosh34/tigerstore/issues/769
+TestCampaign 126 https://github.com/djosh34/tigerstore/issues/769
+TestCampaign 302 https://github.com/djosh34/tigerstore/issues/769
 TestScenarios 440 https://github.com/djosh34/tigerstore/issues/784
 TestScenarios 412 https://github.com/djosh34/tigerstore/issues/785
 TestScenarios 870 https://github.com/djosh34/tigerstore/issues/785

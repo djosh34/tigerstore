@@ -236,6 +236,36 @@ func TestKubeListsPageOnPurpose(t *testing.T) {
 	}
 }
 
+// TestImagedLeasesExpireByTTL checks leasesExpire for a synthetic image's
+// lease of 120 s, which counts as renewed at the run's start: it may not
+// expire 100 s in, and may expire 130 s in. It may live to the end, kept
+// alive or not: each new leader gives it its whole TTL again (#502).
+func TestImagedLeasesExpireByTTL(t *testing.T) {
+	end := 1000 * Second
+	imaged := map[int64]int64{9: 120}
+	kept := []*Record{{Call: end - 30*Second, Return: end - 30*Second + Millisecond, req: &pb.LeaseKeepAliveRequest{ID: 9}, Resp: &pb.LeaseKeepAliveResponse{ID: 9, TTL: 120}}}
+	for _, c := range []struct {
+		name    string
+		history []*Record
+		alive   []int64
+		expired int64
+		ok      bool
+	}{
+		{"lives to the end with no keepalive", nil, []int64{9}, 0, true},
+		{"lives to the end kept alive", kept, []int64{9}, 0, true},
+		{"expires 100 s in", nil, nil, 100 * Second, false},
+		{"expires 130 s in", nil, nil, 130 * Second, true},
+	} {
+		at, order := map[int64]int64{}, []int64(nil)
+		if c.expired > 0 {
+			at[9], order = c.expired, []int64{9}
+		}
+		if err := leasesExpire(c.history, imaged, at, order, c.alive, end, 50); (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+}
+
 // TestLeasesExpireByTTL checks leasesExpire against each lease's own TTL:
 // a lease of 120 s granted 30 s before the end may still live then, but
 // not one of 4 s granted then, nor one of 120 s granted 300 s before; and
@@ -274,7 +304,7 @@ func TestLeasesExpireByTTL(t *testing.T) {
 		if c.keptAt > 0 {
 			h = append(slices.Clone(h), keepAlive(4, 120, c.keptAt))
 		}
-		err := leasesExpire(h, at, order, c.alive, end, 50)
+		err := leasesExpire(h, nil, at, order, c.alive, end, 50)
 		if (err == nil) != c.ok {
 			t.Errorf("%s: %v", c.name, err)
 		}

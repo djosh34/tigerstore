@@ -60,6 +60,18 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 	}
 	effectBy := r.effectBy(unique)
 	expiryClient := r.Clients + len(r.Watches)
+	if r.start != nil {
+		// A lease of the image's store may expire from the fork's start
+		// on, as one granted in the fork may from its grant.
+		for _, id := range r.start.Leases {
+			h.Ops = append(h.Ops, history.Op{
+				Client: expiryClient,
+				Req:    history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: id}},
+				Err:    &history.Error{Code: "Unknown", Message: "lease expiry", Ambiguous: true},
+			})
+			expiryClient++
+		}
+	}
 	for i, rec := range r.History {
 		if release {
 			r.History[i] = nil

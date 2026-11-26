@@ -638,8 +638,11 @@ type Sim struct {
 	servedRoot map[uint64]uint64
 	healed     bool
 	// startRev is the revision of the image a fork starts from, 0 for a
-	// run from an empty store.
+	// run from an empty store; synth is a synthetic image's store, which
+	// the model starts from (replay), and whose members have its nodes'
+	// IDs (startWL).
 	startRev int64
+	synth    *synthStore
 	// certsExpiredAt is when the connections were reset a second after
 	// the certificate expired, and certsRotatedAt when an operator rotated
 	// it (Config.CertExpiresAt), 0 before.

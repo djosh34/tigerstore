@@ -4,8 +4,12 @@ package simrun
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -127,9 +131,9 @@ func Do(t *testing.T, r Run) *Result {
 	}
 	limit := wallLimit(t)
 	start := time.Now()
-	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace})
+	res, err := mt.RunQuiet(&metatesting.RunConfig{Test: r.Test, Seed: int64(r.Seed), ExtraEnv: env, WallLimit: limit, WallKill: limit + wallGrace, Inputs: r.Inputs, Outputs: r.Outputs})
 	if err != nil {
-		t.Fatalf("running %s in gosim with seed %d: %v\nreplay: %s", r.Test, r.Seed, err, Replay(dir(t), Pattern(t.Name()), r.Env))
+		t.Fatalf("running %s in gosim with seed %d: %v\nreplay: %s", r.Test, r.Seed, err, Replay(dir(t), Pattern(t.Name()), append(slices.Clone(r.Env), r.ReplayEnv...)))
 	}
 	keepBlackbox(filepath.Join("sim-out", strings.ReplaceAll(t.Name(), "/", "_")), res)
 	if testing.Verbose() {
@@ -138,7 +142,7 @@ func Do(t *testing.T, r Run) *Result {
 	if res.Failed {
 		t.Errorf("%s failed in gosim with seed %d: %s\n%s", r.Test, r.Seed, res.Err, readable(res.LogOutput))
 		t.Logf("hashes:\n%s", res.Artifacts["hashes"])
-		t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), r.Env))
+		t.Logf("replay: %s", Replay(dir(t), Pattern(t.Name()), append(slices.Clone(r.Env), r.ReplayEnv...)))
 	} else if testing.Verbose() {
 		t.Logf("%s", readable(res.LogOutput))
 	}
@@ -291,9 +295,10 @@ func keepQuiet(t *testing.T, artifacts map[string][]byte, suffix string) []strin
 }
 
 // each runs the seeds: here under the race detector, otherwise each as a
-// gosim run of its own (Seeds). set holds the variables that pick the
+// gosim run of its own (Seeds), or, for a seed forksOf gives forks, as an
+// image and its forks (ImageSeeds). set holds the variables that pick the
 // whole set again.
-func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
+func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64) int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
 	t.Helper()
 	if add == nil {
 		add = func(uint64, T) bool { return false }
@@ -329,13 +334,12 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 				return
 			}
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
-			var r *Result
-			if twice > 0 && i%max(1, len(seeds)/twice) == 0 {
-				r = twoRuns(t, Run{Test: test, Seed: seed, Env: env})
-			} else {
-				r = Do(t, Run{Test: test, Seed: seed, Env: env})
-				keep(t, r.Artifacts, "")
+			double := twice > 0 && i%max(1, len(seeds)/twice) == 0
+			if forks := forksOf(seed); forks > 0 {
+				stop = imageAndForks(t, Run{Test: test, Seed: seed, Env: env}, forks, double, add)
+				return
 			}
+			r := part(t, Run{Test: test, Seed: seed, Env: env}, double)
 			if r.Failed {
 				return
 			}
@@ -351,6 +355,149 @@ func each[T any](t *testing.T, seeds []uint64, set []string, body func(*testing.
 		}
 	}
 	return true
+}
+
+// errNoInput is OpenInput's error outside gosim, which gives a run no
+// inputs.
+var errNoInput = errors.New("simrun: a run has inputs and outputs only under gosim")
+
+// OpenInput opens the run's input name (Run.Inputs). Only a gosim run has
+// any.
+func OpenInput(string) (io.ReaderAt, int64, func() error, error) { return nil, 0, nil, errNoInput }
+
+// CreateOutput makes the run's output name (Run.Outputs). Only a gosim run
+// has any.
+func CreateOutput(string) (io.Writer, func() error, error) { return nil, nil, errNoInput }
+
+// part runs r once, keeping its files, or twice if double (twoRuns).
+func part(t *testing.T, r Run, double bool) *Result {
+	t.Helper()
+	if double {
+		return twoRuns(t, r)
+	}
+	res := Do(t, r)
+	keep(t, res.Artifacts, "")
+	return res
+}
+
+// imageAndForks runs seed r of a test of images (ImageSeeds) as one gosim
+// run that makes the image and saves its file (SIM_FORK=image), then one
+// for each fork, or only for fork $SIM_FORK, which loads that file
+// (OpenInput): each fork starts in a simulation of its own, which no
+// other fork ran in before, as alone (#794). Every gosim run of the test
+// binary starts afresh, as each seed of a campaign does. $SIM_FORK=image
+// makes the image only. It checks the image's SHA-256 against
+// $SIM_IMAGE_SHA256, if set, as a fork's replay line sets it, and calls
+// add with each fork's result, as under the race detector add gets each
+// seed's. With double, the image and each fork run twice and must give
+// the same image and hashes.
+func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(uint64, T) bool) bool {
+	t.Helper()
+	only, imageOnly := -1, false
+	switch v := os.Getenv("SIM_FORK"); v {
+	case "":
+	case "image":
+		imageOnly = true
+	default:
+		k, err := strconv.Atoi(v)
+		if err != nil || k < 0 || k >= forks {
+			t.Fatalf("SIM_FORK=%q: the image has forks 0 to %d", v, forks-1)
+		}
+		only = k
+	}
+	env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return strings.HasPrefix(v, "SIM_FORK=") })
+	r.Env = append(slices.Clone(env), "SIM_FORK=image")
+	path, hash, ok := runImage(t, r, double)
+	if !ok || imageOnly {
+		return false
+	}
+	stop := false
+	for k := range forks {
+		if only >= 0 && k != only {
+			continue
+		}
+		fork := Run{
+			Test: r.Test, Seed: r.Seed, Env: append(slices.Clone(env), fmt.Sprintf("SIM_FORK=%d", k)),
+			Inputs: map[string]string{"image": path}, ReplayEnv: []string{"SIM_IMAGE_SHA256=" + hash},
+		}
+		res := part(t, fork, double)
+		if res.Failed {
+			continue
+		}
+		t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])
+		var v T
+		if err := json.Unmarshal(res.Artifacts["seed.json"], &v); err != nil {
+			t.Fatalf("fork %d of seed %d left no result: %v", k, r.Seed, err)
+		}
+		stop = add(r.Seed, v) || stop
+	}
+	return stop
+}
+
+// runImage runs r, an image's run, and writes the image it saved to a file
+// of t's: it returns its path and SHA-256, which it checks against
+// $SIM_IMAGE_SHA256 if set. It reports false if the run failed. With
+// double it runs r again, which must save the same image and hashes. The
+// caller keeps no copy of the image's bytes in memory.
+func runImage(t *testing.T, r Run, double bool) (path, hash string, ok bool) {
+	t.Helper()
+	// The run writes its image straight to a file of t's (CreateOutput),
+	// which holds it whole only on disk: as an artifact a large image
+	// came back in memory several times over (#794's TestAgedBulk).
+	path = filepath.Join(t.TempDir(), "image")
+	r.Outputs = map[string]string{"image": path}
+	img := Do(t, r)
+	keep(t, img.Artifacts, "")
+	if img.Failed {
+		return "", "", false
+	}
+	hash, size := fileHash(t, path)
+	if size == 0 {
+		t.Fatalf("seed %d saved no image", r.Seed)
+	}
+	t.Logf("image of seed %d: %d bytes, SHA-256 %s", r.Seed, size, hash)
+	if double {
+		hashes := img.Artifacts["hashes"]
+		r.Outputs = map[string]string{"image": path + "-again"}
+		again := Do(t, r)
+		if again.Failed {
+			keep(t, again.Artifacts, "")
+			return "", "", false
+		}
+		hash2, _ := fileHash(t, path+"-again")
+		if err := os.Remove(path + "-again"); err != nil {
+			t.Error(err)
+		}
+		if hash2 != hash || !bytes.Equal(again.Artifacts["hashes"], hashes) {
+			t.Errorf("the image of seed %d played out differently the second time: SHA-256 %s, then %s\n%s\n%s\nreplay: %s",
+				r.Seed, hash, hash2, hashes, again.Artifacts["hashes"], Replay(dir(t), Pattern(t.Name()), append(slices.Clone(r.Env), "SIM_TWICE=1")))
+			return "", "", false
+		}
+	}
+	if want := os.Getenv("SIM_IMAGE_SHA256"); want != "" && want != hash {
+		t.Fatalf("the image of seed %d has SHA-256 %s, not %s: it is not the image the fork ran from", r.Seed, hash, want)
+	}
+	return path, hash, true
+}
+
+// fileHash is the SHA-256 and size of the file at path, read a piece at a
+// time; a missing file has size 0.
+func fileHash(t *testing.T, path string) (string, int64) {
+	t.Helper()
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return "", 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), n
 }
 
 // twoRuns runs r twice, and fails t unless both give the same hashes.
