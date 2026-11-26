@@ -225,6 +225,9 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 			n.w.unsynced = append(n.w.unsynced, int32(i))
 		}
 	}
+	// A held reply may wait for reserve room without any socket event
+	// to wake it. It must now release the store the install replaced.
+	n.roomFreed = true
 	n.stats.snapsInstalled++
 	n.logf("installed a snapshot at index %d, revision %d, %d keys", meta.GetIndex(), st.rev, st.nkeys)
 	n.simInstallDone(meta.GetIndex())
