@@ -85,10 +85,16 @@ func (n *node) ckptNeed(r *ckptRun) int64 {
 		u64  = binary.MaxVarintLen64
 	)
 	rev := int64(uvarintLen(uint64(max(r.meta.rev, 0))))
-	need := int64(len(ckptMagic)+5*u64+u64+proto.Size(r.meta.cs)) + int64(len(r.members)+len(r.leases)) + u64
+	// The values it copies are known to the byte; the rest is bounded by
+	// each field's longest varint, and only that bound gets the margin. A
+	// margin on the values too refused, on a disk that held it, a
+	// checkpoint whose ring ran low and which took in 1.6 MB of values,
+	// and the ring then stayed full (TestScenarios seed 309 on #846).
+	var values int64
 	for _, v := range r.rels {
-		need += int64(v.n)
+		values += int64(v.n)
 	}
+	need := int64(len(ckptMagic)+5*u64+u64+proto.Size(r.meta.cs)) + int64(len(r.members)+len(r.leases)) + u64
 	need += r.nKeys*(1+3*u32) + r.keyBytes + // its tag, id, key length and state count; the key
 		r.nStates*(1+3*rev+u64+2*u32+u64) // flags, create, mod, version, lease, value length and sum, place
 	from, to := searchChanges(st.changes, r.meta.compactRev), searchChanges(st.changes, r.meta.rev+1)
@@ -100,7 +106,7 @@ func (n *node) ckptNeed(r *ckptRun) int64 {
 		need += int64(st.keys[ch.key].klen) // a change at the compacted revision names its key
 	}
 	need += 1 + 4 // the end and the checksum
-	return need + need/8 + page
+	return values + need + need/8 + page
 }
 
 // uvarintLen is the length of v as a uvarint.

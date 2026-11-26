@@ -94,6 +94,26 @@ func logUniform(rng *rand.Rand, lo, hi int64) int64 {
 	return int64(float64(lo) * math.Pow(float64(hi)/float64(lo), rng.Float64()))
 }
 
+// fitDisk sizes cfg's disks, if it has a capacity, so that the store the
+// run can reach always fits twice beside the log's ring, with a margin:
+// each node's store is held to quota (Config.Quota, refused with NOSPACE
+// past it, as etcd's), and a disk holds two checkpoints of a store at the
+// quota, each 5/4 its size at most, and 1 MiB more (#846's ruling). A
+// disk drawn tighter than that is a test's choice, which uses
+// Faults.GrowDisk.
+func fitDisk(cfg *Config, quota int64) {
+	if cfg.Faults.DiskCapacity == 0 {
+		return
+	}
+	cfg.Quota = quota
+	cfg.Faults.DiskCapacity = max(cfg.Faults.DiskCapacity, int(quota*5/2+1<<20))
+}
+
+// kubeQuota is the store a Kubernetes-shaped load of objects objects can
+// reach: about 10 KiB an object a checkpoint holds (#769's images), three
+// times that, and 16 MiB at least.
+func kubeQuota(objects int) int64 { return max(16<<20, int64(objects)*32<<10) }
+
 // Scenario is the fresh scenario of seed: 20 to 80 s of faults (#495),
 // on wl nodes, every checker on it.
 func Scenario(seed uint64) Config {
@@ -157,6 +177,10 @@ func Scenario(seed uint64) Config {
 	if cfg.Objects == 0 && cfg.Faults.DiskBudget > 0 {
 		cfg.Faults.DiskBudget = max(pick(rng, scenarioDiskBudgets), 64*int64(cfg.ValueBytes))
 		cfg.Faults.DiskCapacity = int(4 * cfg.Faults.DiskBudget)
+		// 8 keys and their history: a thousand values of each size.
+		fitDisk(&cfg, max(16<<20, 1024*int64(cfg.ValueBytes)))
+	} else if cfg.Objects > 0 {
+		fitDisk(&cfg, kubeQuota(cfg.Objects))
 	}
 	cfg.ckptChunkKeys = pick(rng, scenarioChunkKeys)
 	// An operator replaces a node fenced for good, but in the membership

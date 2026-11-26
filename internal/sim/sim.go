@@ -132,6 +132,10 @@ type Config struct {
 	// it turns the value cache on and bounds Range answers. Zero leaves
 	// both off.
 	MemoryBytes int64
+	// Quota is each wl node's QuotaBackendBytes, 0 for wl's default: the
+	// store the run can reach, past which a put is refused with NOSPACE,
+	// as etcd's (fitDisk).
+	Quota int64
 	// SegmentBytes is the size of the nodes' log segments, 8 KiB if 0.
 	SegmentBytes int64
 	// Objects, if set, makes the clients run the Kubernetes-shaped load
@@ -884,10 +888,11 @@ type Stats struct {
 	// NoRoom the checkpoints a node held or dropped for lack of room,
 	// raising NOSPACE and staying up (#769), Disarms the NOSPACE alarms
 	// an operator disarmed after (disarmNoSpace), and DiskGrowths the
-	// times an operator grew the disks (Faults.GrowDisk); DisarmedAt is
-	// when the last disarm was answered.
-	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms, DiskGrowths int
-	DisarmedAt                                                 int64
+	// times an operator grew the disks (Faults.GrowDisk), and
+	// GrownCheckpoints the checkpoints done after; DisarmedAt is when the
+	// last disarm was answered.
+	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms, DiskGrowths, GrownCheckpoints int
+	DisarmedAt                                                                   int64
 	// Netem counts the writes each kind of link fault hit (netemKind),
 	// Resets the resets of the connections between two nodes,
 	// and BlockedWrites the writes that waited for room in a connection's

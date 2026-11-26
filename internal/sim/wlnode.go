@@ -110,7 +110,7 @@ func (s *Sim) startWL(n *node, p *proc) error {
 		ClientListeners: []net.Listener{s.net.listen(s, p, []string{s.hostName(n.idx) + ":2379"})},
 		PeerListeners:   []net.Listener{s.net.listen(s, p, n.addrs)},
 		ClientTLS:       srvTLS, PeerServerTLS: peerTLS, PeerClientTLS: peerTLS,
-		MemoryBudget: s.cfg.MemoryBytes,
+		MemoryBudget: s.cfg.MemoryBytes, QuotaBackendBytes: s.cfg.Quota,
 		// A checkpoint, which cuts the log behind it, every DiskBudget of
 		// log, as main's node cleans within it.
 		CheckpointLog: s.cfg.Faults.DiskBudget, CatchupEntries: cmp.Or(s.cfg.Catchup, wlCatchup), CheckpointChunkKeys: s.cfg.ckptChunkKeys,
@@ -526,6 +526,9 @@ func (h *wlHooks) CheckpointDone(index uint64, name string) {
 		return
 	}
 	s.stats.Checkpoints++
+	if s.stats.DiskGrowths > 0 {
+		s.stats.GrownCheckpoints++
+	}
 	if c, ok := s.ckpts[index]; ok && c.sum != state {
 		s.fail("node %d wrote checkpoint %d with another state than node %d's store had at it", n.id, index, c.node)
 	}
