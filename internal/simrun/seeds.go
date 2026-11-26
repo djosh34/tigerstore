@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+// FailedSeed lets a seed report a particular outcome even if its test
+// failed. The body must return its result; a fatal failure saves none.
+// Only a result that returns true is passed to add after a failed run.
+type FailedSeed interface {
+	ReportFailedSeed() bool
+}
+
 // Seeds runs body on each seed of the test's set, in a subtest named
 // after the seed, and passes what body returns to add, if set, which
 // reports whether to stop. The set is $SIM_SEEDS seeds, n by default, from
@@ -20,7 +27,8 @@ import (
 // hashes both times, or both runs are saved. Under gosim the test runs its
 // seed, saves what body returned for the driver, and Seeds reports false:
 // the driver applies the test's rules over the set. Under the race
-// detector the seeds run here.
+// detector the seeds run here. A failed gosim run is left out unless its
+// returned result implements FailedSeed and asks to be reported.
 func Seeds[T any](t *testing.T, first uint64, n int, body func(*testing.T, uint64) T, add func(uint64, T) bool) bool {
 	t.Helper()
 	first = envUint(t, "SIM_SEED", first)

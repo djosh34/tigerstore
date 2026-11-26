@@ -15,6 +15,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/planted"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
+	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -415,12 +416,16 @@ func readFrame(s *sock) ([]byte, error) {
 				return f, nil
 			}
 		}
-		got, err := s.readSock()
+		got, err := s.readSockBlocking()
+		if errors.Is(err, unix.EAGAIN) {
+			// A partial record must not restart an expired timeout.
+			return nil, errSnapTimeout
+		}
 		if err != nil {
 			return nil, err
 		}
-		if !got && s.iw-s.ir < recHdr {
-			return nil, errSnapTimeout
+		if !got {
+			return nil, errRecord // a full buffer that open could not consume
 		}
 	}
 }
@@ -448,7 +453,7 @@ func (l *loop) peerHello(h *handoff) {
 		if s.pw-s.pr >= need {
 			break
 		}
-		if got, err := s.readSock(); err != nil || !got {
+		if got, err := s.readSockBlocking(); err != nil || !got {
 			_ = sysClose(h.fd)
 			return
 		}

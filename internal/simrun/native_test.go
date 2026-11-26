@@ -3,6 +3,7 @@
 package simrun
 
 import (
+	"encoding/json"
 	"maps"
 	"slices"
 	"strings"
@@ -11,6 +12,118 @@ import (
 	"github.com/jellevandenhooff/gosim/gosimruntime"
 	"github.com/jellevandenhooff/gosim/metatesting"
 )
+
+// missedLoss is a failed seed's outcome that still belongs in its set's
+// report, as a requested quorum loss that never happened does.
+type missedLoss struct {
+	Missed bool
+}
+
+func (r missedLoss) ReportFailedSeed() bool { return r.Missed }
+
+// TestAddFailedSeed checks the path from a failed run's saved result to
+// the driver's counts: one missed loss counts once, while an ordinary
+// failure, a fatal failure with no result, and malformed data count none.
+func TestAddFailedSeed(t *testing.T) {
+	count := 0
+	add := func(seed uint64, r missedLoss) bool {
+		if seed != 1 || !r.Missed {
+			t.Fatalf("reported seed %d: %+v", seed, r)
+		}
+		count++
+		return true
+	}
+	if !addFailedSeed(1, []byte(`{"Missed":true}`), add) || count != 1 {
+		t.Fatalf("missed loss count %d, want 1", count)
+	}
+	for _, data := range [][]byte{nil, []byte(`{`), []byte(`{"Missed":false}`)} {
+		if addFailedSeed(1, data, add) || count != 1 {
+			t.Fatalf("result %q changed the count to %d, want 1", data, count)
+		}
+	}
+	// A result without the opt-in interface is left out as before.
+	if addFailedSeed(1, []byte(`true`), func(uint64, bool) bool {
+		t.Fatal("reported a failed seed that did not opt in")
+		return true
+	}) {
+		t.Fatal("a result without FailedSeed stopped the set")
+	}
+}
+
+// TestTwoRunsReportsSecondMiss checks a successful first run followed by
+// a missed loss: the seed's callback must receive the miss exactly once,
+// including for a fork, which uses the same double-run path.
+func TestTwoRunsReportsSecondMiss(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		env  []string
+	}{
+		{"fresh", nil},
+		{"fork", []string{"SIM_FORK=0"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			first := &Result{Artifacts: map[string][]byte{
+				"hashes": []byte("same"), "seed.json": []byte(`{"Missed":false}`),
+			}}
+			second := &Result{Failed: true, Artifacts: map[string][]byte{
+				"hashes": []byte("same"), "seed.json": []byte(`{"Missed":true}`),
+			}}
+			calls := 0
+			r := twoRunsWith[missedLoss](t, Run{Seed: 1, Env: c.env}, func(_ *testing.T, r Run) *Result {
+				if !slices.Contains(r.Env, "SIM_KEEP=1") || !slices.Equal(r.Env[:len(c.env)], c.env) {
+					t.Fatalf("run lost its environment: %v", r.Env)
+				}
+				calls++
+				if calls == 1 {
+					return first
+				}
+				return second
+			})
+			callbacks, misses := 0, 0
+			add := func(_ uint64, r missedLoss) bool {
+				callbacks++
+				if r.Missed {
+					misses++
+				}
+				return false
+			}
+			if r.Failed {
+				addFailedSeed(1, r.Artifacts["seed.json"], add)
+			} else {
+				var v missedLoss
+				if err := json.Unmarshal(r.Artifacts["seed.json"], &v); err != nil {
+					t.Fatal(err)
+				}
+				add(1, v)
+			}
+			if calls != 2 || callbacks != 1 || misses != 1 {
+				t.Fatalf("%d runs, %d callbacks, %d misses; want 2, 1, 1", calls, callbacks, misses)
+			}
+		})
+	}
+}
+
+// TestTwoRunsKeepsOrdinaryFailure checks that a second failure that does
+// not opt in leaves the first result selected, as before.
+func TestTwoRunsKeepsOrdinaryFailure(t *testing.T) {
+	for _, data := range [][]byte{nil, []byte(`{`), []byte(`{"Missed":false}`)} {
+		t.Run(string(data), func(t *testing.T) {
+			first := &Result{Artifacts: map[string][]byte{"hashes": []byte("same")}}
+			second := &Result{Failed: true, Artifacts: map[string][]byte{"seed.json": data}}
+			calls := 0
+			r := twoRunsWith[missedLoss](t, Run{Seed: 1}, func(*testing.T, Run) *Result {
+				calls++
+				if calls == 1 {
+					return first
+				}
+				return second
+			})
+			if r != first || calls != 2 {
+				t.Fatalf("selected %p after %d runs, want first %p after 2", r, calls, first)
+			}
+		})
+	}
+}
 
 // TestKeepBlackbox checks the files keepBlackbox adds to a run's: for a
 // run gosim ended past its limit of real time, its stacks, and for a run

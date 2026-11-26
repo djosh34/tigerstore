@@ -340,8 +340,9 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 				stop = imageAndForks(t, Run{Test: test, Seed: seed, Env: env}, forks, double, add)
 				return
 			}
-			r := part(t, Run{Test: test, Seed: seed, Env: env}, double)
+			r := part[T](t, Run{Test: test, Seed: seed, Env: env}, double)
 			if r.Failed {
+				stop = addFailedSeed(seed, r.Artifacts["seed.json"], add)
 				return
 			}
 			t.Logf("hashes: %s", r.Artifacts["hashes"])
@@ -406,6 +407,25 @@ func doubleSeed(i, n, twice int) bool {
 	return twice > 0 && i*twice%n < twice
 }
 
+// addFailedSeed passes a failed seed's result to add only when it asks
+// to be reported (FailedSeed). A fatal failure may have saved no result.
+func addFailedSeed[T any](seed uint64, data []byte, add func(uint64, T) bool) bool {
+	if v, report := failedSeed[T](data); report {
+		return add(seed, v)
+	}
+	return false
+}
+
+// failedSeed decodes a saved result and reports whether it opts in to
+// being counted even though its run failed (FailedSeed).
+func failedSeed[T any](data []byte) (v T, report bool) {
+	if err := json.Unmarshal(data, &v); err != nil {
+		return v, false
+	}
+	f, ok := any(v).(FailedSeed)
+	return v, ok && f.ReportFailedSeed()
+}
+
 // errNoInput is OpenInput's error outside gosim, which gives a run no
 // inputs.
 var errNoInput = errors.New("simrun: a run has inputs and outputs only under gosim")
@@ -419,10 +439,10 @@ func OpenInput(string) (io.ReaderAt, int64, func() error, error) { return nil, 0
 func CreateOutput(string) (io.Writer, func() error, error) { return nil, nil, errNoInput }
 
 // part runs r once, keeping its files, or twice if double (twoRuns).
-func part(t *testing.T, r Run, double bool) *Result {
+func part[T any](t *testing.T, r Run, double bool) *Result {
 	t.Helper()
 	if double {
-		return twoRuns(t, r)
+		return twoRuns[T](t, r)
 	}
 	res := Do(t, r)
 	keep(t, res.Artifacts, "")
@@ -480,9 +500,11 @@ func imageFork[T any](t *testing.T, r Run, k int, double bool, add func(uint64, 
 	t.Helper()
 	status := "FAIL"
 	defer func() { driverVerdict(t, "fork", fmt.Sprintf("%s/%d/%d", r.Test, r.Seed, k), status) }()
-	res := part(t, r, double)
+	res := part[T](t, r, double)
 	if res.Failed {
-		return false
+		// A failed fork's result still counts where it asks to (FailedSeed,
+		// a missed quorum loss); its verdict stays FAIL.
+		return addFailedSeed(r.Seed, res.Artifacts["seed.json"], add)
 	}
 	t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])
 	var v T
@@ -576,10 +598,17 @@ func fileHash(t *testing.T, path string) (string, int64) {
 // go to $SIM_OUT before the second run starts, so this process holds one
 // run's files at a time, which for a long profile take gigabytes; they
 // are removed again unless the runs differ.
-func twoRuns(t *testing.T, r Run) *Result {
+func twoRuns[T any](t *testing.T, r Run) *Result {
+	t.Helper()
+	return twoRunsWith[T](t, r, Do)
+}
+
+// twoRunsWith is twoRuns with the runner supplied, so its result
+// selection can be tested without starting deliberately failed runs.
+func twoRunsWith[T any](t *testing.T, r Run, run func(*testing.T, Run) *Result) *Result {
 	t.Helper()
 	r.Env = append(r.Env, "SIM_KEEP=1")
-	first := Do(t, r)
+	first := run(t, r)
 	if first.Failed {
 		keep(t, first.Artifacts, "")
 		return first
@@ -587,7 +616,7 @@ func twoRuns(t *testing.T, r Run) *Result {
 	saved := keepQuiet(t, first.Artifacts, "first")
 	hashes := first.Artifacts["hashes"]
 	first.Artifacts = map[string][]byte{"hashes": hashes, "seed.json": first.Artifacts["seed.json"]}
-	second := Do(t, r)
+	second := run(t, r)
 	differ := false
 	switch {
 	case second.Failed:
@@ -613,6 +642,14 @@ func twoRuns(t *testing.T, r Run) *Result {
 				first.Failed = true
 				t.Error(err)
 			}
+		}
+	}
+	// The second run may have reached a verdict the first did not. Keep
+	// that opted-in failure for the callback, but leave ordinary failures
+	// selected as before. Fresh seeds and forks take this same path.
+	if second.Failed {
+		if _, report := failedSeed[T](second.Artifacts["seed.json"]); report {
+			return second
 		}
 	}
 	return first

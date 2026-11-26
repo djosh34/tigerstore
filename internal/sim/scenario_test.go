@@ -2,6 +2,7 @@ package sim
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -208,6 +209,50 @@ type scenarioRun struct {
 	// Forks is how many of an aged seed's forks the run ran (TestCampaign):
 	// one in a fork's gosim run of its own, all of them in one process.
 	Forks int
+	// MissedQuorumLoss records the requested-loss failure, not a run
+	// that failed before reaching its loss verdict.
+	MissedQuorumLoss bool
+}
+
+// ReportFailedSeed keeps a missed loss in the report even though its
+// test failed (simrun.FailedSeed). No other failed run is counted.
+func (r scenarioRun) ReportFailedSeed() bool { return r.MissedQuorumLoss }
+
+// countMissedLoss counts only the loss verdict of a failed seed; the
+// other counts describe runs that passed their checks.
+func (r scenarioRun) countMissedLoss(ran map[string]int) bool {
+	if !r.MissedQuorumLoss {
+		return false
+	}
+	ran["requested quorum loss, not lost"]++
+	return true
+}
+
+// scenarioResult describes the run's outcome, including a requested
+// loss that did not happen, which still reaches the driver's report.
+func scenarioResult(cfg Config, res *Result, err error) scenarioRun {
+	r := scenarioRun{Kind: cfg.kind(), Nodes: cfg.voters(), MissedQuorumLoss: errors.Is(err, errRequestedQuorumLoss)}
+	if res != nil {
+		r.Stats = res.Stats
+	}
+	return r
+}
+
+// runScenario returns a missed loss after failing the test, so simrun
+// can count it. Other failures stop at once, as run does.
+func runScenario(t *testing.T, cfg Config) scenarioRun {
+	t.Helper()
+	res, err := runSeed(t, cfg)
+	r := scenarioResult(cfg, res, err)
+	if r.MissedQuorumLoss {
+		t.Error(err)
+		return r
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkers(t, res)
+	return r
 }
 
 // kind names the load of cfg.
@@ -240,17 +285,19 @@ func TestScenarios(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: the campaigns and CI say how many scenarios to run")
 	}
-	ran := map[string]int{}
+	ran := map[string]int{"requested quorum loss, not lost": 0}
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) scenarioRun {
 		cfg := Scenario(seed)
 		t.Logf("seed %d: %s", seed, cfg.describe())
-		res := run(t, cfg)
-		checkers(t, res)
-		st := res.Stats
+		r := runScenario(t, cfg)
+		st := r.Stats
 		t.Logf("seed %d: %d ok, %d failed, %d ambiguous, %d fenced, %d replaced, quorum lost at %s, %d cold restarts, membership changes %v",
 			seed, st.OK, st.Failed, st.Ambiguous, st.Fenced, st.Replaced, seconds(st.QuorumLostAt), st.ColdRestarts, st.MembershipChanges)
-		return scenarioRun{Kind: cfg.kind(), Nodes: cfg.voters(), Stats: st}
+		return r
 	}, func(_ uint64, r scenarioRun) bool {
+		if r.countMissedLoss(ran) {
+			return false
+		}
 		ran[fmt.Sprintf("%s on %d voters", r.Kind, r.Nodes)]++
 		if r.Stats.QuorumLostAt > 0 {
 			ran["quorum lost for good"]++

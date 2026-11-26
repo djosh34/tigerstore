@@ -314,18 +314,19 @@ var flipPayload func(*Sim, *node) bool
 
 // maybeCorrupt damages the synced bytes of a node that just crashed,
 // only while fewer nodes than spare are damaged, so a quorum stays: at
-// most once per run in a cluster of three.
+// most once per run in a cluster of three. It reports whether it tried
+// damage but found no place, so loseQuorum can fence the node instead.
 // The lock is held.
-func (s *Sim) maybeCorrupt(n *node) {
+func (s *Sim) maybeCorrupt(n *node) bool {
 	// A test that picks the kinds of damage tries at every crash.
 	if !s.cfg.Faults.Corrupt || s.healed || len(s.cfg.damageKinds) == 0 && !s.cfg.LoseQuorum && s.rng.IntN(2) != 0 {
-		return
+		return false
 	}
 	if s.cfg.LoseQuorum && s.now() < s.firstWritten+s.cfg.Duration/4 {
 		// The run's first write committed something before the faults
 		// (writeFirst), and the clients get a quarter of the faults'
 		// window before the damage that loses the quorum starts.
-		return
+		return false
 	}
 	if planted.On("B04c") && flipPayload != nil {
 		// Planted: flip one payload bit that still decodes, and do not
@@ -333,13 +334,13 @@ func (s *Sim) maybeCorrupt(n *node) {
 		if flipPayload(s, n) {
 			s.tracef("node %d: flipped a payload bit", n.id)
 		}
-		return
+		return false
 	}
 	// A node damaged already is not damaged again. n's own torn image,
 	// if it has one, is what this crash just did: only the other nodes'
 	// leave the quorum short.
 	if n.corrupted || s.count(func(m *node) bool { return m.corrupted || m.fenced || m != n && m.mayBeDamaged() }) >= s.spare() {
-		return
+		return false
 	}
 	kind := damageKind(s.rng.IntN(numDrawn))
 	if k := s.cfg.damageKinds; len(k) > 0 {
@@ -348,17 +349,19 @@ func (s *Sim) maybeCorrupt(n *node) {
 	if s.damage(n, kind) {
 		s.stats.Damage[kind]++
 		s.tracef("node %d: damage after a sync: %v", n.id, kind)
-		return
+		return false
 	}
-	// The kind drawn found no place. A test that picks the kinds waits
-	// for one that does.
+	// The kind drawn found no place. A test that picks the kinds skips
+	// the record flip; loseQuorum can still fence the node directly.
 	switch {
 	case len(s.cfg.damageKinds) > 0:
 	case (s.cfg.flipRecords || s.cfg.LoseQuorum) && s.formed > 0 && s.flipWLRecord(n):
 		n.corrupted = true
 		s.stats.Damage[flippedRecord]++
 		s.tracef("node %d: damage after a sync: %v", n.id, flippedRecord)
+		return false
 	}
+	return true
 }
 
 // flipWLRecord flips a bit of a synced record of wl node n's log that a
