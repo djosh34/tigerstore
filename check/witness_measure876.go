@@ -38,6 +38,7 @@ var measure876Names = []string{"stop", "revoke-no-key", "model-error", "no-revis
 type measure876Effect struct {
 	Hash       [32]byte
 	Shape      string
+	Request    *history.Request   `json:",omitempty"`
 	Events     []history.Event    `json:",omitempty"`
 	After      []history.KeyValue `json:",omitempty"`
 	EventIndex int
@@ -48,6 +49,7 @@ type measure876Candidate struct {
 	Op                                    int
 	Call, LB                              int64
 	Kind                                  string
+	Request                               history.Request
 	Clauses                               [m876Clauses]int64
 	GrantNone, GrantTried, GrantSucceeded int64
 }
@@ -60,6 +62,7 @@ type measure876Certificate struct {
 	UnblockedPresent     []string
 	AbsentWithoutPutters []string
 	AbsentPutter         map[string]int
+	AbsentUnchanged      []string
 }
 
 type measure876Prefix struct {
@@ -132,7 +135,7 @@ func (m *measure876Stats) candidate(r *revisionOrder, rev int64, op int) *measur
 	}
 	k := m.ranks[j][op]
 	if k == 0 {
-		m.Candidates[j] = append(m.Candidates[j], measure876Candidate{Op: op, Call: r.w.calls[op], LB: r.lb[op], Kind: measure876Kind(r.w.reqs[op])})
+		m.Candidates[j] = append(m.Candidates[j], measure876Candidate{Op: op, Call: r.w.calls[op], LB: r.lb[op], Kind: measure876Kind(r.w.reqs[op]), Request: r.w.reqs[op]})
 		k = int32(len(m.Candidates[j]))
 		m.ranks[j][op] = k
 	}
@@ -177,6 +180,9 @@ func measure876Cert(r *revisionOrder, s *state, used []bool, rev int64) measure8
 			}
 			continue
 		}
+		if r.unchanged(key, rev) {
+			c.AbsentUnchanged = append(c.AbsentUnchanged, key)
+		}
 		for _, op := range r.putters[k] {
 			c.Items++
 			if c.Items > 4096 {
@@ -213,6 +219,11 @@ func (m *measure876Stats) prefix(r *revisionOrder, f *frame) int {
 	if measure876Target(f.rev) < 0 {
 		return -1
 	}
+	if len(m.Candidates[measure876Target(f.rev)]) == 0 {
+		for _, op := range f.cands {
+			m.candidate(r, f.rev, op)
+		}
+	}
 	c := measure876Cert(r, r.w.live, r.used, f.rev)
 	m.DiagnosticItems += int64(c.Items)
 	parent := -1
@@ -223,7 +234,7 @@ func (m *measure876Stats) prefix(r *revisionOrder, f *frame) int {
 	return len(m.Prefixes) - 1
 }
 
-func measure876Applied(w *witness, op int, events []history.Event) {
+func measure876Applied(w *witness, op int, req *history.Request, events []history.Event) {
 	if len(events) == 0 {
 		return
 	}
@@ -265,6 +276,7 @@ func measure876Applied(w *witness, op int, events []history.Event) {
 		}
 		if w.live.rev >= 432350 && w.live.rev <= 432520 {
 			e.Events, e.After = es, slices.Clone(w.live.kvs)
+			e.Request = req
 		}
 		measure876Log[idx] = e
 		return
@@ -280,6 +292,7 @@ func measure876Applied(w *witness, op int, events []history.Event) {
 		return
 	}
 	e.Events, e.After = es, slices.Clone(w.live.kvs)
+	e.Request = req
 	r.measure876.Effects[w.live.rev] = e
 }
 
@@ -394,4 +407,48 @@ func (m *measure876Stats) emit(r *revisionOrder) {
 		}
 	}
 	measure876Emit("log-nearby.json", nearby)
+	// Locate the log's unobserved put by its key/value, not an assumed
+	// operation identity, and show whether the search consumed it earlier.
+	var matches []any
+	for i, req := range r.w.reqs {
+		match := req.Put != nil && req.Put.Key == "k3" && req.Put.Value == "c3-319862"
+		if req.Txn != nil {
+			for op := range req.Txn.Ops() {
+				if op.Put != nil && op.Put.Key == "k3" && op.Put.Value == "c3-319862" {
+					match = true
+				}
+			}
+		}
+		if !match {
+			continue
+		}
+		var events []int
+		for j, e := range r.w.events {
+			if e.op == i {
+				events = append(events, j)
+			}
+		}
+		c504, c505 := -1, -1
+		for _, f := range r.stack {
+			if f.rev == 432504 {
+				c504 = slices.Index(f.cands, i)
+			}
+			if f.rev == 432505 {
+				c505 = slices.Index(f.cands, i)
+			}
+		}
+		at, reserved := r.reserved[i]
+		matches = append(matches, struct {
+			Op                         int
+			HistoryOp                  history.Op
+			Request                    history.Request
+			Used                       bool
+			LB                         int64
+			Reserved                   bool
+			ReservedAt                 int64
+			Events                     []int
+			Candidate504, Candidate505 int
+		}{i, r.w.h.Ops[i], req, r.used[i], r.lb[i], reserved, at, events, c504, c505})
+	}
+	measure876Emit("log-put-matches.json", matches)
 }

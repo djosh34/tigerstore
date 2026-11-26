@@ -342,7 +342,7 @@ func (w *witness) apply(op int, req *history.Request) outcome {
 		w.appended = append(w.appended, e.KV.Key)
 	}
 	if Measure876Sink != nil {
-		measure876Applied(w, op, o.events)
+		measure876Applied(w, op, req, o.events)
 	}
 	o.events = nil
 	w.events = append(w.events, event{op: op, req: req, resp: o.resp, err: o.err, historical: o.historical})
