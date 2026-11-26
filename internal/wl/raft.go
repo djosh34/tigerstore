@@ -463,8 +463,7 @@ func (n *node) maybeCkpt() error {
 		// a cut; rewriting its file at the same index is not safe.
 		waiters := n.snapWaiters
 		n.snapWaiters = nil
-		meta := s.snap.GetMetadata()
-		n.startClientSnaps(waiters, n.ckptName, ckptMeta{index: index, term: meta.GetTerm()})
+		n.startClientSnaps(waiters, n.ckptName)
 		return nil
 	}
 	off := s.offOf(index)

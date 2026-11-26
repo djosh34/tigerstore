@@ -30,8 +30,8 @@ type copyShell struct {
 
 func (*copyShell) wakeLoop()           {}
 func (*copyShell) logf(string, ...any) {}
-func (s *copyShell) prepareClientSnap(h handle, src file, head []byte) {
-	s.l.prepareClientSnap(h, src, head)
+func (s *copyShell) prepareClientSnap(h handle, src file) {
+	s.l.prepareClientSnap(h, src)
 }
 
 func copyLoop(n *node) *loop {
@@ -169,7 +169,7 @@ func TestAClientSnapshotRetriesACopyWhoseLogWasCut(t *testing.T) {
 	c, _, h := snapshotClient(t, n)
 	src := retiredCopy(t, n)
 	l := copyLoop(n)
-	l.prepareClientSnap(h, src, nil)
+	l.prepareClientSnap(h, src)
 	waitStrays(t)
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
@@ -318,7 +318,7 @@ func TestSnapshotCopiesDistinguishSharedDamageFromACut(t *testing.T) {
 				} else {
 					_, _, h := snapshotClient(t, n)
 					installCopyBytes(t, n, ml.b)
-					l.prepareClientSnap(h, src, nil)
+					l.prepareClientSnap(h, src)
 				}
 				waitStrays(t)
 				if err := l.runPosts(); !errors.Is(err, ErrBadValue) {
@@ -401,7 +401,7 @@ func TestASnapshotCutRetryEndsWithItsClient(t *testing.T) {
 			c, s, h := snapshotClient(t, n)
 			src := retiredCopy(t, n)
 			l := copyLoop(n)
-			l.prepareClientSnap(h, src, nil)
+			l.prepareClientSnap(h, src)
 			waitStrays(t)
 			switch gone {
 			case "stream":
@@ -420,7 +420,7 @@ func TestASnapshotCutRetryEndsWithItsClient(t *testing.T) {
 			// A waiter disconnected before its checkpoint completed is
 			// dropped too, without even starting another copy.
 			n.shell = &copyShell{l: l}
-			n.startClientSnaps([]handle{h}, n.ckptName, ckptMeta{})
+			n.startClientSnaps([]handle{h}, n.ckptName)
 			waitStrays(t)
 			l.mu.Lock()
 			posts := len(l.posts)

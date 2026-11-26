@@ -75,11 +75,10 @@ func (n *node) pruneSnapWaiters() {
 // startClientSnaps hands the checkpoint just written to the clients that
 // asked before it started: a goroutine writes each one's copy with every
 // value, and posts it to the loop to send.
-func (n *node) startClientSnaps(waiters []handle, name string, meta ckptMeta) {
+func (n *node) startClientSnaps(waiters []handle, name string) {
 	if len(waiters) == 0 || n.shell == nil {
 		return
 	}
-	head := clientSnapHead(n.clusterID, meta)
 	for _, h := range waiters {
 		if c, _ := n.clientOf(h); c == nil {
 			continue
@@ -89,7 +88,7 @@ func (n *node) startClientSnaps(waiters []handle, name string, meta ckptMeta) {
 			n.replyErrorH(h, codeInternal, err.Error())
 			continue
 		}
-		n.shell.prepareClientSnap(h, src, head)
+		n.shell.prepareClientSnap(h, src)
 	}
 }
 
@@ -103,7 +102,7 @@ func clientSnapHead(cluster uint64, m ckptMeta) []byte {
 
 // prepareClientSnap writes the copy in a goroutine of its own and posts
 // it to the loop, which sends it.
-func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
+func (l *loop) prepareClientSnap(h handle, src file) {
 	strays.Add(1)
 	go func() {
 		defer strays.Add(-1)
@@ -114,7 +113,7 @@ func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 			_ = l.n.sys.remove(f.Name())
 			err = selfContained(src, l.n.wal, f)
 		}
-		cs := &clientSnap{h: h, f: f, head: head}
+		cs := &clientSnap{h: h, f: f}
 		if err == nil {
 			cs.size, err = f.Seek(0, io.SeekCurrent)
 		}
@@ -153,7 +152,7 @@ func copiedClientSnapHead(f file, cluster uint64) ([]byte, error) {
 // snapshotDamage reports errors that must stop the node, not retry a
 // copy or report a failed send to Raft as if the disk were sound.
 func snapshotDamage(err error) bool {
-	return errors.Is(err, ErrBadValue) || errors.Is(err, ErrCorruptCheckpoint)
+	return errors.Is(err, ErrBadValue) || errors.Is(err, ErrCorruptCheckpoint) || errors.Is(err, ErrCorruptLog)
 }
 
 // clientSnapCopied takes back a client's copy. Only a retired log segment

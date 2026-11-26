@@ -616,7 +616,7 @@ func (n *node) ckptDone() error {
 		n.cutLog()
 	}
 	n.st.release()
-	n.startClientSnaps(r.snapWaiters, r.w.name, r.meta)
+	n.startClientSnaps(r.snapWaiters, r.w.name)
 	n.logf("checkpoint at index %d, revision %d: %d bytes, the log from %d and cut at %d, in %v; %d MB of values taken in, %d MB left in the log; the loop encoded for %v, the writer read for %v and wrote for %v",
 		r.meta.index, r.meta.rev, r.at+4, r.logFrom, r.cut, time.Since(r.started).Round(time.Millisecond), r.taken>>20, r.leftInLog>>20,
 		time.Duration(r.encodeNs).Round(time.Millisecond), time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
@@ -1552,6 +1552,12 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 					if f[i], err = cr.uvarint(); err != nil {
 						return err
 					}
+				}
+				// A value cannot exceed the request that introduced it.
+				// Bound this unverified length before allocating: damage
+				// must not panic or exhaust memory before the CRC checks.
+				if f[5] > maxRequestBytes {
+					return fmt.Errorf("%w: a value of %d bytes exceeds the request limit %d", ErrCorruptCheckpoint, f[5], maxRequestBytes)
 				}
 				at, sum := uint64(0), uint64(0)
 				if f[5] > 0 {

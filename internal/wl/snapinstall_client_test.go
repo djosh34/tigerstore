@@ -23,8 +23,8 @@ type installClientShell struct {
 func (*installClientShell) wakeLoop()           {}
 func (*installClientShell) logf(string, ...any) {}
 func (*installClientShell) membersChanged()     {}
-func (s *installClientShell) prepareClientSnap(h handle, src file, head []byte) {
-	s.l.prepareClientSnap(h, src, head)
+func (s *installClientShell) prepareClientSnap(h handle, src file) {
+	s.l.prepareClientSnap(h, src)
 }
 
 // installWhileClientWaits starts a client checkpoint at index 4, then

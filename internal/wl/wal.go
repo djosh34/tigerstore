@@ -94,7 +94,8 @@ const (
 )
 
 // ErrCorruptLog is a log with a record that does not check where no crash
-// can have torn it (wal.go's head).
+// can have torn it (wal.go's head), or a live durable segment that ends
+// before the bytes a read needs. Retirement and I/O failures are separate.
 var ErrCorruptLog = errors.New("wl: corrupt log")
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
@@ -1211,11 +1212,11 @@ func (w *wal) readSegments(p []byte, off int64, pread func(fd int, p []byte, off
 			// identity: the ring may have reused it while pread ran.
 			return fmt.Errorf("read the log at %d, in segment %d retired during the read: %w", o, o/segSize, errLogCut)
 		}
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || err == nil && n == 0 {
+			return fmt.Errorf("%w: segment %d ends before %d", ErrCorruptLog, o/segSize, o+int64(n))
+		}
 		if err != nil {
 			return err
-		}
-		if n == 0 {
-			return fmt.Errorf("the log's segment %d ends before %d", o/segSize, o)
 		}
 		got += n
 	}

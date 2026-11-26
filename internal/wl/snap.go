@@ -33,9 +33,9 @@ type shell interface {
 	wakeLoop()
 	// membersChanged dials the members the list now holds.
 	membersChanged()
-	// prepareClientSnap writes a client's snapshot of the checkpoint src
-	// with head before it, and has the loop send it to h.
-	prepareClientSnap(h handle, src file, head []byte)
+	// prepareClientSnap writes a client's snapshot of the checkpoint src,
+	// takes its header from the verified copy, and has the loop send it.
+	prepareClientSnap(h handle, src file)
 	// sendSnapshot sends the checkpoint f to the follower m is for, with
 	// every value in it, and reports to Raft how it went.
 	sendSnapshot(m *pb.Message, f file)

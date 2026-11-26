@@ -22,15 +22,14 @@ type heldCopyShell struct {
 }
 
 type heldCopy struct {
-	h    handle
-	src  file
-	head []byte
+	h   handle
+	src file
 }
 
 func (*heldCopyShell) wakeLoop()           {}
 func (*heldCopyShell) logf(string, ...any) {}
-func (s *heldCopyShell) prepareClientSnap(h handle, src file, head []byte) {
-	s.pending = append(s.pending, heldCopy{h: h, src: src, head: head})
+func (s *heldCopyShell) prepareClientSnap(h handle, src file) {
+	s.pending = append(s.pending, heldCopy{h: h, src: src})
 }
 
 func (s *heldCopyShell) release(t *testing.T) {
@@ -40,7 +39,7 @@ func (s *heldCopyShell) release(t *testing.T) {
 	}
 	p := s.pending[0]
 	s.pending = nil
-	s.l.prepareClientSnap(p.h, p.src, p.head)
+	s.l.prepareClientSnap(p.h, p.src)
 }
 
 // stageCopyValue advances the store without checkpointing it: maybeCkpt
@@ -118,7 +117,7 @@ func TestASnapshotOffsetFlipIsCheckpointDamageNotACut(t *testing.T) {
 				err = selfContained(src, n.wal, &bytes.Buffer{})
 			case "client":
 				_, _, h := snapshotClient(t, n)
-				l.prepareClientSnap(h, src, nil)
+				l.prepareClientSnap(h, src)
 				waitStrays(t)
 				err = l.runPosts()
 			case "peer":
@@ -185,7 +184,7 @@ func TestADisconnectedRequeuedSnapshotStartsNoCheckpoint(t *testing.T) {
 			c, s, h := snapshotClient(t, n)
 			src := retiredCopy(t, n)
 			l := copyLoop(n)
-			l.prepareClientSnap(h, src, nil)
+			l.prepareClientSnap(h, src)
 			waitStrays(t)
 			if err := l.runPosts(); err != nil {
 				t.Fatal(err)
