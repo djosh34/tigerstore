@@ -122,14 +122,13 @@ type stream struct {
 	snapRetries   uint8
 	// began is the turn of the call's request, for its time; readonly
 	// says a Txn has no write, etcd's ReadonlyTxn.
-	began     time.Time
-	putTiming *putTiming // opt-in diagnostics; no request bytes retained
-	readonly  bool
-	ended     bool   // the client ended its side
-	buf       []byte // a gRPC message across DATA frames
-	counted   int64  // what of buf its client counts in partial
-	watch     bool
-	wids      []int32 // the watchers of a watch stream
+	began    time.Time
+	readonly bool
+	ended    bool   // the client ended its side
+	buf      []byte // a gRPC message across DATA frames
+	counted  int64  // what of buf its client counts in partial
+	watch    bool
+	wids     []int32 // the watchers of a watch stream
 	// nextWatch is the next watch ID a create that names none may take.
 	nextWatch int64
 	fail      []byte // a Txn's failure branch, kept here and not replicated
@@ -489,7 +488,9 @@ func (c *client) endStream(s *stream) {
 	if !s.open {
 		return
 	}
-	c.node.tracePutClosed(s)
+	if c.node.putTimings != nil {
+		c.node.tracePutClosed(s)
+	}
 	c.partial -= s.counted
 	c.grow(-int(s.counted))
 	c.streams--
@@ -643,8 +644,14 @@ func (c *client) frames(n *node) error {
 				p = p[1 : len(p)-int(p[0])]
 			}
 			s := c.get(sid)
+			if n.putTimings != nil && s != nil && !s.ended {
+				n.tracePutHeader(s, p)
+			}
 			if k := int64(len(p)); s != nil && !s.ended && (c.partial+k > n.connIn || n.cpool+k > n.sizes.clientInBufs()) && c.waitsForRoom(n, s, p) {
 				// The frame is read again once the buffers have room.
+				if n.putTimings != nil {
+					n.tracePutEvent(n.putTimingOf(s), "receive_wait", -1)
+				}
 				c.pr -= 9 + l
 				return nil
 			}
@@ -1061,7 +1068,9 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 	}
 	for len(p) >= 5 {
 		l := int(binary.BigEndian.Uint32(p[1:5]))
-		n.tracePutStart(s, l)
+		if n.putTimings != nil {
+			n.tracePutStart(s, l)
+		}
 		if l > maxMsg {
 			// As grpc-go's server refuses it, before taking it in.
 			n.replyError(c, s.id, codeResourceExhausted, "grpc: received message larger than max ("+itoa(l)+" vs. "+itoa(maxMsg)+")")
@@ -1079,14 +1088,18 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 		if p[0] != 0 {
 			var bad string
 			if msg, bad = inflate(s, msg); bad != "" {
-				n.tracePutDecoded(s, l, msg, false)
-				n.tracePutEvent(s.putTiming, "decode_refused", -1)
+				if n.putTimings != nil {
+					n.tracePutDecoded(s, l, msg, false)
+					n.tracePutEvent(n.putTimingOf(s), "decode_refused", -1)
+				}
 				n.replyError(c, s.id, codeInternal, bad)
 				return nil
 			}
 		}
-		n.tracePutDecoded(s, l, msg, true)
-		n.tracePutEvent(s.putTiming, "received", -1)
+		if n.putTimings != nil {
+			n.tracePutDecoded(s, l, msg, true)
+			n.tracePutEvent(n.putTimingOf(s), "received", -1)
+		}
 		p = p[5+l:]
 		if err := n.request(c, s, msg); errors.Is(err, errProto) {
 			// A request it cannot read ends the call, not the

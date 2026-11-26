@@ -667,7 +667,9 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 		copy(b[9:], blk)
 	}
 	if s != nil {
-		n.tracePutReply(s, code)
+		if n.putTimings != nil {
+			n.tracePutReply(s, code)
+		}
 		c.endStream(s)
 	}
 	n.markDirty(&c.sock)
@@ -820,7 +822,9 @@ func (n *node) endStreamOK(c *client, s *stream) {
 		putFrameHeader(b, len(respTrailers), frHeaders, flEndHeaders|flEndStream, s.id)
 		copy(b[9:], respTrailers)
 	}
-	n.tracePutReply(s, 0)
+	if n.putTimings != nil {
+		n.tracePutReply(s, 0)
+	}
 	c.endStream(s)
 	n.markDirty(&c.sock)
 }

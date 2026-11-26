@@ -164,7 +164,7 @@ The `test` job runs every package but the simulator with `-race`, but for `inter
 
 # Large-put differential diagnostics
 
-Difftest's tigerstore runs opt into [large-put request timelines](large-put-timings.md). Successful and failed server logs are kept per suite in the `difftest-*` artifacts for 14 days, so a later timeout can be compared with passing proposals, commits, applies and queued replies. Production tracing remains off by default.
+Difftest's tigerstore runs opt into [large-put request timelines](large-put-timings.md). Successful tigerstore server logs are kept per suite in the `difftest-*` artifacts for 14 days, and failed runs for 30 days (successful etcd runs remain unretained), so a later timeout can be compared with passing proposals, commits, applies and queued replies. Production tracing remains off by default.
 
 # Differential fuzzing against etcd
 

@@ -911,14 +911,18 @@ func (l *loop) closeSock(idx int) {
 		n.cancelSides(idx)
 		for i := range v.slots {
 			st := &v.slots[i]
-			n.tracePutClosed(st)
+			if n.putTimings != nil {
+				n.tracePutClosed(st)
+			}
 			if st.open && st.watch {
 				n.closeWatchStream(v, st)
 			}
 			st.fail = nil
 		}
 		for _, st := range v.over {
-			n.tracePutClosed(st)
+			if n.putTimings != nil {
+				n.tracePutClosed(st)
+			}
 			if st.watch {
 				n.closeWatchStream(v, st)
 			}

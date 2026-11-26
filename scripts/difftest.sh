@@ -10,7 +10,8 @@
 #
 # ONLY, a regular expression, runs only the tests whose names match it.
 # RACE=1 builds tigerstore and runs the tests with the race detector.
-# KEEP, a directory, gets every suite's server logs, successful runs too.
+# KEEP, a directory, gets all tigerstore suites' server logs, successes
+# included; etcd logs are kept only on failure.
 # Tigerstore logs request-stage timings for Put/Txn messages >=1 MiB.
 #
 # Each test in suites runs on a fresh server started with the flags next to
@@ -50,6 +51,7 @@ suites=(
 	"TestSortByValue|"
 )
 work=$(mktemp -d)
+active_suite=
 # stop ends every server this script started and waits until they are
 # gone, so the ports are free for the next one.
 stop() {
@@ -65,13 +67,17 @@ stop() {
 # keep preserves each suite separately: another suite's fresh cluster
 # must not overwrite the timings of one that passed.
 keep() {
-	if [ -n "${KEEP:-}" ]; then
-		local dest="$KEEP/${test:-startup}"
+	[ -n "$active_suite" ] || return 0
+	if [ -n "${KEEP:-}" ] && { [ "$server" = tigerstore ] || [ "$1" != 0 ]; }; then
+		local dest="$KEEP/$active_suite"
 		mkdir -p "$dest"
 		(cd "$work" && find . -name '*.log' -exec cp --parents {} "$dest" \;)
 	fi
+	active_suite=
 }
-trap 'stop; keep; rm -rf "$work"' EXIT
+# A completed suite already copied its logs. Only an unfinished run is
+# copied here, never the last name considered by the ONLY filter.
+trap 'status=$?; stop; keep "$status"; rm -rf "$work"' EXIT
 # in_use reports whether something listens on a local port.
 in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 # alive fails unless every server this script started still runs, so the
@@ -161,6 +167,9 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$work/certs/j
 for suite in "${suites[@]}"; do
 	test=${suite%%|*}
 	[[ $test =~ ${ONLY:-.} ]] || continue
+	# No previous suite's proxy/server logs belong to this new attempt.
+	find "$work" -name '*.log' -delete
+	active_suite=$test
 	read -r -a flags <<<"${suite#*|}"
 	flags=("${flags[@]//@CERTS@/$work/certs}")
 	echo "== $test ${flags[*]}"
@@ -210,7 +219,7 @@ for suite in "${suites[@]}"; do
 	esac
 	alive
 	stop
-	keep
+	keep 0
 	if [ -n "${RACE:-}" ]; then
 		for f in "$work"/data/*.log "$work"/proxy.log; do
 			if [ -e "$f" ] && grep -q 'WARNING: DATA RACE' "$f"; then

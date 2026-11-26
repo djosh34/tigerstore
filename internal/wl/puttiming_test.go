@@ -3,7 +3,6 @@ package wl
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"log"
 	"strconv"
 	"strings"
@@ -143,57 +142,38 @@ func timingGroups(t *testing.T, text string) map[string][]map[string]string {
 	return groups
 }
 
-// Admission is independent of the clock: small calls and the default
-// production configuration allocate no trace. A lost request's timing
-// survives its closed stream so a late commit/apply remains attributable.
-func TestLargePutTimingGateAndLateApply(t *testing.T) {
+// Small calls and the default production configuration allocate no trace
+// or side table. Lifecycle cleanup is tested through the real exits in
+// puttiming_review_test.go, not by calling forgetPutTimings directly.
+func TestLargePutTimingGate(t *testing.T) {
 	c, s := flowClient(t)
 	n := c.node
 	s.kind = kPut
 	if allocs := testing.AllocsPerRun(1, func() { n.tracePutStart(s, putTimingBytes) }); allocs != 0 {
 		t.Fatalf("disabled diagnostics allocated %g times", allocs)
 	}
-	if s.putTiming != nil {
+	if n.putTimingOf(s) != nil {
 		t.Fatal("production default traced a request")
 	}
 	n.putTimings = &putTimings{pending: map[uint64][]*putTiming{}}
 	if allocs := testing.AllocsPerRun(1, func() { n.tracePutStart(s, putTimingBytes-1) }); allocs != 0 {
 		t.Fatalf("small-request diagnostics allocated %g times", allocs)
 	}
-	if s.putTiming != nil {
-		t.Fatal("small request traced")
+	if n.putTimingOf(s) != nil || n.putTimings.active != nil {
+		t.Fatal("small request allocated a trace or side table")
 	}
 	n.tracePutStart(s, putTimingBytes)
-	trace := s.putTiming
-	if trace == nil {
+	first := n.putTimingOf(s)
+	if first == nil {
 		t.Fatal("large request not traced")
 	}
-	c.idx, c.gen = 0, 1
-	n.socks, n.gens = []any{c}, []uint16{1}
-	seq := uint64(7)
-	n.tracePutAdd(mkHandle(c, s.id), seq, 0)
 	c.endStream(s)
-	if s.putTiming != nil || n.putTimings.pending[seq][0] != trace {
-		t.Fatal("closed stream kept its pointer or lost its batch diagnostics")
+	s = c.newStream(1+2*streamSlots, kPut) // reuse the same slot address
+	if n.putTimingOf(s) != nil {
+		t.Fatal("slot reuse inherited the closed request's side-table entry")
 	}
-	data := make([]byte, batchHdr)
-	copy(data[17:], magic)
-	binary.LittleEndian.PutUint32(data, uint32(n.id))
-	binary.LittleEndian.PutUint64(data[4:], seq)
-	n.tracePutBatch(data, "commit", 23)
-	n.tracePutApply(n.putBatchTimings(data), 0)
-	n.tracePutApplied()
-	if !trace.committed || !trace.applied || trace.index != 23 {
-		t.Fatalf("late stages missing: %+v", trace)
-	}
-	n.forgetPutTimings(seq)
-	if len(n.putTimings.pending) != 0 {
-		t.Fatal("completed diagnostics retained")
-	}
-	// Uncommitted requests are bounded by forward-slot reuse, too.
-	n.putTimings.pending[seq] = []*putTiming{trace}
-	n.forgetPutTimings(seq)
-	if len(n.putTimings.pending) != 0 {
-		t.Fatal("overwritten forward slot retained diagnostics")
+	n.tracePutStart(s, putTimingBytes)
+	if next := n.putTimingOf(s); next == nil || next.id == first.id {
+		t.Fatal("slot reuse did not get a new request ID")
 	}
 }

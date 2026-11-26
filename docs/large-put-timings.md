@@ -3,7 +3,10 @@
 `scripts/difftest.sh tigerstore` sets `TIGERSTORE_TRACE_LARGE_PUTS=1`.
 The default production binary does not enable this diagnostic. It can be
 explicitly enabled with that environment variable, or `wl.Config.TraceLargePuts`.
-Disabled diagnostics read no clocks and allocate no per-request metadata.
+Disabled diagnostics read no clocks or side tables and allocate no per-request
+metadata. Call sites are gated, and stream slots retain main's layout and
+input-buffer admission charge: metadata lives in an opt-in side map, not a
+pointer added to every stream.
 
 With it enabled, the receiving server logs `large-put` events for Put and Txn
 messages of at least 1 MiB. The threshold counts the gRPC message's declared
@@ -31,7 +34,10 @@ Each line has:
 The stages are:
 
 1. `receive`: the message header first identifies a large request. This may be
-   before its body arrives; a gRPC-size refusal can happen here. For a
+   before its body arrives; a gRPC-size refusal can happen here. A known
+   header is recorded before parking DATA for client-buffer room, followed
+   by `receive_wait`, so that even a seven-second admission wait is visible.
+   For a
    compressed message first recognized after decoding, reception/decompression
    before recognition is not included in `elapsed_ns`.
 2. `received`: the full message is available, before admission checks.
@@ -51,16 +57,21 @@ The stages are:
    receipt**. A slow client's reply may remain queued.
 
 `stream_closed` without `reply_queued` means the client cancelled/disconnected.
-Batch metadata survives a cancellation or a server timeout, allowing a later
-commit/apply to be logged under the same request ID. Completed batches are
-removed immediately. Lost proposals are kept only until their fixed-size
+Batch metadata survives a cancellation, ambiguous leader-change error or
+server timeout, allowing a later commit/apply under the same request ID.
+Completed batches and definitive no-leader/leader-refused proposals are removed
+immediately. Other lost proposals are kept only until their fixed-size
 forward-table slot is reused (`forgotten`), so diagnostics cannot grow without
 bound if proposals never commit. Missing later stages mean **not observed**,
 not proof the operation aborted. Events can legitimately show a timeout or
 closed stream before a late commit/apply.
 
-With `KEEP=/absolute/path`, difftest saves **successful and failed** server
-logs under `$KEEP/<TestName>/data/node*.log`. Every suite is copied before the
-next fresh cluster replaces its logs. The CI difftest artifacts upload even
-on success and retain these small text logs for **14 days**. No disks or
-request payloads are added to the artifacts.
+With `KEEP=/absolute/path`, difftest saves **successful and failed tigerstore**
+server logs under `$KEEP/<TestName>/data/node*.log`. Successful etcd runs remain
+unretained. A completed suite copies once; the exit trap saves only an
+unfinished active suite, not a later name skipped by `ONLY`. No previous
+suite's logs survive into the next attempt.
+
+CI retains **failed difftest artifacts for 30 days** as before. Successful
+tigerstore artifacts are uploaded for **14 days**; successful etcd artifacts
+are not uploaded. No disks or request payloads are added to the artifacts.

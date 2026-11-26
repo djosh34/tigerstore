@@ -1,6 +1,9 @@
 package wl
 
-import "time"
+import (
+	"encoding/binary"
+	"time"
+)
 
 // Large-put diagnostics are opt-in (Config.TraceLargePuts). Only metadata
 // is kept, never keys or values. A request is identified by node/run/id;
@@ -9,7 +12,9 @@ import "time"
 const putTimingBytes = 1 << 20
 
 type putTimings struct {
-	next     uint64
+	next uint64
+	// Side table: no diagnostic pointer or admission cost in stream slots.
+	active   map[*stream]*putTiming
 	pending  map[uint64][]*putTiming
 	applying *putTiming
 }
@@ -25,17 +30,40 @@ type putTiming struct {
 	applied, replied bool
 }
 
+func (n *node) putTimingOf(s *stream) *putTiming {
+	if n.putTimings == nil {
+		return nil
+	}
+	return n.putTimings.active[s]
+}
+
+// Observe a known length before waitsForRoom can park the DATA frame.
+// The gRPC header can be split between the old part and this frame.
+func (n *node) tracePutHeader(s *stream, p []byte) {
+	if len(s.buf)+len(p) < 5 {
+		return
+	}
+	var h [5]byte
+	k := copy(h[:], s.buf)
+	copy(h[k:], p)
+	n.tracePutStart(s, int(binary.BigEndian.Uint32(h[1:])))
+}
+
 func (n *node) tracePutStart(s *stream, size int) {
 	n.beginPutTiming(s, size, 0, false)
 }
 
 func (n *node) beginPutTiming(s *stream, wire, decoded int, complete bool) {
-	if n.putTimings == nil || s.putTiming != nil || max(wire, decoded) < putTimingBytes || s.kind != kPut && s.kind != kTxn {
+	if n.putTimings == nil || n.putTimingOf(s) != nil || max(wire, decoded) < putTimingBytes || s.kind != kPut && s.kind != kTxn {
 		return
 	}
 	n.putTimings.next++
-	s.putTiming = &putTiming{id: n.putTimings.next, kind: s.kind, bytes: wire, decodedBytes: decoded, decodedComplete: complete, began: time.Now()}
-	n.tracePutEvent(s.putTiming, "receive", -1)
+	if n.putTimings.active == nil {
+		n.putTimings.active = make(map[*stream]*putTiming)
+	}
+	t := &putTiming{id: n.putTimings.next, kind: s.kind, bytes: wire, decodedBytes: decoded, decodedComplete: complete, began: time.Now()}
+	n.putTimings.active[s] = t
+	n.tracePutEvent(t, "receive", -1)
 }
 
 func (n *node) tracePutDecoded(s *stream, wire int, decoded []byte, complete bool) {
@@ -43,7 +71,7 @@ func (n *node) tracePutDecoded(s *stream, wire int, decoded []byte, complete boo
 		return
 	}
 	n.beginPutTiming(s, wire, len(decoded), complete)
-	if t := s.putTiming; t != nil {
+	if t := n.putTimingOf(s); t != nil {
 		t.decodedBytes, t.decodedComplete = len(decoded), complete
 	}
 }
@@ -66,10 +94,10 @@ func (n *node) tracePutAdd(h handle, batch uint64, op int) {
 		return
 	}
 	_, s := n.clientOf(h)
-	if s == nil || s.putTiming == nil {
+	t := n.putTimingOf(s)
+	if t == nil {
 		return
 	}
-	t := s.putTiming
 	t.batch, t.op = batch, op
 	traces := n.putTimings.pending[batch]
 	for len(traces) <= op {
@@ -142,16 +170,16 @@ func (n *node) tracePutApplied() {
 }
 
 func (n *node) tracePutClosed(s *stream) {
-	if t := s.putTiming; t != nil {
+	if t := n.putTimingOf(s); t != nil {
 		if !t.replied {
 			n.tracePutEvent(t, "stream_closed", -1)
 		}
-		s.putTiming = nil
+		delete(n.putTimings.active, s)
 	}
 }
 
 func (n *node) tracePutReply(s *stream, code int) {
-	if t := s.putTiming; t != nil && !t.replied {
+	if t := n.putTimingOf(s); t != nil && !t.replied {
 		t.replied = true
 		n.tracePutEvent(t, "reply_queued", code)
 	}

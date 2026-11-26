@@ -22,9 +22,12 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 	if err := n.checkFormat(data[16]); err != nil {
 		return err
 	}
-	traces := n.putBatchTimings(data)
-	if len(traces) > 0 {
-		defer n.forgetPutTimings(binary.LittleEndian.Uint64(data[4:]))
+	var traces []*putTiming
+	if n.putTimings != nil {
+		traces = n.putBatchTimings(data)
+		if len(traces) > 0 {
+			defer n.forgetPutTimings(binary.LittleEndian.Uint64(data[4:]))
+		}
 	}
 	origin := uint64(binary.LittleEndian.Uint32(data))
 	nops := int(binary.LittleEndian.Uint32(data[12:]))
@@ -82,7 +85,9 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 		}
 		who, whoNamed := caller, named
 		caller, named = authInfo{}, false
-		n.tracePutApply(traces, i)
+		if n.putTimings != nil {
+			n.tracePutApply(traces, i)
+		}
 		var err error
 		n.txnWrote = false
 		n.plantedSubs = 0
@@ -117,8 +122,8 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 		case kind == kAuthOp:
 			err = n.applyAuthOp(req, index, c, s)
 		}
-		n.tracePutApplied()
 		if n.putTimings != nil {
+			n.tracePutApplied()
 			n.putTimings.applying = nil
 		}
 		if n.plantedSubs > 1 {
@@ -378,7 +383,9 @@ func (n *node) applyPut(req []byte, voff int64, c *client, s *stream) error {
 		return err
 	}
 	n.st.rev = rev
-	n.tracePutApplied()
+	if n.putTimings != nil {
+		n.tracePutApplied()
+	}
 	if c != nil {
 		if !r.prevKV {
 			prev = nil
@@ -647,7 +654,9 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 		n.st.rev = t.rev
 	}
 	n.txnWrote = t.wrote
-	n.tracePutApplied()
+	if n.putTimings != nil {
+		n.tracePutApplied()
+	}
 	if s != nil {
 		s.readonly = !t.wrote // for its request type, etcd's ReadonlyTxn
 	}
