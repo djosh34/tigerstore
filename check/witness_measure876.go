@@ -70,6 +70,7 @@ type measure876Prefix struct {
 	ParentOp               int
 	CandidateCount         int
 	Certificate            measure876Certificate
+	EventCertificate       measure876EventCert
 	Probes, Fits, Accepted int64
 	Exhausted              bool
 	Before                 []history.KeyValue
@@ -230,7 +231,7 @@ func (m *measure876Stats) prefix(r *revisionOrder, f *frame) int {
 	if len(r.w.events) > 0 {
 		parent = r.w.events[len(r.w.events)-1].op
 	}
-	m.Prefixes = append(m.Prefixes, measure876Prefix{Rev: f.rev, ParentOp: parent, CandidateCount: len(f.cands), Certificate: c, Before: slices.Clone(r.w.live.kvs)})
+	m.Prefixes = append(m.Prefixes, measure876Prefix{Rev: f.rev, ParentOp: parent, CandidateCount: len(f.cands), Certificate: c, EventCertificate: measure876EventCertificate(r, f.rev, f.cands), Before: slices.Clone(r.w.live.kvs)})
 	return len(m.Prefixes) - 1
 }
 
