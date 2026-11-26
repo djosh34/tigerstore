@@ -158,9 +158,12 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 		// The aging run passes every checker too: a fork's history starts
 		// from its image's store, and no longer holds the aging's. A tight
 		// disk that filled must have recovered (#846's ruling). Check
-		// that before checkers releases a long run's history.
+		// that before checkers releases a long run's history, without
+		// stopping the independent checks if recovery failed.
 		if aging.Faults.GrowDisk {
-			checkGrown(t, seed, res, false)
+			if err := grownRecovery(res, false); err != nil {
+				t.Errorf("seed %d: %v", seed, err)
+			}
 		}
 		checkers(t, res)
 		t.Logf("aging seed %d: %d objects, %s, %d voters, memory budget %d: %d writes to revision %d, %d keys and %d leases at the image; %+v",
