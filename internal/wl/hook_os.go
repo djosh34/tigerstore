@@ -18,6 +18,7 @@ func (*node) simInstallDone(uint64) {}
 func (*node) simCheckpoint(uint64)  {}
 
 func (*node) simCheckpointDone(uint64, string) {}
+func (*node) simNoRoom()                       {}
 func (*node) simExpired(int64)                 {}
 
 func (*node) simSnapshotChunk(_ uint64, _ bool, p []byte) int { return len(p) }

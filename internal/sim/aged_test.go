@@ -19,7 +19,13 @@ import (
 // 1,000 times further apart) or faulted (2 to 8 times), on 1, 3 or 5
 // voters, half with a memory budget, a quarter with hot keys. Its crash
 // images keep whole writes and no disk is damaged on purpose, so that
-// every node is up for the image; its forks keep those faults.
+// every node is up for the image; its forks keep those faults. A disk
+// holds two checkpoints of the store the load can reach, with a margin
+// (fitDisk). One seed in five keeps the disk of before, twice the budget,
+// which holds less once there are 1,500 objects or so: its nodes age
+// under NOSPACE, holding their checkpoints (#769), until an operator
+// grows the disks and disarms (Faults.GrowDisk), and the aging must
+// recover (#846's ruling).
 func agingConfig(seed uint64) Config {
 	rng := rand.New(rand.NewPCG(seed, 0x61676564))
 	cfg := kubeConfig(seed, false)
@@ -34,11 +40,17 @@ func agingConfig(seed uint64) Config {
 	cfg.Faults.Corrupt, cfg.Faults.Rot, cfg.noFence, cfg.longCerts = false, false, true, true
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
 	cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
+	fitDisk(&cfg, kubeQuota(cfg.Objects))
 	cfg.Nodes = pick(rng, scenarioSizes)
 	if rng.IntN(2) == 0 {
 		cfg.MemoryBytes = logUniform(rng, 256<<20, 4<<30)
 	}
 	cfg.HotKeys = rng.IntN(4) == 0
+	// Drawn last, so that the draws before stay those of every image
+	// aged before.
+	if rng.IntN(5) == 0 {
+		cfg.Faults.DiskCapacity, cfg.Quota, cfg.Faults.GrowDisk = int(2*cfg.Faults.DiskBudget), 0, true
+	}
 	return cfg
 }
 
@@ -144,8 +156,12 @@ func agedForks(t *testing.T, seed uint64, aging Config, forks int, fork func(Con
 			t.Fatalf("aging seed %d: %v", seed, err)
 		}
 		// The aging run passes every checker too: a fork's history starts
-		// from its image's store, and no longer holds the aging's.
+		// from its image's store, and no longer holds the aging's. A tight
+		// disk that filled must have recovered (#846's ruling).
 		checkers(t, res)
+		if aging.Faults.GrowDisk {
+			checkGrown(t, seed, res, false)
+		}
 		t.Logf("aging seed %d: %d objects, %s, %d voters, memory budget %d: %d writes to revision %d, %d keys and %d leases at the image; %+v",
 			seed, aging.Objects, seconds(aging.Duration), aging.voters(), aging.MemoryBytes, img.ops, img.start.Rev, len(img.start.KVs), len(img.start.Leases), res.Stats)
 	}) {

@@ -836,6 +836,10 @@ func (d *Disk) ShortWrite(rng *rand.Rand) {
 	d.short = rng
 }
 
+// ShortPending reports whether a short write ShortWrite armed has not
+// happened yet.
+func (d *Disk) ShortPending() bool { return d.short != nil }
+
 // FailSync makes the next sync fail with ErrIO after a random part of the
 // file's unsynced writes reached the medium, as a writeback that failed
 // partway does.
