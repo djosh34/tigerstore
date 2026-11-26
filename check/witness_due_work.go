@@ -344,7 +344,7 @@ func (r *revisionOrder) mutationStep(size int) bool {
 	if size <= 8 {
 		return r.w.stopped
 	}
-	return r.chargeItems(1, workUnitsPerStep/16)
+	return r.chargeItems(1, workUnitsPerStep/2)
 }
 
 func (r *revisionOrder) capacityStep() bool {

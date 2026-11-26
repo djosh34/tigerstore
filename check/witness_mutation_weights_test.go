@@ -17,8 +17,8 @@ func TestMutationWeightAndBudget(t *testing.T) {
 			t.Fatal("unbounded large map stopped")
 		}
 	}
-	if r.w.steps != 63 || r.w.workTicks != 16 {
-		t.Fatalf("large-map weight: steps %d, ticks %d, want 63 and 16", r.w.steps, r.w.workTicks)
+	if r.w.steps != 500 || r.w.workTicks != 16 {
+		t.Fatalf("large-map weight: steps %d, ticks %d, want 500 and 16", r.w.steps, r.w.workTicks)
 	}
 	r = dueShape(0)
 	r.w.maxSteps = 3
