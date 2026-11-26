@@ -275,18 +275,18 @@ func TestACheckpointThatRunsOutOfRoomIsDropped(t *testing.T) {
 	if err := os.Symlink("/dev/full", tmp); err != nil {
 		t.Fatal(err)
 	}
-	n.snapWaiters = []handle{7} // a client's Snapshot
+	c, s, h := snapshotClient(t, n)
+	n.snapshotRequest(c, s)
 	if err := n.startCkpt(5, 1, 0); err != nil {
 		t.Fatal(err)
 	}
-	n.storage.wantCkpt = false // as maybeCkpt leaves it
 	for n.ckpt != nil {
 		if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
 			t.Fatalf("a checkpoint that met ENOSPC stopped the node: %v", err)
 		}
 	}
-	if !slices.Equal(n.snapWaiters, []handle{7}) || !n.storage.wantCkpt {
-		t.Fatalf("after the dropped checkpoint the Snapshots %v wait, and a checkpoint is wanted: %v", n.snapWaiters, n.storage.wantCkpt)
+	if !slices.Equal(n.snapWaiters, []handle{h}) || n.storage.wantCkpt {
+		t.Fatalf("after the dropped checkpoint the live Snapshot must wait once, separately from Raft demand: waiters %v, wantCkpt %v", n.snapWaiters, n.storage.wantCkpt)
 	}
 	if n.ckptName != cur {
 		t.Fatalf("the current checkpoint is %s, want %s", n.ckptName, cur)

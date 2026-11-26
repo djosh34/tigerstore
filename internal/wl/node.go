@@ -630,8 +630,8 @@ func (n *node) endReply(c *client, s *stream, w *msgW) {
 	n.endStreamOK(c, s)
 }
 
-// replyError ends stream sid with a gRPC error, headers and trailers in
-// one block.
+// replyError ends stream sid with a gRPC error. Before streaming, the
+// response headers and trailers share one block; after it, only trailers.
 func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 	if s := c.get(sid); s != nil && s.watch {
 		if s.big {
@@ -648,10 +648,15 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 	if s := c.get(sid); s != nil {
 		n.callEnded(s, code)
 	}
-	blk := append([]byte(nil), respHeaders...)
+	s := c.get(sid)
+	var blk []byte
+	if s == nil || !s.streaming {
+		blk = append(blk, respHeaders...)
+	}
+	// Once response headers went out, only gRPC trailers may follow:
+	// a second :status in the trailing block is an HTTP/2 error.
 	blk = appendLiteral(blk, "grpc-status", itoa(code))
 	blk = appendLiteral(blk, "grpc-message", encodeGrpcMessage(msg))
-	s := c.get(sid)
 	if s != nil && (s.holds || s.big) {
 		c.hold(s, nil, blk)
 	} else {

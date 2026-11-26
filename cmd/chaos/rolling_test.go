@@ -560,7 +560,9 @@ func (r *rollingRun) refuseMainDir(i int) {
 	r.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	b, err := exec.CommandContext(ctx, r.newBin, r.c.nodes[i].args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, r.newBin, r.c.nodes[i].args...)
+	cmd.Env = r.c.nodes[i].env()
+	b, err := cmd.CombinedOutput()
 	if e := os.WriteFile(filepath.Join(r.dir, "main-data-dir-refused.log"), b, 0o644); e != nil {
 		r.t.Fatal(e)
 	}
@@ -859,6 +861,7 @@ func (r *rollingRun) refuseOld(i int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, r.oldBin, r.c.nodes[i].args...)
+	cmd.Env = r.c.nodes[i].env()
 	b, err := cmd.CombinedOutput()
 	if e := os.WriteFile(filepath.Join(r.dir, "old-binary-refused.log"), b, 0o644); e != nil {
 		r.t.Fatal(e)
