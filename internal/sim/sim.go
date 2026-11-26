@@ -2401,6 +2401,14 @@ func (s *Sim) down(n *node) {
 		return
 	}
 	n.dropJobs()
+	if p.wl.armed {
+		// A start taken down before its recovery ended, as by a crash at
+		// a step or a kill, leaves no armed crash behind: the next start
+		// would find the disk's fault set, arm none of its own, and crash
+		// at its first write, as every start after it (#860).
+		p.wl.armed = false
+		n.disk.Fault = nil
+	}
 	n.proc, n.duringInstall = nil, nil
 	n.since = s.now()
 	if n.why == "" {
