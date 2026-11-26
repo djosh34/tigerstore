@@ -88,7 +88,19 @@ type retryPause struct{}
 
 func (retryPause) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context { return ctx }
 
-func (retryPause) HandleRPC(_ context.Context, s stats.RPCStats) {
+func (retryPause) HandleRPC(ctx context.Context, s stats.RPCStats) {
+	if t, ok := ctx.Value(callTransportKey{}).(*callTransport); ok {
+		switch s := s.(type) {
+		case *stats.Begin:
+			if s.Client {
+				t.observed.Store(true)
+			}
+		case *stats.OutHeader:
+			if s.Client {
+				t.header.Store(true)
+			}
+		}
+	}
 	if b, ok := s.(*stats.Begin); ok && b.IsTransparentRetryAttempt && simrun.InGosim {
 		time.Sleep(time.Millisecond)
 	}
@@ -114,8 +126,9 @@ func (c *client) callV3(req proto.Message) (proto.Message, error) {
 	s := c.sim
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.ClientTimeout))
 	defer cancel()
+	ctx, transport := observeCallTransport(ctx)
 	resp, err := c.doV3(ctx, req)
-	return resp, v3Error(err)
+	return resp, transport.finish(v3Error(err))
 }
 
 func (c *client) doV3(ctx context.Context, req proto.Message) (proto.Message, error) {

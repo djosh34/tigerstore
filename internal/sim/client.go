@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -117,9 +118,11 @@ func (c *client) run() {
 			s.mu.Unlock()
 			continue
 		}
-		resp, err := s.call(s.nodes[i], r.req, s.cfg.ClientTimeout)
-		// A read that failed with "leader changed" goes again, as
-		// clientv3 retries it.
+		transport := new(callTransport)
+		resp, err := s.callObserved(s.nodes[i], r.req, s.cfg.ClientTimeout, transport)
+		// A call that failed with "leader changed" goes again. Keep
+		// its transport observation across these simulator retries too:
+		// an earlier attempt may have taken effect (wl/batch.go).
 		for errors.Is(err, rpctypes.ErrGRPCLeaderChanged) {
 			timeout := s.cfg.ClientTimeout
 			if timeout > 0 {
@@ -131,7 +134,7 @@ func (c *client) run() {
 					break
 				}
 			}
-			resp, err = s.call(s.nodes[i], r.req, timeout)
+			resp, err = s.callObserved(s.nodes[i], r.req, timeout, transport)
 		}
 		s.mu.Lock()
 		c.done(r, resp, err)
@@ -159,6 +162,11 @@ func (c *client) think(err error) int64 {
 // connection would, and returns its answer. A timeout of 0 waits for the
 // answer for as long as the connection lasts.
 func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, error) {
+	return s.callObserved(n, req, timeout, new(callTransport))
+}
+
+// callObserved shares transport evidence across the attempts of a call.
+func (s *Sim) callObserved(n *node, req proto.Message, timeout int64, transport *callTransport) (proto.Message, error) {
 	s.mu.Lock()
 	p, deadline := n.proc, s.now()+timeout
 	lat := s.clientLatency()
@@ -176,7 +184,9 @@ func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, er
 	}
 	var resp proto.Message
 	var err error
+	ctx = context.WithValue(ctx, callTransportKey{}, transport)
 	resp, err = s.callWL(p, req, ctx)
+	err = transport.finish(err)
 	cancel()
 	switch {
 	case p.dead():
@@ -236,9 +246,55 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	}
 }
 
+// callTransport follows the whole logical call, including clientv3's
+// interceptor retries and gRPC's transparent retries. Begin proves our
+// stats handler observed the call; OutHeader conservatively rules out
+// the shortcut, even when that stream was subsequently unprocessed.
+// grpc-go v1.84.0 emits OutHeader synchronously from NewStream before
+// returning the stream to SendMsg. No header event across the call means
+// no request body could have been sent. Unknown/unobserved paths stay
+// ambiguous, as do timeouts and cancellations.
+type callTransport struct {
+	observed atomic.Bool
+	header   atomic.Bool
+}
+
+type callTransportKey struct{}
+
+func observeCallTransport(ctx context.Context) (context.Context, *callTransport) {
+	t := new(callTransport)
+	return context.WithValue(ctx, callTransportKey{}, t), t
+}
+
+// refusedDialMessage is exactly grpc-go's ConnectionError.Error at the
+// picker boundary. Its internal transport error type is lost when pick
+// converts it into a public Unavailable status. Do not match a loose
+// substring, another Unavailable, or this text without transport evidence.
+var refusedDialMessage = fmt.Sprintf("connection error: desc = %q", "transport: Error while dialing: "+errConnRefused.Error())
+
+func (t *callTransport) finish(err error) error {
+	if err == nil || !t.observed.Load() || t.header.Load() {
+		return err
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.Unavailable && st.Message() == refusedDialMessage {
+		return &unsentDialError{err}
+	}
+	return err
+}
+
+// unsentDialError carries the call-path proof without changing the
+// original status, description or error chain.
+type unsentDialError struct{ error }
+
+func (e *unsentDialError) Unwrap() error              { return e.error }
+func (e *unsentDialError) GRPCStatus() *status.Status { return status.Convert(e.error) }
+
 // ambiguous reports whether a failed call may still have taken effect.
 func ambiguous(err error) bool {
+	var unsent *unsentDialError
 	switch {
+	case errors.As(err, &unsent):
+		return false
 	case errors.Is(err, errConnRefused),
 		errors.Is(err, rpctypes.ErrGRPCNoLeader),
 		errors.Is(err, rpctypes.ErrGRPCKeyNotFound),
