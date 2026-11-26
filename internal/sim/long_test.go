@@ -83,8 +83,8 @@ func longSeedBudget(wallLimit time.Duration) int64 {
 // verdict, so Actions records the full check's count (or its limit).
 func longCheckers(t *testing.T, res *Result, budget int64) {
 	t.Helper()
-	if err := independentWithSteps(res, func(steps int64, cpu time.Duration) {
-		t.Logf("revision witness used %d weighted steps (budget %d, native CPU %s)", steps, budget, cpu)
+	if err := independentWithSteps(res, func(steps int64, cpu, wall time.Duration) {
+		t.Logf("revision witness used %d weighted steps (budget %d, native CPU %s, search wall %s, %.2f steps/s)", steps, budget, cpu, wall, float64(steps)/wall.Seconds())
 	}, budget); err != nil {
 		t.Fatal(err)
 	}

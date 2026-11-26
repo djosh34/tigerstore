@@ -3,6 +3,7 @@ package check
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,7 +32,10 @@ func TestWitnessStepsUsed(t *testing.T) {
 				var used int64 = -1
 				opts = append(opts, StepsUsed(&used))
 				got := Witnessed(h, mode, timeout, opts...)
-				if fmt.Sprint(got) != fmt.Sprint(want) {
+				// Elapsed host time is diagnostic and varies between runs.
+				gotMessage, _, _ := strings.Cut(fmt.Sprint(got), "; elapsed search time ")
+				wantMessage, _, _ := strings.Cut(fmt.Sprint(want), "; elapsed search time ")
+				if gotMessage != wantMessage {
 					t.Fatalf("reporting changed the verdict/message: %v, want %v", got, want)
 				}
 				if kind == "before check" {

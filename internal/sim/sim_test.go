@@ -26,6 +26,7 @@ import (
 	"github.com/djosh34/tigerstore/check"
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/internal/simrun"
+	"github.com/djosh34/tigerstore/internal/wallclock"
 )
 
 // The simulator's tests read their settings from the environment, which
@@ -716,7 +717,10 @@ func (e *effects) check(t *testing.T) {
 // histories of TestLinearizable.
 func checkers(t *testing.T, res *Result) {
 	t.Helper()
-	if err := independent(res); err != nil {
+	if err := independentWithSteps(res, func(steps int64, cpu, wall time.Duration) {
+		t.Logf("revision witness used %d weighted steps (budget %d, native CPU %s, search wall %s, %.2f steps/s)",
+			steps, witnessStepLimit, cpu, wall, float64(steps)/wall.Seconds())
+	}, witnessStepLimit); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -773,7 +777,7 @@ func independent(res *Result) error {
 // independentWithSteps reports the revision witness's weighted count before
 // returning its verdict, including a timeout. Long runs log it for sizing
 // their deterministic budget without relying on the real-time backstop.
-func independentWithSteps(res *Result, report func(int64, time.Duration), budget int64) error {
+func independentWithSteps(res *Result, report func(int64, time.Duration, time.Duration), budget int64) error {
 	// A long run's checks drop its history as they convert it: they need
 	// only their own copy, and a report decodes it again (#500). Its
 	// hashes, which cover the history, are taken before.
@@ -797,10 +801,12 @@ func independentWithSteps(res *Result, report func(int64, time.Duration), budget
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
 		var steps int64
 		var cpuFrom time.Duration
+		var wallFrom int64
 		var cpuErr error
 		measure := mode == check.FromRevisions && report != nil
 		if measure {
 			cpuFrom, cpuErr = simrun.CPUTime()
+			wallFrom = wallclock.Now()
 		}
 		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
 		if measure {
@@ -810,7 +816,7 @@ func independentWithSteps(res *Result, report func(int64, time.Duration), budget
 			if cpuTo, err := simrun.CPUTime(); cpuErr == nil && err == nil {
 				elapsed = max(0, cpuTo-cpuFrom)
 			}
-			report(steps, elapsed)
+			report(steps, elapsed, time.Duration(max(0, wallclock.Now()-wallFrom)))
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))

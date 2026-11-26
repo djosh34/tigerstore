@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/internal/wallclock"
 )
 
 // WitnessMode says where Witnessed takes the order of the writes from.
@@ -77,6 +78,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	if timeout <= 0 {
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
+	started := wallclock.Now()
 	w := newWitness(h, time.Now().Add(timeout))
 	if o.stepsUsed != nil {
 		defer func() { *o.stepsUsed = w.steps }()
@@ -102,11 +104,18 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	if err == nil && time.Now().After(w.deadline) {
 		err = ErrWitnessTimeout
 	}
-	switch {
-	case errors.Is(err, ErrWitnessTimeout) && w.maxSteps > 0 && w.steps > w.maxSteps:
-		err = fmt.Errorf("%w after %d steps; %s", err, w.maxSteps, w.stoppedAt())
-	case errors.Is(err, ErrWitnessTimeout):
-		err = fmt.Errorf("%w; %s", err, w.stoppedAt())
+	if errors.Is(err, ErrWitnessTimeout) {
+		limit := fmt.Sprintf("the real-time limit after %d weighted steps (no step budget)", w.steps)
+		if w.maxSteps > 0 {
+			limit = fmt.Sprintf("the real-time limit after %d of %d weighted steps", w.steps, w.maxSteps)
+		}
+		if w.maxSteps > 0 && w.steps > w.maxSteps {
+			// The extra accounting step detects exhaustion; it did not
+			// buy another search step.
+			limit = fmt.Sprintf("the step budget (%d of %d weighted steps)", w.maxSteps, w.maxSteps)
+		}
+		elapsed := time.Duration(max(0, wallclock.Now()-started))
+		err = fmt.Errorf("%w: %s; %s; elapsed search time %s", err, limit, w.stoppedAt(), elapsed)
 	}
 	if err != nil {
 		return fmt.Errorf("witness check (%s) of %d operations: %w", mode, len(h.Ops), err)
@@ -114,8 +123,10 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	return nil
 }
 
-// ErrWitnessTimeout ends a check that passed its deadline or its steps
-// (MaxSteps): it decides nothing about the history.
+// ErrWitnessTimeout ends a check stopped by its step budget (MaxSteps),
+// deadline or real-time stop hook (StopWhen). The wrapped message names
+// the limit, weighted count and elapsed host search time; it decides
+// nothing about the history.
 var ErrWitnessTimeout = errors.New("timed out")
 
 // witness is one check: the order it builds, the replay of its events
