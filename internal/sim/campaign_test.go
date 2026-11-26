@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -108,6 +109,15 @@ func longConfig(seed uint64) Config {
 	return cfg
 }
 
+// campaignWallLimit changes only long seeds. Fresh seeds and aged images
+// and forks keep the driver's existing limits.
+func campaignWallLimit(seed uint64) time.Duration {
+	if campaignKind(seed) == kindLong {
+		return longSeedWallLimit
+	}
+	return 0
+}
+
 // TestCampaign runs $SIM_SEEDS seeds from $SIM_SEED, each of the kind
 // campaignKind allocates: a fresh scenario (Scenario), an aged image and its
 // forks (TestAgedForks), or a long seed (longConfig), every checker on
@@ -142,7 +152,7 @@ func TestCampaign(t *testing.T) {
 		case kindLong:
 			cfg := longConfig(seed)
 			res := run(t, cfg)
-			checkers(t, res)
+			longCheckers(t, res, longWitnessStepLimit)
 			t.Logf("seed %d: long, %s: %d ok, %d failed, %d ambiguous, %d fenced, %d replaced", seed, cfg.describe(), res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.Fenced, res.Stats.Replaced)
 			return scenarioRun{Kind: kind, Nodes: cfg.voters(), Stats: res.Stats}
 		default:
@@ -180,7 +190,7 @@ func TestCampaign(t *testing.T) {
 			}
 		}
 		return false
-	})
+	}, simrun.WithWallLimit(campaignWallLimit))
 	var counts []string
 	for _, k := range slices.Sorted(maps.Keys(ran)) {
 		counts = append(counts, fmt.Sprintf("%s: %d", k, ran[k]))

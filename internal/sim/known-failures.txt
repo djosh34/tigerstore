@@ -17,3 +17,4 @@ TestScenarios 492 https://github.com/djosh34/tigerstore/issues/799
 TestScenarios 27 https://github.com/djosh34/tigerstore/issues/770
 TestScenarios 99 https://github.com/djosh34/tigerstore/issues/851
 TestScenarios 459 https://github.com/djosh34/tigerstore/issues/785
+TestCampaignShapeSeeds 1 https://github.com/djosh34/tigerstore/issues/876
