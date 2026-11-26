@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -31,6 +32,8 @@ const (
 	clientSnapVersion = 2
 	clientSnapHeader  = len(clientSnapMagic) + 4 + 4*8
 	clientSnapChunk   = 1 << 20
+	// A busy ring must not keep one Snapshot retrying on end.
+	clientSnapRetries = 3
 )
 
 // clientSnap is a client's snapshot being sent, a chunk a turn while its
@@ -47,25 +50,45 @@ type clientSnap struct {
 // snapshotRequest takes a client's Snapshot: the node takes a checkpoint
 // for it, and sends it once written.
 func (n *node) snapshotRequest(c *client, s *stream) {
+	if s.snapRequested {
+		n.replyError(c, s.id, codeInvalidArgument, "etcdserver: snapshot: only one request per stream")
+		return
+	}
+	s.snapRequested = true
 	n.snapWaiters = append(n.snapWaiters, mkHandle(c, s.id))
-	n.storage.wantCkpt = true
+}
+
+// pruneSnapWaiters drops clients that went away after asking for a
+// checkpoint, without changing Raft's independent wantCkpt demand.
+func (n *node) pruneSnapWaiters() {
+	k := 0
+	for _, h := range n.snapWaiters {
+		if c, _ := n.clientOf(h); c != nil {
+			n.snapWaiters[k] = h
+			k++
+		}
+	}
+	clear(n.snapWaiters[k:])
+	n.snapWaiters = n.snapWaiters[:k]
 }
 
 // startClientSnaps hands the checkpoint just written to the clients that
 // asked before it started: a goroutine writes each one's copy with every
 // value, and posts it to the loop to send.
-func (n *node) startClientSnaps(waiters []handle, name string, meta ckptMeta) {
+func (n *node) startClientSnaps(waiters []handle, name string) {
 	if len(waiters) == 0 || n.shell == nil {
 		return
 	}
-	head := clientSnapHead(n.clusterID, meta)
 	for _, h := range waiters {
+		if c, _ := n.clientOf(h); c == nil {
+			continue
+		}
 		src, err := n.sys.openFile(filepath.Join(n.ckptDir, name), os.O_RDONLY, 0)
 		if err != nil {
 			n.replyErrorH(h, codeInternal, err.Error())
 			continue
 		}
-		n.shell.prepareClientSnap(h, src, head)
+		n.shell.prepareClientSnap(h, src)
 	}
 }
 
@@ -79,7 +102,7 @@ func clientSnapHead(cluster uint64, m ckptMeta) []byte {
 
 // prepareClientSnap writes the copy in a goroutine of its own and posts
 // it to the loop, which sends it.
-func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
+func (l *loop) prepareClientSnap(h handle, src file) {
 	strays.Add(1)
 	go func() {
 		defer strays.Add(-1)
@@ -90,30 +113,85 @@ func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 			_ = l.n.sys.remove(f.Name())
 			err = selfContained(src, l.n.wal, f)
 		}
-		var size int64
+		cs := &clientSnap{h: h, f: f}
 		if err == nil {
-			size, err = f.Seek(0, io.SeekCurrent)
+			cs.size, err = f.Seek(0, io.SeekCurrent)
 		}
 		if err == nil {
 			_, err = f.Seek(0, io.SeekStart)
 		}
-		l.post(func() error {
-			if err != nil {
-				if f != nil {
-					_ = f.Close()
-				}
-				l.n.replyErrorH(h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
-				if errors.Is(err, ErrBadValue) {
-					return err
-				}
+		if err == nil {
+			// The verified copy is the authority for its header, even
+			// when the caller reused the newest quiet checkpoint.
+			cs.head, err = copiedClientSnapHead(f, l.n.clusterID)
+		}
+		if err == nil {
+			_, err = f.Seek(0, io.SeekStart)
+		}
+		l.post(func() error { return l.n.clientSnapCopied(cs, err) })
+	}()
+}
+
+// copiedClientSnapHead reads the metadata of a verified, self-contained
+// checkpoint, not the store whose revision may since have changed.
+func copiedClientSnapHead(f file, cluster uint64) ([]byte, error) {
+	cr := &ckptReader{r: bufio.NewReader(f)}
+	if err := cr.skip(uint64(len(ckptMagic))); err != nil {
+		return nil, err
+	}
+	var v [3]uint64
+	for i := range v {
+		var err error
+		if v[i], err = cr.uvarint(); err != nil {
+			return nil, err
+		}
+	}
+	return clientSnapHead(cluster, ckptMeta{index: v[0], term: v[1], rev: int64(v[2])}), nil
+}
+
+// snapshotDamage reports errors that must stop the node, not retry a
+// copy or report a failed send to Raft as if the disk were sound.
+func snapshotDamage(err error) bool {
+	return errors.Is(err, ErrBadValue) || errors.Is(err, ErrCorruptCheckpoint) || errors.Is(err, ErrCorruptLog)
+}
+
+// clientSnapCopied takes back a client's copy. Only a retired log segment
+// retries through a fresh checkpoint. A replaced checkpoint can still
+// name live log bytes: a bad value is damage, whatever the file's name.
+// Retries belong to a live stream, and stop once its limit is reached.
+func (n *node) clientSnapCopied(cs *clientSnap, err error) error {
+	c, s := n.clientOf(cs.h)
+	if err != nil {
+		if cs.f != nil {
+			_ = cs.f.Close()
+		}
+		if snapshotDamage(err) {
+			n.replyErrorH(cs.h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
+			return err
+		}
+		if c == nil {
+			return nil
+		}
+		if errors.Is(err, errLogCut) {
+			if s.snapRetries < clientSnapRetries {
+				s.snapRetries++
+				n.snapWaiters = append(n.snapWaiters, cs.h)
 				return nil
 			}
-			body := int64(len(head)) + size
-			total := body + clientSnapPad(body) + sha256.Size
-			l.n.clientSnaps = append(l.n.clientSnaps, &clientSnap{h: h, f: f, head: head, size: total, sum: sha256.New()})
-			return nil
-		})
-	}()
+			err = fmt.Errorf("retry limit (%d) reached after log cuts; retry the snapshot request", clientSnapRetries)
+		}
+		n.replyError(c, s.id, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
+		return nil
+	}
+	if c == nil {
+		_ = cs.f.Close()
+		return nil
+	}
+	body := int64(len(cs.head)) + cs.size
+	cs.size = body + clientSnapPad(body) + sha256.Size
+	cs.sum = sha256.New()
+	n.clientSnaps = append(n.clientSnaps, cs)
+	return nil
 }
 
 // clientSnapPad is the zero padding after n bytes that makes them a

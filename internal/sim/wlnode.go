@@ -671,6 +671,7 @@ func (h *wlHooks) NoRoom() {
 		n.shortArmed = false
 	}
 	if !n.diskFull && !short {
+		s.stats.NoRoomOwn++
 		n.noRoomAt = s.now()
 	}
 	switch {

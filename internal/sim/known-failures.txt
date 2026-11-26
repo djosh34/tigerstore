@@ -8,11 +8,10 @@
 # internal/node, gets a file of its own.
 # Under the race detector a seed does not replay, so a bug that a run
 # there hits cannot be listed here.
-TestScenarios 440 https://github.com/djosh34/tigerstore/issues/784
 TestScenarios 412 https://github.com/djosh34/tigerstore/issues/785
 TestScenarios 870 https://github.com/djosh34/tigerstore/issues/785
 TestScenarios 1238 https://github.com/djosh34/tigerstore/issues/785
-TestScenarios 38 https://github.com/djosh34/tigerstore/issues/830
+TestScenarios 38 https://github.com/djosh34/tigerstore/issues/770
 TestScenarios 48 https://github.com/djosh34/tigerstore/issues/798
 TestScenarios 492 https://github.com/djosh34/tigerstore/issues/799
 TestScenarios 27 https://github.com/djosh34/tigerstore/issues/770

@@ -368,6 +368,9 @@ type ckptRun struct {
 	// force cuts the log at prevFrom whatever the store names before it,
 	// which the checkpoint takes in: the log's ring ran low (logring.go).
 	force bool
+	// raftWanted is the independent Raft request this run took in; a
+	// drop for lack of room restores it, not client-only demand.
+	raftWanted bool
 	// snapWaiters are the clients' Snapshots that asked before it started.
 	snapWaiters []handle
 	cut         int64
@@ -415,6 +418,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	r.leases = st.encodeLeases(nil)
 	r.members = n.encodeMembers(nil)
 	r.snapWaiters, n.snapWaiters = n.snapWaiters, nil
+	r.raftWanted, n.storage.wantCkpt = n.storage.wantCkpt, false
 	dl, _ := st.log.(durableLog)
 	r.w = &ckptWriter{
 		sys: n.sys,
@@ -649,7 +653,7 @@ func (n *node) ckptDone() error {
 		n.cutLog()
 	}
 	n.st.release()
-	n.startClientSnaps(r.snapWaiters, r.w.name, r.meta)
+	n.startClientSnaps(r.snapWaiters, r.w.name)
 	n.logf("checkpoint at index %d, revision %d: %d bytes, the log from %d and cut at %d, in %v; %d MB of values taken in, %d MB left in the log; the loop encoded for %v, the writer read for %v and wrote for %v",
 		r.meta.index, r.meta.rev, r.at+4, r.logFrom, r.cut, time.Since(r.started).Round(time.Millisecond), r.taken>>20, r.leftInLog>>20,
 		time.Duration(r.encodeNs).Round(time.Millisecond), time.Duration(r.w.readNs.Load()).Round(time.Millisecond), time.Duration(r.w.writeNs.Load()).Round(time.Millisecond))
@@ -685,6 +689,11 @@ func (n *node) abortCkpt() {
 	r.w.closeFile()
 	_ = n.sys.remove(filepath.Join(n.ckptDir, r.w.tmp))
 	n.st.release()
+	// An install replaces the store, not its clients' Snapshot calls.
+	// Restore their checkpoint demand without spending a cut retry.
+	// Shutdown closed its clients first, so pruning drops its waiters.
+	n.snapWaiters = append(n.snapWaiters, r.snapWaiters...)
+	n.pruneSnapWaiters()
 }
 
 // errCkptAborted is a checkpoint's write that stopped at its abort.
@@ -1444,7 +1453,8 @@ func rewriteCkpt(r io.Reader, dst io.Writer, hdr *ckptHeader) error {
 // read reads a value it names in itself or in the log. With hdr, the
 // ConfState and the members are hdr's.
 func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst io.Writer, hdr *ckptHeader) error {
-	cr := &ckptReader{r: bufio.NewReaderSize(r, 1<<20)}
+	src := &fileReader{r: r}
+	cr := &ckptReader{r: bufio.NewReaderSize(src, 1<<20), src: src}
 	bw := bufio.NewWriterSize(dst, 1<<20)
 	crc := uint32(0)
 	out := func(b []byte) {
@@ -1463,9 +1473,14 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		out(b)
 		return err
 	}
-	if err := copyBytes(uint64(len(ckptMagic))); err != nil {
+	magic, err := cr.bytes(uint64(len(ckptMagic)))
+	if err != nil {
 		return err
 	}
+	if string(magic) != string(ckptMagic) {
+		return fmt.Errorf("%w: no magic", ErrCorruptCheckpoint)
+	}
+	out(magic)
 	for range 5 { // index, term, revision, compacted revision, whether compacted
 		if _, err := uv(); err != nil {
 			return err
@@ -1481,7 +1496,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		}
 		cm, err := cr.readMembers()
 		if err != nil {
-			return err
+			return cr.damage(err)
 		}
 		n := &node{members: cm.members, removed: cm.removed, alarms: cm.alarms, downgrade: cm.downgrade, format: cm.format, formatEpoch: cm.formatEpoch, auth: cm.auth}
 		out(n.encodeMembers(nil))
@@ -1495,7 +1510,7 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		}
 		cm, err := cr.readMembers()
 		if err != nil {
-			return err
+			return cr.damage(err)
 		}
 		cs, err := proto.Marshal(hdr.cs)
 		if err != nil {
@@ -1526,6 +1541,10 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 		return err
 	}
 	var val []byte
+	// A value-read error establishes no cut until the source's CRC
+	// checks. Keep the error, but finish parsing the source before
+	// returning it: a damaged offset must not masquerade as a log cut.
+	var valueErr error
 	for {
 		kind, err := cr.ReadByte()
 		if err != nil {
@@ -1539,6 +1558,9 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 			}
 			if binary.LittleEndian.Uint32(sum) != want {
 				return fmt.Errorf("%w: its CRC", ErrCorruptCheckpoint)
+			}
+			if valueErr != nil {
+				return valueErr
 			}
 			out([]byte{ckptEnd})
 			_, _ = bw.Write(binary.LittleEndian.AppendUint32(nil, crc))
@@ -1568,6 +1590,12 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 						return err
 					}
 				}
+				// A value cannot exceed the request that introduced it.
+				// Bound this unverified length before allocating: damage
+				// must not panic or exhaust memory before the CRC checks.
+				if f[5] > maxRequestBytes {
+					return fmt.Errorf("%w: a value of %d bytes exceeds the request limit %d", ErrCorruptCheckpoint, f[5], maxRequestBytes)
+				}
 				at, sum := uint64(0), uint64(0)
 				if f[5] > 0 {
 					if sum, err = cr.uvarint(); err != nil {
@@ -1596,15 +1624,20 @@ func copyCkpt(r io.Reader, read func(p []byte, inFile bool, at int64) error, dst
 					}
 					continue
 				}
+				if valueErr != nil {
+					continue
+				}
 				if uint64(cap(val)) < f[5] {
 					val = make([]byte, f[5])
 				}
 				v := val[:f[5]]
 				if err := read(v, inFile, int64(at)); err != nil {
-					return fmt.Errorf("read a value for a follower's checkpoint: %w", err)
+					valueErr = fmt.Errorf("read a value for a follower's checkpoint: %w", err)
+					continue
 				}
 				if err := checkValue(v, int64(at), uint32(sum)); err != nil {
-					return err
+					valueErr = err
+					continue
 				}
 				out(v)
 			}
