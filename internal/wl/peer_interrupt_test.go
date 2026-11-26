@@ -121,15 +121,13 @@ func TestTimedMembersSocketReadReportsEINTR(t *testing.T) {
 	if err := (sysEnv{}).blocking(fds[0], snapTimeout); err != nil {
 		t.Fatal(err)
 	}
-	tid, result := make(chan int, 1), make(chan error, 1)
-	go func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		tid <- unix.Gettid()
+	thread, result, done := peerLockedCall(func() error {
 		_, err := sysRead(fds[0], make([]byte, inBuf))
-		result <- err
-	}()
-	thread := <-tid
+		return err
+	})
+	// This runs before descriptor cleanup, even if observing the read
+	// fails before the worker reaches sysRead.
+	t.Cleanup(func() { finishPeerCall(t, fds[0], done) })
 	fd := waitForMembersSocketRead(t, thread)
 	if fd != fds[0] {
 		t.Fatal("observed another thread's socket")
@@ -152,12 +150,12 @@ func TestTimedMembersSocketReadReportsEINTR(t *testing.T) {
 // guess: the members client owns the fd throughout.
 func waitForMembersSocketRead(t *testing.T, tid int) int {
 	t.Helper()
-	return waitForPeerSocketCall(t, tid, unix.SYS_READ, -1, inBuf, snapTimeout)
+	return waitForPeerSocketCall(t, tid, unix.SYS_READ, -1, inBuf)
 }
 
 // waitForPeerSocketCall waits for an owned thread's timed, blocking
 // syscall. It opens no copy of the socket and never closes that fd.
-func waitForPeerSocketCall(t *testing.T, tid, call, fd, count int, timeout time.Duration) int {
+func waitForPeerSocketCall(t *testing.T, tid, call, fd, count int) int {
 	t.Helper()
 	path := fmt.Sprintf("/proc/self/task/%d/syscall", tid)
 	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); time.Sleep(time.Millisecond) {
@@ -190,7 +188,7 @@ func waitForPeerSocketCall(t *testing.T, tid, call, fd, count int, timeout time.
 			continue
 		}
 		gotTimeout := time.Duration(tv.Sec)*time.Second + time.Duration(tv.Usec)*time.Microsecond
-		if gotTimeout < timeout || gotTimeout > timeout+20*time.Millisecond {
+		if gotTimeout < snapTimeout || gotTimeout > snapTimeout+20*time.Millisecond {
 			continue
 		}
 		flags, err := unix.FcntlInt(uintptr(at), unix.F_GETFL, 0)

@@ -36,7 +36,7 @@ func TestAnInterruptedBlockingFlushAllWritesEveryByte(t *testing.T) {
 	s.put(payload)
 	tid, flushed, done := peerLockedCall(func() error { return flushAll(s) })
 	t.Cleanup(func() { finishPeerCall(t, fd, done) })
-	waitForPeerSocketCall(t, tid, unix.SYS_WRITE, fd, len(payload), snapTimeout)
+	waitForPeerSocketCall(t, tid, unix.SYS_WRITE, fd, len(payload))
 	if err := unix.Tgkill(os.Getpid(), tid, unix.SIGURG); err != nil {
 		t.Fatal(err)
 	}
@@ -116,14 +116,22 @@ func TestABlockingPeerReadTimeoutStillExpires(t *testing.T) {
 // EAGAIN into another retry or return the timeout before that read.
 func TestAnInterruptedBlockingReadStillTimesOut(t *testing.T) {
 	const timeout = 250 * time.Millisecond
-	fd, _, _ := peerTestSocketPair(t, timeout)
+	fd, _, _ := peerTestSocketPair(t, snapTimeout)
 	s := newSock(&handoff{fd: fd}, &counters{})
 	tid, result, done := peerLockedCall(func() error {
 		_, err := readFrame(s)
 		return err
 	})
 	t.Cleanup(func() { finishPeerCall(t, fd, done) })
-	waitForPeerSocketCall(t, tid, unix.SYS_READ, fd, inBuf, timeout)
+	waitForPeerSocketCall(t, tid, unix.SYS_READ, fd, inBuf)
+	// A loaded runner can pause between observing the syscall and
+	// signalling it. The first read keeps its long timeout; only the
+	// retry takes this short one. Exercise a pause past that short
+	// timeout to keep the observation/signal race covered.
+	time.Sleep(350 * time.Millisecond)
+	if err := (sysEnv{}).blocking(fd, timeout); err != nil {
+		t.Fatal(err)
+	}
 	started := time.Now()
 	if err := unix.Tgkill(os.Getpid(), tid, unix.SIGURG); err != nil {
 		t.Fatal(err)
@@ -192,7 +200,7 @@ func TestAPeerHelloSurvivesAnInterruptedBlockingRead(t *testing.T) {
 		}
 	})
 	thread := <-tid
-	waitForPeerSocketCall(t, thread, unix.SYS_READ, fds[0], inBuf, snapTimeout)
+	waitForPeerSocketCall(t, thread, unix.SYS_READ, fds[0], inBuf)
 	if err := unix.Tgkill(os.Getpid(), thread, unix.SIGURG); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +238,7 @@ func TestTheLoopReadStillYieldsAfterAnInterrupt(t *testing.T) {
 		return err
 	})
 	t.Cleanup(func() { finishPeerCall(t, fd, done) })
-	waitForPeerSocketCall(t, tid, unix.SYS_READ, fd, inBuf, snapTimeout)
+	waitForPeerSocketCall(t, tid, unix.SYS_READ, fd, inBuf)
 	if err := unix.Tgkill(os.Getpid(), tid, unix.SIGURG); err != nil {
 		t.Fatal(err)
 	}
