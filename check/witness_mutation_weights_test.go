@@ -1,6 +1,12 @@
 package check
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/djosh34/tigerstore/history"
+)
 
 func TestMutationWeightAndBudget(t *testing.T) {
 	r := dueShape(0)
@@ -29,6 +35,29 @@ func TestMutationWeightAndBudget(t *testing.T) {
 	}
 	if !r.w.stopped || r.w.steps != 4 || !r.mutationStep(0) {
 		t.Fatalf("mutation bypassed/forgot stop: %v, %d steps", r.w.stopped, r.w.steps)
+	}
+}
+
+func TestMutationWeightInReplay(t *testing.T) {
+	for _, budget := range []int64{0, 3} {
+		t.Run(fmt.Sprint(budget), func(t *testing.T) {
+			start := &history.Start{Rev: 1}
+			for i := range 100 {
+				start.KVs = append(start.KVs, history.KeyValue{Key: fmt.Sprintf("k%03d", i), Version: 1, CreateRevision: 1, ModRevision: 1})
+			}
+			w := newWitness(&history.History{Start: start}, time.Now().Add(time.Minute))
+			r := newRevisionOrder(w)
+			w.search, w.maxSteps = r, budget
+			w.live.stop, w.live.mutate = r.step, r.mutationStep
+			o := w.live.step(history.Request{Delete: &history.DeleteRequest{End: history.AllKeys}}, true)
+			if budget == 0 {
+				if o.err != nil || o.resp.Delete.Deleted != 100 || w.steps < 46 || w.steps > 47 {
+					t.Fatalf("real large-map replay was not charged: %v, %d steps", o, w.steps)
+				}
+			} else if o.err != errReplayStopped || !w.stopped || w.steps != budget+1 {
+				t.Fatalf("replay escaped mutation budget: %v, stopped %v, %d steps", o, w.stopped, w.steps)
+			}
+		})
 	}
 }
 

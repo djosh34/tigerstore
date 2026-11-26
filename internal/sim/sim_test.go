@@ -730,24 +730,28 @@ func checkers(t *testing.T, res *Result) {
 // charges ordinary inner work at 1/1,024 and cheap capacity-vector items
 // and sort estimates at 1/16,384; index work stays at 1/256 and operation
 // turns at one. Stop polls still tick every 64 inner items, independently
-// of those weights. After #876's retained eligibility intersection, no-cap
-// measurements against base 37e51817 (maximum of three runs, ratios
-// rounded up to four decimals):
+// of those weights. The aged-path calibration additionally charges one
+// step per 2,048 encoded diagnostic bytes and half a step per key write
+// beyond a transaction's eight-entry small prior-value map. Diagnostic
+// polling still uses 64-byte chunks, independently of its budget weight.
+// Profiles and contended Actions rates are recorded on #872. With #876's
+// retained eligibility intersection, no-cap saved-history measurements
+// against base 37e51817 (maximum of three runs, ratios rounded up):
 //
 //	history                     base  weighted   ratio
 //	planted-B01a-1                10        10  1.0000
-//	seed-5058843                1479      1662  1.1238
+//	seed-5058843                1479      1794  1.2130
 //	seed-5068434                 107       114  1.0655
 //	seed-59113215                272       293  1.0773
 //	seed-77148                   777       841  1.0824
-//	seed-888737                  141       156  1.1064
-//	witness-425                23712     25426  1.0723
-//	witness-control-80-201      9764     12296  1.2594
-//	witness-control-320-1529   15881    110320  6.9467
+//	seed-888737                  141       158  1.1206
+//	witness-425                23712     25433  1.0726
+//	witness-control-80-201      9764     12337  1.2636
+//	witness-control-320-1529   15881    110378  6.9504
 //	81000 same-revision grants 87330     89394  1.0237
 //	256 gaps, 4096 expiries    13271     62819  4.7336
 //
-// Round the worst ratio, 110,320 / 15,881, up to seven: the old
+// Round the worst ratio, 110,378 / 15,881, up to seven: the old
 // 50,000,000 * 7 = 350,000,000 preserves every measured margin; ordinary
 // checks get 360,000,000, a little above that floor. Long-seed revision
 // checks instead get 180,000,000: run 45803627951 used 219,708,153 steps

@@ -192,7 +192,7 @@ func keepBlackbox(run string, res *metatesting.RunResult) {
 const wallGrace = 10 * time.Minute
 
 // wallLimit is each run's real-time backstop: SIM_WALL overrides its
-// per-seed policy, otherwise the default is 30 minutes, or 165 for a test
+// per-seed policy, otherwise the default is OrdinaryWallLimit, or 165 for a test
 // named *Long. A run past it stops with its report and stacks; one that
 // never yields is ended wallGrace later (#499). The limit is not passed
 // into the simulated environment and changes no run before it passes.
@@ -224,7 +224,7 @@ func resolveWallLimit(test, override string, configured time.Duration) (time.Dur
 		// 180 minutes kube-sim.sh gives that test binary.
 		return 165 * time.Minute, nil
 	}
-	return 30 * time.Minute, nil
+	return OrdinaryWallLimit, nil
 }
 
 // readable is a run's log as go test prints it: gosim writes what the

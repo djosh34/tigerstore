@@ -144,8 +144,9 @@ func TestMixedWeightsSharePollingAndBudget(t *testing.T) {
 
 // TestWeightedSavedMargins guards the ratio constraint independently of
 // the wall stop. The old counts are measured on base 37e51817; multiplying
-// each by 360M/50M preserves its fraction of the old budget, including
-// diagnostic-byte work. The ordinary budget stays 360M;
+// each by seven preserves its fraction of the old 50M budget even at
+// the 350M floor, including diagnostic bytes and large-map writes. The
+// ordinary budget stays 360M, leaving still more margin;
 // long seeds have a separate, runner-time-sized cap under #876.
 func TestWeightedSavedMargins(t *testing.T) {
 	for _, tc := range []struct {
@@ -167,8 +168,8 @@ func TestWeightedSavedMargins(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var used int64
 			err := Witnessed(budgetHistory(t, tc.name), FromRevisions, time.Hour, StepsUsed(&used))
-			if errors.Is(err, ErrWitnessTimeout) || used <= 0 || used*50_000_000 > tc.base*360_000_000 {
-				t.Fatalf("lost margin: %d weighted steps, base %d, ratio budget 360M/50M; %v", used, tc.base, err)
+			if errors.Is(err, ErrWitnessTimeout) || used <= 0 || used*50_000_000 > tc.base*350_000_000 {
+				t.Fatalf("lost margin: %d weighted steps, base %d, ratio floor 350M/50M; %v", used, tc.base, err)
 			}
 			t.Logf("base %d, weighted %d, ratio %.6f", tc.base, used, float64(used)/float64(tc.base))
 		})

@@ -16,10 +16,10 @@ func TestResolveWallLimit(t *testing.T) {
 		policy    time.Duration
 		want      time.Duration
 	}{
-		{"TestSeeds", "", 0, 30 * time.Minute},
-		{"TestBusySeeds", "", 0, 30 * time.Minute},
-		{"TestAgedForks", "", 0, 30 * time.Minute},
-		{"TestCampaign", "", 0, 30 * time.Minute},
+		{"TestSeeds", "", 0, OrdinaryWallLimit},
+		{"TestBusySeeds", "", 0, OrdinaryWallLimit},
+		{"TestAgedForks", "", 0, OrdinaryWallLimit},
+		{"TestCampaign", "", 0, OrdinaryWallLimit},
 		{"TestCampaign", "", long, long},
 		{"TestCampaignShapeSeeds", "", long, long},
 		{"TestKubernetesLong", "", 0, 165 * time.Minute},
