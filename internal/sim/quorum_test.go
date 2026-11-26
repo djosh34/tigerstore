@@ -3,6 +3,7 @@ package sim
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -177,6 +178,68 @@ func TestQuorumLossWaitsForPendingRecovery(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestQuorumLossRemovedRotFailsAtHealing builds a down rotted node whose
+// damaged segment has been removed. Its next start clears the rot, so it
+// must not defer the healing verdict as if it would refuse that disk.
+func TestQuorumLossRemovedRotFailsAtHealing(t *testing.T) {
+	cfg := DefaultConfig(1)
+	cfg.LoseQuorum = true
+	s, err := newSim(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.t0 = s.t0.Add(-time.Second)
+	s.fence(s.nodes[0], "earlier refusal", "earlier refusal")
+	n := s.nodes[1]
+	n.corrupted, n.rotted, n.rotFile = true, true, "wal/removed.seg"
+	if slices.Contains(n.disk.DurableNames(), n.rotFile) {
+		t.Fatal("the rotted segment has not been removed")
+	}
+	s.healed = true
+	s.checkRequestedQuorumLoss(true)
+	if !errors.Is(s.err, errRequestedQuorumLoss) {
+		t.Fatalf("removed rot deferred the healing verdict: %v", s.err)
+	}
+}
+
+// TestQuorumLossInterruptedDeferralCountsMiss reaches healing with a
+// pending refusal, then fails before the end verdict. The failure keeps
+// its own cause and must still carry and count the missed quorum loss.
+func TestQuorumLossInterruptedDeferralCountsMiss(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		interrupted := errors.New("interrupted the pending recovery")
+		cfg := DefaultConfig(seed)
+		cfg.FormUnderFaults, cfg.LoseQuorum = true, true
+		cfg.scenario = func(s *Sim) error {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.fence(s.nodes[0], "earlier refusal", "earlier refusal")
+			n := s.nodes[1]
+			s.crash(n)
+			n.corrupted = true
+			// Build healing's state directly: its verdict defers for
+			// this pending refusal, and the run returns early instead.
+			s.healed = true
+			s.checkRequestedQuorumLoss(true)
+			if s.err != nil {
+				return fmt.Errorf("failed before the interruption: %w", s.err)
+			}
+			s.fail("%w", interrupted)
+			return s.err
+		}
+		res, err := runSeed(t, cfg)
+		if !errors.Is(err, interrupted) || !errors.Is(err, errRequestedQuorumLoss) {
+			t.Fatalf("interrupted deferral returned %v, want both the interruption and the missed loss", err)
+		}
+		r := scenarioResult(cfg, res, err)
+		ran := map[string]int{}
+		if !r.ReportFailedSeed() || !r.countMissedLoss(ran) || ran["requested quorum loss, not lost"] != 1 {
+			t.Fatalf("interrupted deferral: counts %v, want one reported miss", ran)
+		}
+		return res.Stats
+	}, nil)
 }
 
 // TestReplacementLosesQuorum is the end of TestCampaign seed 780 on main

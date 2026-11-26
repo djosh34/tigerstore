@@ -1067,6 +1067,14 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
+	if cfg.LoseQuorum && s.healed && s.quorumLostAt == 0 && !errors.Is(err, errRequestedQuorumLoss) {
+		// A failure may have interrupted the pending recoveries before
+		// the end verdict. Keep its cause, and report the missed loss
+		// as well: it must not disappear from the set's count.
+		missed := fmt.Errorf("seed %d at %d ms: %w or the pending recoveries", cfg.Seed, s.now()/Millisecond, errRequestedQuorumLoss)
+		err = errors.Join(err, missed)
+		s.tracef("failed: %v", missed)
+	}
 	for _, n := range s.nodes {
 		c := n.disk.Counts
 		d := &s.stats.Disk
@@ -2587,13 +2595,15 @@ var errRequestedQuorumLoss = errors.New("requested a quorum loss and none happen
 
 // checkRequestedQuorumLoss checks the requested loss. At healing, damage
 // already on disks still to recover may yet fence a majority; only those
-// pending refusals can defer the verdict until the end. The lock is held.
+// pending refusals can defer the verdict until the end. Rot is not enough:
+// its segment may be gone, or recovery may no longer name its value.
+// The lock is held.
 func (s *Sim) checkRequestedQuorumLoss(atHealing bool) {
 	if !s.cfg.LoseQuorum || s.quorumLostAt > 0 {
 		return
 	}
 	if atHealing && s.count(func(n *node) bool {
-		return n.fenced || n.corrupted && (n.proc == nil || !n.proc.wl.recovered)
+		return n.fenced || n.corrupted && !n.rotted && (n.proc == nil || !n.proc.wl.recovered)
 	}) > s.tolerance() {
 		s.tracef("requested quorum loss: waiting for the damaged disks' pending recoveries")
 		return

@@ -3,6 +3,7 @@
 package simrun
 
 import (
+	"encoding/json"
 	"maps"
 	"slices"
 	"strings"
@@ -46,6 +47,81 @@ func TestAddFailedSeed(t *testing.T) {
 		return true
 	}) {
 		t.Fatal("a result without FailedSeed stopped the set")
+	}
+}
+
+// TestTwoRunsReportsSecondMiss checks a successful first run followed by
+// a missed loss: the seed's callback must receive the miss exactly once,
+// including for a fork, which uses the same double-run path.
+func TestTwoRunsReportsSecondMiss(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		env  []string
+	}{
+		{"fresh", nil},
+		{"fork", []string{"SIM_FORK=0"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			first := &Result{Artifacts: map[string][]byte{
+				"hashes": []byte("same"), "seed.json": []byte(`{"Missed":false}`),
+			}}
+			second := &Result{Failed: true, Artifacts: map[string][]byte{
+				"hashes": []byte("same"), "seed.json": []byte(`{"Missed":true}`),
+			}}
+			calls := 0
+			r := twoRunsWith[missedLoss](t, Run{Seed: 1, Env: c.env}, func(_ *testing.T, r Run) *Result {
+				if !slices.Contains(r.Env, "SIM_KEEP=1") || !slices.Equal(r.Env[:len(c.env)], c.env) {
+					t.Fatalf("run lost its environment: %v", r.Env)
+				}
+				calls++
+				if calls == 1 {
+					return first
+				}
+				return second
+			})
+			callbacks, misses := 0, 0
+			add := func(_ uint64, r missedLoss) bool {
+				callbacks++
+				if r.Missed {
+					misses++
+				}
+				return false
+			}
+			if r.Failed {
+				addFailedSeed(1, r.Artifacts["seed.json"], add)
+			} else {
+				var v missedLoss
+				if err := json.Unmarshal(r.Artifacts["seed.json"], &v); err != nil {
+					t.Fatal(err)
+				}
+				add(1, v)
+			}
+			if calls != 2 || callbacks != 1 || misses != 1 {
+				t.Fatalf("%d runs, %d callbacks, %d misses; want 2, 1, 1", calls, callbacks, misses)
+			}
+		})
+	}
+}
+
+// TestTwoRunsKeepsOrdinaryFailure checks that a second failure that does
+// not opt in leaves the first result selected, as before.
+func TestTwoRunsKeepsOrdinaryFailure(t *testing.T) {
+	for _, data := range [][]byte{nil, []byte(`{`), []byte(`{"Missed":false}`)} {
+		t.Run(string(data), func(t *testing.T) {
+			first := &Result{Artifacts: map[string][]byte{"hashes": []byte("same")}}
+			second := &Result{Failed: true, Artifacts: map[string][]byte{"seed.json": data}}
+			calls := 0
+			r := twoRunsWith[missedLoss](t, Run{Seed: 1}, func(*testing.T, Run) *Result {
+				calls++
+				if calls == 1 {
+					return first
+				}
+				return second
+			})
+			if r != first || calls != 2 {
+				t.Fatalf("selected %p after %d runs, want first %p after 2", r, calls, first)
+			}
+		})
 	}
 }
 
