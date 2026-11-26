@@ -120,10 +120,13 @@ type Config struct {
 	// rotates it: the same CA issues a new one, and every node restarts
 	// with it. In between no write may succeed (checkExpired).
 	CertExpiresAt, CertRotateAt int64
-	// LoseQuorum makes every crash damage the node's disk until a
-	// majority of the voters is fenced for good, and no operator replaces
-	// one: the cluster must stay safe, and refuse every write from then
-	// on (checkUnavailable).
+	// LoseQuorum damages disks at crashes until a majority of the voters
+	// is fenced for good, and no operator replaces one. Where damage
+	// finds no place, loseQuorum fences a node directly. The cluster must
+	// stay safe and refuse every write from then on (checkUnavailable).
+	// At healing the loss must have happened, or enough damaged nodes
+	// must still be awaiting recovery's verdict; those must fence by the
+	// run's end.
 	LoseQuorum bool
 	// Membership adds, updates, promotes and removes a member after the
 	// voters while the ordinary clients and faults continue.
@@ -646,11 +649,9 @@ type Sim struct {
 	// wallStacks is every goroutine's stack when the run passed its limit
 	// of real time (watchWall).
 	wallStacks []byte
-	// leaseCheckpoints is set when the nodes checkpoint their leases, and
 	// formed is how long the cluster took to form before the run, if it
 	// did (formCluster).
-	leaseCheckpoints bool
-	formed           int64
+	formed int64
 	// servedRoot is the newest durable root of the source of the last
 	// snapshot served to each node, by Raft ID, when it was served.
 	servedRoot map[uint64]uint64
@@ -888,13 +889,13 @@ type Stats struct {
 	// checkpoint, NoSpace the calls the NOSPACE alarm refused,
 	// OutOfSpace the nodes that stopped on a write that ran out of space,
 	// NoRoom the checkpoints a node held or dropped for lack of room,
-	// raising NOSPACE and staying up (#769), Disarms the NOSPACE alarms
-	// an operator disarmed after (disarmNoSpace), and DiskGrowths the
-	// times an operator grew the disks (Faults.GrowDisk), and
-	// GrownCheckpoints the checkpoints done after; DisarmedAt is when the
-	// last disarm was answered.
-	LogCuts, NoSpace, OutOfSpace, NoRoom, Disarms, DiskGrowths, GrownCheckpoints int
-	DisarmedAt                                                                   int64
+	// raising NOSPACE and staying up (#769), NoRoomOwn those with no disk
+	// fault active, Disarms the NOSPACE alarms an operator disarmed after
+	// (disarmNoSpace), DiskGrowths the times an operator grew the disks
+	// (Faults.GrowDisk), and GrownCheckpoints the checkpoints done after;
+	// DisarmedAt is when the last disarm was answered.
+	LogCuts, NoSpace, OutOfSpace, NoRoom, NoRoomOwn, Disarms, DiskGrowths, GrownCheckpoints int
+	DisarmedAt                                                                              int64
 	// Netem counts the writes each kind of link fault hit (netemKind),
 	// Resets the resets of the connections between two nodes,
 	// and BlockedWrites the writes that waited for room in a connection's
@@ -1064,6 +1065,14 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	// A run that failed before its end keeps what it did so far, for its
 	// report; it has no committed log for the checkers.
 	s.mu.Lock()
+	if cfg.LoseQuorum && s.healed && s.quorumLostAt == 0 && !errors.Is(err, errRequestedQuorumLoss) {
+		// A failure may have interrupted the pending recoveries before
+		// the end verdict. Keep its cause, and report the missed loss
+		// as well: it must not disappear from the set's count.
+		missed := fmt.Errorf("seed %d at %d ms: %w or the pending recoveries", cfg.Seed, s.now()/Millisecond, errRequestedQuorumLoss)
+		err = errors.Join(err, missed)
+		s.tracef("failed: %v", missed)
+	}
 	for _, n := range s.nodes {
 		c := n.disk.Counts
 		d := &s.stats.Disk
@@ -1280,10 +1289,12 @@ func (s *Sim) run() error {
 	if s.cfg.Membership {
 		s.nodes[voters].inactive = true
 	}
-	// Half the seeds checkpoint their leases, as etcd does with its
-	// LeaseCheckpoint feature, every second instead of 5 minutes, so
-	// that the clients' short leases get checkpoints too.
-	s.leaseCheckpoints = s.rng.IntN(2) == 0
+	// Once a draw of whether the nodes checkpoint their leases, as etcd's
+	// LeaseCheckpoint feature: wl has no lease checkpoints and reads no
+	// feature gate, so nothing used it, and scenarios draw only the
+	// options wl has (#758, option b). The draw stays, discarded, so that
+	// every seed plays out as before and its known failures still hold.
+	_ = s.rng.IntN(2)
 	// Saved before any node runs: a node that spins at once leaves this.
 	s.saveBlackbox()
 	for _, n := range s.nodes[:voters] {
@@ -1341,6 +1352,7 @@ func (s *Sim) run() error {
 		}
 	}
 	s.mu.Lock()
+	s.checkRequestedQuorumLoss(false)
 	s.stop()
 	s.mu.Unlock()
 	s.wg.Wait()
@@ -1366,7 +1378,7 @@ func (s *Sim) run() error {
 // (#481). Under the faults a confirmation round of the upgrade rarely
 // completes, and a member fenced for good blocks it for the rest of the
 // run, as in etcd, so without this almost no seed ran the code that needs
-// the newest version, such as lease checkpoints.
+// the newest version, such as member attributes.
 const formUnderFaults = 8
 
 // formLimit is how long a cluster with no faults may take to form and
@@ -2221,14 +2233,14 @@ func (s *Sim) beforeSync(p *proc) {
 	}
 }
 
-// loseQuorum crashes a node that is up and undamaged every second, its
-// disk damaged at the crash (maybeCorrupt), until a majority of the
-// voters is fenced for good (Config.LoseQuorum): the random crashes, half
-// of them kills, which damage nothing, may not get there in time. It
-// starts once a client's write succeeded, so that the checkers have a
-// committed log to check: under the race detector, with the host's
-// timing, seed 1 of TestLoseQuorum had committed none a quarter into the
-// run.
+// loseQuorum crashes a node that is up every second, its disk damaged at
+// the crash (maybeCorrupt), or fenced directly if damage finds no place,
+// until a majority of the voters is fenced for good (Config.LoseQuorum):
+// the random crashes, half of them kills, which damage nothing, may not
+// get there in time. It starts once a client's write succeeded, so that
+// the checkers have a committed log to check: under the race detector,
+// with the host's timing, seed 1 of TestLoseQuorum had committed none a
+// quarter into the run.
 func (s *Sim) loseQuorum() {
 	for {
 		s.mu.Lock()
@@ -2245,7 +2257,7 @@ func (s *Sim) loseQuorum() {
 		}
 		var up []*node
 		for _, n := range s.nodes {
-			if n.proc != nil && !n.mayBeDamaged() && !n.out() {
+			if n.quorumLossTarget() {
 				up = append(up, n)
 			}
 		}
@@ -2253,7 +2265,10 @@ func (s *Sim) loseQuorum() {
 			n := up[s.rng.IntN(len(up))]
 			n.why = "the run crashed it to lose the quorum"
 			s.crash(n)
-			s.maybeCorrupt(n)
+			if noPlace := s.maybeCorrupt(n); noPlace {
+				why := "the run fenced it to lose the quorum: damage found no place"
+				s.fence(n, why, why)
+			}
 			s.restartLater(n, 1+s.rng.Int64N(s.cfg.Faults.MaxDown))
 		}
 		s.mu.Unlock()
@@ -2261,6 +2276,15 @@ func (s *Sim) loseQuorum() {
 			return
 		}
 	}
+}
+
+// quorumLossTarget reports whether loseQuorum may crash n. A rotted
+// node may still run on its damaged disk and hold a damage slot without
+// being fenced (Scenario seed 2322): restart it too, but never interrupt
+// a damaged disk's recovery before it can refuse it. The lock is held.
+func (n *node) quorumLossTarget() bool {
+	p := n.proc
+	return p != nil && !n.out() && (!n.mayBeDamaged() || n.rotted && n.corrupted && p.wl.recovered)
 }
 
 // crashRandom crashes a node that is up and restarts it up to MaxDown
@@ -2378,12 +2402,12 @@ func (s *Sim) loseUnsyncedAs(n *node, img simfs.Image) {
 	n.tornCrash = n.tornCrash || img >= simfs.Sectors
 }
 
-// mayBeDamaged reports whether n's disk is damaged, or may be: a torn
-// crash image that no start recovered since may make recovery refuse its
-// log (loseUnsynced), which only its next start finds out. The faults that
-// must leave a quorum whole count such a node as damaged. The lock is
-// held.
-func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
+// mayBeDamaged reports whether n is fenced for good, or its disk is
+// damaged, or may be: a torn crash image that no start recovered since
+// may make recovery refuse its log (loseUnsynced), which only its next
+// start finds out. The faults that must leave a quorum whole count such
+// a node as damaged. The lock is held.
+func (n *node) mayBeDamaged() bool { return n.fenced || n.corrupted || n.tornCrash }
 
 // installSpan is a snapshot a node took (#775's rulings): from when it
 // reached the node (its first stream, or else the install's start), the
@@ -2565,12 +2589,43 @@ func (s *Sim) setLinks(mask uint64) {
 	}
 }
 
+// errRequestedQuorumLoss marks a requested loss that did not happen,
+// so even a failed seed can report that outcome to its set.
+var errRequestedQuorumLoss = errors.New("requested a quorum loss and none happened by healing")
+
+// checkRequestedQuorumLoss checks the requested loss. At healing, damage
+// already on disks still to recover may yet fence a majority; only those
+// pending refusals can defer the verdict until the end. Rot is not enough:
+// its segment may be gone, or recovery may no longer name its value.
+// The lock is held.
+func (s *Sim) checkRequestedQuorumLoss(atHealing bool) {
+	if !s.cfg.LoseQuorum || s.quorumLostAt > 0 {
+		return
+	}
+	if atHealing && s.count(func(n *node) bool {
+		return n.fenced || n.corrupted && !n.rotted && (n.proc == nil || !n.proc.wl.recovered)
+	}) > s.tolerance() {
+		s.tracef("requested quorum loss: waiting for the damaged disks' pending recoveries")
+		return
+	}
+	if atHealing {
+		s.fail("%w", errRequestedQuorumLoss)
+	} else {
+		s.fail("%w or the pending recoveries", errRequestedQuorumLoss)
+	}
+}
+
 // heal ends the faults: every link comes up, half-open links and disk
 // stalls end, and every node that is down starts.
 func (s *Sim) heal() {
 	s.mu.Lock()
 	s.healed = true
 	s.tracef("healing")
+	s.checkRequestedQuorumLoss(true)
+	if s.err != nil {
+		s.mu.Unlock()
+		return
+	}
 	if !s.grayOnce || s.grayDropped {
 		s.gray, s.grayOnce = nil, false
 	}

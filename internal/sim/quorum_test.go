@@ -2,12 +2,245 @@ package sim
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
+
+// TestLoseQuorumWithoutDamage runs the scenarios whose damage found no
+// place on main (#873): each must lose its quorum and pass every check.
+func TestLoseQuorumWithoutDamage(t *testing.T) {
+	simrun.Each(t, []uint64{932, 1196, 1436, 1945, 2322}, func(t *testing.T, seed uint64) Stats {
+		cfg := Scenario(seed)
+		if !cfg.LoseQuorum {
+			t.Fatalf("seed %d no longer requests a quorum loss", seed)
+		}
+		res := run(t, cfg)
+		checkers(t, res)
+		st := res.Stats
+		if st.QuorumLostAt == 0 || st.Fenced != cfg.voters()/2+1 {
+			t.Fatalf("seed %d: %d fenced, quorum lost at %s", seed, st.Fenced, seconds(st.QuorumLostAt))
+		}
+		t.Logf("seed %d: %d voters, %d fenced, damage %v, quorum lost at %s", seed, cfg.voters(), st.Fenced, st.Damage, seconds(st.QuorumLostAt))
+		for _, l := range res.Trace {
+			if strings.Contains(l, "fenced:") || strings.Contains(l, "damage after a sync:") || strings.Contains(l, "unavailable:") {
+				t.Log(l)
+			}
+		}
+		return st
+	}, nil)
+}
+
+// TestLoseQuorumWithDamage writes checkpoints before the quorum loss, so
+// damage finds a place: nodes must refuse their disks, not take the
+// direct fence that loseQuorum uses when no damage fits.
+func TestLoseQuorumWithDamage(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.LoseQuorum, cfg.Duration = true, 40*Second
+		cfg.Faults = Faults{Corrupt: true, MaxDown: 100 * Millisecond, DiskBudget: 32 << 10}
+		cfg.damageKinds = []damageKind{flippedRoot}
+		res := run(t, cfg)
+		checkers(t, res)
+		st := res.Stats
+		if st.QuorumLostAt == 0 || st.Damage[flippedRoot] != cfg.voters()/2+1 || st.Fenced != st.Damage[flippedRoot] {
+			t.Fatalf("%d fenced, damage %v, quorum lost at %s", st.Fenced, st.Damage, seconds(st.QuorumLostAt))
+		}
+		for _, l := range res.Trace {
+			if strings.Contains(l, "damage found no place") {
+				t.Fatalf("damage took the fallback: %s", l)
+			}
+			if strings.Contains(l, "damage after a sync:") || strings.Contains(l, "fenced:") {
+				t.Log(l)
+			}
+		}
+		return st
+	}, nil)
+}
+
+// TestRequestedQuorumLossMustHappen disables damage and its fallback:
+// reaching healing with a quorum must fail, not take the ordinary checks.
+func TestRequestedQuorumLossMustHappen(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.LoseQuorum, cfg.Duration = true, 4*Second
+		cfg.Faults = Faults{MaxDown: 100 * Millisecond}
+		res, err := runSeed(t, cfg)
+		if !errors.Is(err, errRequestedQuorumLoss) {
+			t.Fatalf("run returned %v, want the requested-loss failure", err)
+		}
+		if res.Stats.QuorumLostAt != 0 || res.Stats.Fenced != 0 {
+			t.Fatalf("the run lost its quorum: %+v", res.Stats)
+		}
+		r := scenarioResult(cfg, res, err)
+		if !r.ReportFailedSeed() {
+			t.Fatal("the failed seed would not reach the driver's report")
+		}
+		for _, report := range []string{"scenarios", "campaign"} {
+			ran := map[string]int{"requested quorum loss, not lost": 0}
+			if !r.countMissedLoss(ran) || ran["requested quorum loss, not lost"] != 1 {
+				t.Fatalf("%s: counts %v, want one missed loss", report, ran)
+			}
+			t.Logf("%s: requested quorum loss, not lost: %d", report, ran["requested quorum loss, not lost"])
+		}
+		if early := scenarioResult(cfg, nil, errors.New("failed before healing")); early.ReportFailedSeed() {
+			t.Fatal("a run that failed before its verdict counts as a missed loss")
+		}
+		t.Log(err)
+		return res.Stats
+	}, nil)
+}
+
+// TestQuorumLossTargets leaves damaged processes that are still
+// recovering alone, but restarts a rotted node once it recovered.
+func TestQuorumLossTargets(t *testing.T) {
+	for _, c := range []struct {
+		name                         string
+		corrupted, rotted, recovered bool
+		want                         bool
+	}{
+		{"undamaged", false, false, true, true},
+		{"checkpoint damage recovering", true, false, false, false},
+		{"checkpoint damage recovered", true, false, true, false},
+		{"rot recovering", true, true, false, false},
+		{"rot recovered", true, true, true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			n := &node{corrupted: c.corrupted, rotted: c.rotted, proc: &proc{wl: &wlProc{recovered: c.recovered}}}
+			if got := n.quorumLossTarget(); got != c.want {
+				t.Fatalf("target %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestQuorumLossWaitsForPendingRecovery builds the healing verdict with
+// one fenced voter and one damaged disk whose recovery has not ended.
+// A refusal after healing counts; a disk that recovers without fencing
+// must still fail at the end. A running rotted node defers no verdict.
+func TestQuorumLossWaitsForPendingRecovery(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		running    bool
+		fenceLater bool
+	}{
+		{"refuses after healing", false, true},
+		{"recovers without fencing", false, false},
+		{"already recovered", true, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := DefaultConfig(1)
+			cfg.LoseQuorum = true
+			s, err := newSim(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// A positive time, including under gosim, where a test's
+			// clock starts at zero (quorumLostAt's sentinel).
+			s.t0 = s.t0.Add(-time.Second)
+			s.fence(s.nodes[0], "earlier refusal", "earlier refusal")
+			n := s.nodes[1]
+			n.corrupted = true
+			if c.running {
+				n.rotted = true
+				n.proc = &proc{wl: &wlProc{recovered: true}}
+			}
+			s.checkRequestedQuorumLoss(true)
+			if c.running {
+				if !errors.Is(s.err, errRequestedQuorumLoss) {
+					t.Fatalf("running rotted node deferred the verdict: %v", s.err)
+				}
+				return
+			}
+			if s.err != nil {
+				t.Fatalf("failed before the pending recovery: %v", s.err)
+			}
+			s.healed = true
+			if c.fenceLater {
+				s.t0 = s.t0.Add(-time.Second)
+				s.fence(n, "pending refusal", "pending refusal")
+			} else {
+				n.corrupted = false
+			}
+			s.checkRequestedQuorumLoss(false)
+			if c.fenceLater {
+				if s.err != nil || s.stats.QuorumLostAt == 0 {
+					t.Fatalf("pending refusal did not count: lost at %s, error %v", seconds(s.stats.QuorumLostAt), s.err)
+				}
+			} else if !errors.Is(s.err, errRequestedQuorumLoss) {
+				t.Fatalf("no loss at the end: %v, want the requested-loss failure", s.err)
+			}
+		})
+	}
+}
+
+// TestQuorumLossRemovedRotFailsAtHealing builds a down rotted node whose
+// damaged segment has been removed. Its next start clears the rot, so it
+// must not defer the healing verdict as if it would refuse that disk.
+func TestQuorumLossRemovedRotFailsAtHealing(t *testing.T) {
+	cfg := DefaultConfig(1)
+	cfg.LoseQuorum = true
+	s, err := newSim(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.t0 = s.t0.Add(-time.Second)
+	s.fence(s.nodes[0], "earlier refusal", "earlier refusal")
+	n := s.nodes[1]
+	n.corrupted, n.rotted, n.rotFile = true, true, "wal/removed.seg"
+	if slices.Contains(n.disk.DurableNames(), n.rotFile) {
+		t.Fatal("the rotted segment has not been removed")
+	}
+	s.healed = true
+	s.checkRequestedQuorumLoss(true)
+	if !errors.Is(s.err, errRequestedQuorumLoss) {
+		t.Fatalf("removed rot deferred the healing verdict: %v", s.err)
+	}
+}
+
+// TestQuorumLossInterruptedDeferralCountsMiss reaches healing with a
+// pending refusal, then fails before the end verdict. The failure keeps
+// its own cause and must still carry and count the missed quorum loss.
+func TestQuorumLossInterruptedDeferralCountsMiss(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		interrupted := errors.New("interrupted the pending recovery")
+		cfg := DefaultConfig(seed)
+		cfg.FormUnderFaults, cfg.LoseQuorum = true, true
+		cfg.scenario = func(s *Sim) error {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.fence(s.nodes[0], "earlier refusal", "earlier refusal")
+			n := s.nodes[1]
+			s.crash(n)
+			n.corrupted = true
+			// Build healing's state directly: its verdict defers for
+			// this pending refusal, and the run returns early instead.
+			s.healed = true
+			s.checkRequestedQuorumLoss(true)
+			if s.err != nil {
+				return fmt.Errorf("failed before the interruption: %w", s.err)
+			}
+			s.fail("%w", interrupted)
+			return s.err
+		}
+		res, err := runSeed(t, cfg)
+		if !errors.Is(err, interrupted) || !errors.Is(err, errRequestedQuorumLoss) {
+			t.Fatalf("interrupted deferral returned %v, want both the interruption and the missed loss", err)
+		}
+		r := scenarioResult(cfg, res, err)
+		ran := map[string]int{}
+		if !r.ReportFailedSeed() || !r.countMissedLoss(ran) || ran["requested quorum loss, not lost"] != 1 {
+			t.Fatalf("interrupted deferral: counts %v, want one reported miss", ran)
+		}
+		return res.Stats
+	}, nil)
+}
 
 // TestReplacementLosesQuorum is the end of TestCampaign seed 780 on main
 // (#850), built directly, as no seed keeps that timing once runs change
