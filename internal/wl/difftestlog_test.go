@@ -90,6 +90,39 @@ exit 7
 	}
 }
 
+// A race the shutdown scan finds fails the suite after its servers stopped;
+// the EXIT trap must still know which suite to keep, for etcd too (#892's
+// re-check).
+func TestDifftestKeepsLogsOfARaceFoundAtShutdown(t *testing.T) {
+	b, err := os.ReadFile("../../scripts/difftest.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	prefix, _, ok := strings.Cut(script, "# in_use")
+	if !ok {
+		t.Fatal("harness prefix missing")
+	}
+	loopStart := strings.Index(script, "for suite in")
+	selection := script[loopStart : loopStart+strings.Index(script[loopStart:], "\tcase $server in")]
+	tail := script[strings.LastIndex(script, "\talive\n"):]
+	for _, server := range []string{"etcd", "tigerstore"} {
+		t.Run(server, func(t *testing.T) {
+			keep := t.TempDir()
+			body := "set -- " + server + "\n" + prefix + "\nalive() { :; }\n" + selection + "mkdir -p \"$work/data\"\nprintf 'WARNING: DATA RACE\\n' > \"$work/data/node1.log\"\n" + tail
+			cmd := exec.Command("bash", "-c", body)
+			cmd.Env = append(os.Environ(), "KEEP="+keep, "ONLY=TestBoundaries", "RACE=1")
+			if err := cmd.Run(); err == nil {
+				t.Fatal("the harness passed a suite whose logs report a data race")
+			}
+			got, err := os.ReadFile(filepath.Join(keep, "TestBoundaries", "data", "node1.log"))
+			if err != nil || !strings.Contains(string(got), "DATA RACE") {
+				t.Fatalf("%s lost the logs of a suite that failed on a race found at shutdown: %q, %v", server, got, err)
+			}
+		})
+	}
+}
+
 func TestDifftestArtifactRetentionPolicy(t *testing.T) {
 	b, err := os.ReadFile("../../.github/workflows/ci.yml")
 	if err != nil {

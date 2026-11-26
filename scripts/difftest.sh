@@ -219,7 +219,8 @@ for suite in "${suites[@]}"; do
 	esac
 	alive
 	stop
-	keep 0
+	# The race scan can still fail the suite: keep its logs only after it,
+	# so the EXIT trap knows which suite failed.
 	if [ -n "${RACE:-}" ]; then
 		for f in "$work"/data/*.log "$work"/proxy.log; do
 			if [ -e "$f" ] && grep -q 'WARNING: DATA RACE' "$f"; then
@@ -229,4 +230,5 @@ for suite in "${suites[@]}"; do
 			fi
 		done
 	fi
+	keep 0
 done
