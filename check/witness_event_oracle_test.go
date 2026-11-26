@@ -76,6 +76,7 @@ type eventOracleClaim struct {
 
 type eventOracleRun struct {
 	err        string
+	inputErr   error
 	timeout    bool
 	steps      int64
 	indexSteps int64
@@ -131,6 +132,9 @@ func eventTraceStep(r *revisionOrder, phase string, op int) eligibilitySearchSte
 }
 
 func runEventOracle(h *history.History, old bool, budget int64, setup func(*revisionOrder), stopAtFit bool) *eventOracleRun {
+	if err := h.Validate(); err != nil {
+		return &eventOracleRun{err: err.Error(), inputErr: err}
+	}
 	w := newWitness(h, time.Now().Add(time.Minute))
 	w.maxSteps = budget
 	r := newRevisionOrder(w)
@@ -204,6 +208,9 @@ func confirmedEventSite(site *eventOracleSite) bool {
 func compareEventRuns(t *testing.T, old, got *eventOracleRun) [eventRejectReasons]int {
 	t.Helper()
 	var coverage [eventRejectReasons]int
+	if old.inputErr != nil || got.inputErr != nil {
+		t.Fatalf("oracle inputs must validate: old %v new %v", old.inputErr, got.inputErr)
+	}
 	if old.timeout {
 		t.Fatal("stopped independent replay is inconclusive, not a certificate confirmation")
 	}

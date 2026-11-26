@@ -198,6 +198,15 @@ func TestEventCertificateGuards(t *testing.T) {
 	})
 }
 
+func TestEventOracleRejectsInvalidInput(t *testing.T) {
+	h := eventDeadHistory(1, 6)
+	h.Ops[0].Return = h.Ops[0].Call - 1
+	o := runEventOracle(h, true, 2_000_000, nil, false)
+	if o.inputErr == nil || o.r != nil || len(o.sites) != 0 {
+		t.Fatal("invalid input reached the certificate oracle")
+	}
+}
+
 func TestEventOracleStopsAreInconclusive(t *testing.T) {
 	o := runEventOracle(eventDeadHistory(1, 12), true, 2_000_000, nil, true)
 	if !o.timeout || len(o.sites) == 0 {
