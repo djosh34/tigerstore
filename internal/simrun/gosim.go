@@ -4,6 +4,8 @@ package simrun
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"strconv"
 	"testing"
 	"time"
@@ -83,7 +85,7 @@ func Do(t *testing.T, r Run) *Result {
 
 // each runs the seeds, which the driver gives one at a time, and saves
 // what body returned for it (Seeds). Then it runs what AfterSeed set.
-func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
+func each[T any](t *testing.T, seeds []uint64, _ []string, _ func(uint64) int, body func(*testing.T, uint64) T, _ func(uint64, T) bool) bool {
 	t.Helper()
 	for _, seed := range seeds {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
@@ -101,6 +103,46 @@ func each[T any](t *testing.T, seeds []uint64, _ []string, body func(*testing.T,
 		})
 	}
 	return false
+}
+
+// OpenInput opens the run's input name (Run.Inputs), a file on the machine
+// that runs the simulation, which the driver named, and returns it to
+// read in place, its size, and its close. Reading it changes nothing in
+// the run (gosim.OpenInput).
+func OpenInput(name string) (io.ReaderAt, int64, func() error, error) {
+	f, err := gosim.OpenInput(name)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	n, err := f.Size()
+	if err != nil {
+		return nil, 0, nil, errors.Join(err, f.Close())
+	}
+	return f, n, f.Close, nil
+}
+
+// CreateOutput makes the run's output name (Run.Outputs), a file on the
+// machine that runs the simulation, which the driver reads once the run
+// ended, and returns a writer that appends to it, and its close. Writing
+// it changes nothing in the run (gosim.CreateOutput).
+func CreateOutput(name string) (io.Writer, func() error, error) {
+	f, err := gosim.CreateOutput(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &hostWriter{f: f}, f.Close, nil
+}
+
+// hostWriter writes a HostFile from its start on.
+type hostWriter struct {
+	f   *gosim.HostFile
+	off int64
+}
+
+func (w *hostWriter) Write(p []byte) (int, error) {
+	n, err := w.f.WriteAt(p, w.off)
+	w.off += int64(n)
+	return n, err
 }
 
 // afterSeed is what runs after the seed's last simulation.
