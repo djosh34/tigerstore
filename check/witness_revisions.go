@@ -1704,6 +1704,16 @@ func (r *revisionOrder) search() (err error) {
 	defer func() {
 		if w.stopped {
 			err = ErrWitnessTimeout
+			fmt.Printf("PROFILE #876 stopped at %d; live=%+v; earlier rejection=%v\n", r.rev, w.live.kvs, r.failure)
+			if d := r.dueWork; d != nil {
+				fmt.Printf("PROFILE #876 due: candidates=%d remaining=%d eligible=%d timed=%d revision=%d\n", len(d.candidates), d.remaining, d.eligibleLeft, d.timedLeft, d.revisionLeft)
+			}
+			for next := r.rev; next < r.rev+4; next++ {
+				if i, ok := r.writer(next); ok {
+					fmt.Printf("PROFILE #876 writer %d: %s\n", next, w.describe(i))
+				}
+				fmt.Printf("PROFILE #876 at %d: created=%v written=%v deleted=%v seen=%v\n", next, r.byRev(r.created, next), r.byRev(r.written, next), r.byRev(r.deleted, next), r.byRev(r.seen, next))
+			}
 		}
 	}()
 	defer func() { w.sorter.step = nil }()
