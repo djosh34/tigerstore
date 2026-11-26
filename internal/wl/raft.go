@@ -562,7 +562,7 @@ func (n *node) sendPeer(m *pb.Message) {
 	binary.LittleEndian.PutUint64(b[50:], m.GetVote())
 	binary.LittleEndian.PutUint32(b[58:], uint32(len(ents)))
 	s := &p.sock
-	if size >= growMsg {
+	if size >= growMsg && len(s.out) == s.ow {
 		s.growFor(size + 4)
 	}
 	s.put(h[:])
@@ -889,7 +889,7 @@ func (n *node) sendBatch(data []byte) {
 		h[4] = frameBatch
 		binary.LittleEndian.PutUint32(h[5:], uint32(n.id))
 		binary.LittleEndian.PutUint64(h[9:], seq)
-		if len(data) >= growMsg {
+		if len(data) >= growMsg && len(p.out) == p.ow {
 			p.growFor(len(h) + len(data))
 		}
 		p.put(h[:])
