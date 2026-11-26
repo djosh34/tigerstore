@@ -1522,7 +1522,7 @@ func (r *revisionOrder) takes(s *state, o optional) bool {
 // op called at time call, or by the end of revision rev. One that cannot
 // go in now stays out, and the answer that needs it fails.
 func (r *revisionOrder) expire(call, rev int64) {
-	for o := range r.due(call, rev) {
+	for o := range r.dueAt(call, rev, r.w.live.rev) {
 		if r.step() {
 			return
 		}
@@ -1544,7 +1544,7 @@ func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 		return
 	}
 	if w.h.Ops[o.op].Req.Compact != nil {
-		for e := range r.due(w.h.Ops[o.op].Call, 0) {
+		for e := range r.dueAt(w.h.Ops[o.op].Call, 0, w.live.rev) {
 			if w.h.Ops[e.op].Req.LeaseRevoke != nil && !r.used[e.op] && r.tryOptional(w.live, e, r.takes) {
 				w.apply(e.op, &w.reqs[e.op])
 				r.use(e.op)
@@ -1565,7 +1565,7 @@ func (r *revisionOrder) putIn(o optional, take func(*state, optional) bool) {
 // that an answer at rev shows in use waits for the end of rev.
 func (r *revisionOrder) expireEarly(rev int64) {
 	w := r.w
-	for o := range r.due(0, rev) {
+	for o := range r.dueAt(0, rev, w.live.rev) {
 		if l := w.h.Ops[o.op].Req.LeaseRevoke; l != nil && r.alive[l.ID] >= rev {
 			continue
 		}
@@ -1995,7 +1995,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 	if w.stopped {
 		return false
 	}
-	for e := range r.due(w.calls[i], 0) {
+	for e := range r.dueAt(w.calls[i], 0, s.rev) {
 		// takes accepts only an optional that changes no key, so its
 		// undo puts back nothing that s keeps.
 		t, undoE := r.try(s, w.reqs[e.op])

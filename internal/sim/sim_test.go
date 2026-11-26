@@ -726,7 +726,7 @@ func checkers(t *testing.T, res *Result) {
 // charges ordinary inner work at 1/1,024 and cheap capacity-vector items
 // and sort estimates at 1/16,384; index work stays at 1/256 and operation
 // turns at one. Stop polls still tick every 64 inner items, independently
-// of those weights. After the re-check's copy-accounting fixes, no-cap
+// of those weights. After #876's retained eligibility intersection, no-cap
 // measurements against base 37e51817 (maximum of three runs, ratios
 // rounded up to four decimals):
 //
@@ -741,7 +741,7 @@ func checkers(t *testing.T, res *Result) {
 //	witness-control-80-201      9764     12296  1.2594
 //	witness-control-320-1529   15881    110320  6.9467
 //	81000 same-revision grants 87330     89394  1.0237
-//	256 gaps, 4096 expiries    13271     62811  4.7330
+//	256 gaps, 4096 expiries    13271     62819  4.7336
 //
 // Round the worst ratio, 110,320 / 15,881, up to seven: the old
 // 50,000,000 * 7 = 350,000,000 preserves every measured margin; ordinary
@@ -751,8 +751,9 @@ func checkers(t *testing.T, res *Result) {
 // rate (about 24,600 steps/s) puts 180M near 122 search minutes, leaving
 // the six-minute simulation and more than 15% margin before the 160-minute
 // wall backstop. That budget, not wall time, must stop long searches.
-// Seed 1 is a known timeout under #876; its full check and #502 evidence
-// belong there, not to #872. See longSeedWallLimit for the sizing math.
+// #876 intersects due sets with retained revision eligibility to avoid
+// trials of future expiries; budgets remain unchanged. See longSeedWallLimit
+// for the original sizing math.
 const (
 	witnessStepLimit     int64 = 360_000_000
 	longWitnessStepLimit int64 = 180_000_000
