@@ -169,6 +169,7 @@ type revisionOrder struct {
 	// turn, candidate, application and restore. Both are nil in normal runs.
 	testDueQuery func(call, rev, from int64, yield func(optional) bool)
 	testTrace    func(phase string, op int)
+	measure876   *measure876Stats
 }
 
 // progress says where the search is, for the report of a timeout. A
@@ -657,6 +658,9 @@ func (r *revisionOrder) indexCounts() {
 // back, before it saw that count.
 func (r *revisionOrder) reachable(s *state, skip int) bool {
 	if r.step() || !r.roomReachable(s, skip) {
+		if r.measure876 != nil {
+			r.measure876.ReachWhy = m876Room
+		}
 		return false
 	}
 	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
@@ -686,6 +690,9 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 				}
 			}
 			if sure > c.n || maybe < c.n {
+				if r.measure876 != nil {
+					r.measure876.ReachWhy = m876Counts
+				}
 				return false
 			}
 		}
@@ -1624,10 +1631,11 @@ type mark struct {
 // frame is a gap of the search: its revision, the candidates to write it,
 // and the next one to try.
 type frame struct {
-	rev   int64
-	cands []int
-	next  int
-	mark  mark
+	rev              int64
+	cands            []int
+	next             int
+	mark             mark
+	measure876Prefix int
 }
 
 func (r *revisionOrder) save() mark {
@@ -1644,6 +1652,10 @@ func (r *revisionOrder) saveOrder() mark {
 }
 
 func (r *revisionOrder) restore(m mark) {
+	if j := measure876Target(r.rev); r.measure876 != nil && j >= 0 {
+		before := r.w.steps
+		defer func() { r.measure876.Restore[j].Calls++; r.measure876.Restore[j].WeightedSteps += r.w.steps - before }()
+	}
 	r.restoreOrder(m)
 	// What observe placed belongs to the order given up.
 	for i, p := range r.w.at {
@@ -1708,9 +1720,15 @@ func (r *revisionOrder) dead(rev int64, err error) bool {
 // gap, as after a revision it cannot explain.
 func (r *revisionOrder) search() (err error) {
 	w := r.w
+	if Measure876Sink != nil {
+		r.measure876 = newMeasure876(r)
+	}
 	defer func() {
 		if w.stopped {
 			err = ErrWitnessTimeout
+		}
+		if r.measure876 != nil {
+			r.measure876.emit(r)
 		}
 	}()
 	defer func() { w.sorter.step = nil }()
@@ -1827,6 +1845,9 @@ func (r *revisionOrder) write(rev int64) bool {
 		f = r.stack[n-1]
 	} else {
 		f = &frame{rev: rev, mark: r.save(), cands: r.candidates(rev)}
+		if r.measure876 != nil {
+			f.measure876Prefix = r.measure876.prefix(r, f)
+		}
 		r.stack = append(r.stack, f)
 	}
 	for ; f.next < len(f.cands); f.next++ {
@@ -1834,11 +1855,17 @@ func (r *revisionOrder) write(rev int64) bool {
 			return false
 		}
 		i := f.cands[f.next]
+		if r.measure876 != nil && measure876Target(rev) >= 0 && f.measure876Prefix >= 0 {
+			r.measure876.Prefixes[f.measure876Prefix].Probes++
+		}
 		if r.testTrace != nil {
 			r.testTrace("candidate", i)
 		}
 		if r.used[i] || !r.fitsGranted(i, rev) {
 			continue
+		}
+		if r.measure876 != nil && measure876Target(rev) >= 0 && f.measure876Prefix >= 0 {
+			r.measure876.Prefixes[f.measure876Prefix].Accepted++
 		}
 		r.expire(w.calls[i], 0)
 		if w.stopped {
@@ -1851,6 +1878,9 @@ func (r *revisionOrder) write(rev int64) bool {
 	}
 	if w.stopped {
 		return false
+	}
+	if r.measure876 != nil && measure876Target(rev) >= 0 && f.measure876Prefix >= 0 {
+		r.measure876.Prefixes[f.measure876Prefix].Exhausted = true
 	}
 	r.stack = r.stack[:len(r.stack)-1]
 	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, w.around(len(w.events))))
@@ -1933,11 +1963,26 @@ func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	}
 	grants := r.grantsFor(leasesOfWithStep(r.w.reqs[i], r.step), rev-1)
 	if len(grants) == 0 {
+		if r.measure876 != nil {
+			if c := r.measure876.candidate(r, rev, i); c != nil {
+				c.GrantNone++
+			}
+		}
 		return false
+	}
+	if r.measure876 != nil {
+		if c := r.measure876.candidate(r, rev, i); c != nil {
+			c.GrantTried++
+		}
 	}
 	m := r.saveOrder()
 	r.grant(grants)
 	if r.fits(i, rev) {
+		if r.measure876 != nil {
+			if c := r.measure876.candidate(r, rev, i); c != nil {
+				c.GrantSucceeded++
+			}
+		}
 		return true
 	}
 	r.restoreOrder(m)
@@ -1994,7 +2039,21 @@ func (r *revisionOrder) grant(grants []int) {
 // expiries due before it: the model says it writes exactly rev, it changes
 // no key that a client saw unchanged at rev, and an acked revoke gets its
 // answer.
-func (r *revisionOrder) fits(i int, rev int64) bool {
+func (r *revisionOrder) fits(i int, rev int64) (fit bool) {
+	why := m876Stop
+	if r.measure876 != nil {
+		if c := r.measure876.candidate(r, rev, i); c != nil {
+			defer func() {
+				if r.w.stopped {
+					why = m876Stop
+				}
+				c.Clauses[why]++
+			}()
+			if n := len(r.stack); n > 0 && r.stack[n-1].rev == rev && r.stack[n-1].measure876Prefix >= 0 {
+				r.measure876.Prefixes[r.stack[n-1].measure876Prefix].Fits++
+			}
+		}
+	}
 	if r.step() {
 		return false
 	}
@@ -2004,6 +2063,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		// the due optionals below change no key. The ambiguous revokes
 		// of a busy history are its leases' expiries, tried at every gap
 		// (#499).
+		why = m876RevokeNoKey
 		return false
 	}
 	s, undo := r.try(w.live, w.reqs[i])
@@ -2026,9 +2086,14 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 	}
 	o := s.step(w.reqs[i], true)
 	if o.err != nil || s.rev != rev {
+		why = m876NoRevision
+		if o.err != nil {
+			why = m876ModelError
+		}
 		return false
 	}
 	if op := &w.h.Ops[i]; op.Resp != nil && !matches(o, op.Resp) {
+		why = m876Response
 		return false
 	}
 	for _, e := range o.events {
@@ -2036,6 +2101,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		if r.unchanged(e.KV.Key, rev) {
+			why = m876Unchanged
 			return false
 		}
 		// A key it changes inside a life a client saw stays in that
@@ -2052,6 +2118,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			if l.c <= rev && rev <= l.to {
 				kv, ok := s.get(e.KV.Key)
 				if !ok || kv.CreateRevision != l.c || rev < l.m && kv.Version >= l.v || rev >= l.m && kv.Version != l.v {
+					why = m876Lives
 					return false
 				}
 			}
@@ -2063,6 +2130,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		if kv := s.kvs[k]; kv.Version == 0 || kv.CreateRevision != rev {
+			why = m876Created
 			return false
 		}
 	}
@@ -2071,15 +2139,22 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		if kv := s.kvs[k]; kv.Version == 0 || kv.ModRevision != rev {
+			why = m876Written
 			return false
 		}
 	}
 	for _, k := range r.byRev(r.deleted, rev) {
 		if r.step() || k < 0 || s.kvs[k].Version != 0 || !slices.ContainsFunc(o.events, func(e history.Event) bool { return r.step() || e.KV.Key == s.keys[k] }) {
+			why = m876Deleted
 			return false
 		}
 	}
-	return r.reachable(s, i)
+	fit = r.reachable(s, i)
+	why = m876Accepted
+	if !fit && r.measure876 != nil {
+		why = r.measure876.ReachWhy
+	}
+	return fit
 }
 
 // finish places what follows the writer of rev: the acked mutations that
@@ -2087,6 +2162,10 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 // the model takes them without a write, and checks that every acked op
 // that changed nothing at rev has a state that answers it.
 func (r *revisionOrder) finish(rev int64) bool {
+	if j := measure876Target(rev); r.measure876 != nil && j >= 0 {
+		before := r.w.steps
+		defer func() { r.measure876.Finish[j].Calls++; r.measure876.Finish[j].WeightedSteps += r.w.steps - before }()
+	}
 	if r.step() {
 		return false
 	}

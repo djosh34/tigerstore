@@ -104,6 +104,11 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v6
         with:
+          name: measure876-${{ matrix.shard }}
+          path: ${{ runner.temp }}/sim-out/measure876
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
           name: sim-campaign-files-${{ matrix.shard }}
           path: ${{ runner.temp }}/sim-out
   summary:

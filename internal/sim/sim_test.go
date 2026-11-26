@@ -796,6 +796,8 @@ func independentWithSteps(res *Result, report func(int64, time.Duration), budget
 	if err := check.Watches(h); err != nil {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
+	check.Measure876Sink = func(name string, b []byte) { simrun.Artifact(filepath.Join("sim-out", "measure876", name), b) }
+	defer func() { check.Measure876Sink = nil }()
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
 		var steps int64
 		var cpuFrom time.Duration
