@@ -11,7 +11,10 @@ import (
 // Diagnostic JSON is search work too: failed candidate orders can render
 // multi-megabyte range answers over and over. Streaming keeps the encoder's
 // normal 4 KiB flush points visible to both accounting and cancellation.
-const diagnosticBytesPerStep = 64
+const (
+	diagnosticBytesPerStep = 2048
+	diagnosticPollBytes    = 64
+)
 
 type witnessJSONWriter struct {
 	w *witness
@@ -25,11 +28,11 @@ func (d *witnessJSONWriter) Write(p []byte) (int, error) {
 	bytes := len(p)
 	r := d.w.search
 	if bytes > r.diagnosticLeft {
-		steps := (bytes - r.diagnosticLeft + diagnosticBytesPerStep - 1) / diagnosticBytesPerStep
-		if r.chargeItems(int64(steps), workUnitsPerStep) {
+		chunks := (bytes - r.diagnosticLeft + diagnosticPollBytes - 1) / diagnosticPollBytes
+		if r.chargeItems(int64(chunks), workUnitsPerStep/(diagnosticBytesPerStep/diagnosticPollBytes)) {
 			return 0, ErrWitnessTimeout
 		}
-		r.diagnosticLeft += steps * diagnosticBytesPerStep
+		r.diagnosticLeft += chunks * diagnosticPollBytes
 	}
 	r.diagnosticLeft -= bytes
 	return d.b.Write(p)

@@ -177,7 +177,8 @@ type witness struct {
 	stopped bool
 	// replayStop is innerStep's method value, allocated once rather than
 	// again for every scoped state answered during replay.
-	replayStop func() bool
+	replayStop   func() bool
+	replayMutate func(int) bool
 	// scope caches the keys each op's request reads or writes
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
@@ -287,6 +288,7 @@ func (p place) compare(q place) int {
 func newWitness(h *history.History, deadline time.Time) *witness {
 	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firsts: make([]firstAnswer, len(h.Ops))}
 	w.replayStop = w.innerStep
+	w.replayMutate = w.innerMutation
 	w.reqs = make([]history.Request, len(h.Ops))
 	w.calls, w.returns = make([]int64, len(h.Ops)), make([]int64, len(h.Ops))
 	for i := range h.Ops {
@@ -333,6 +335,10 @@ func (w *witness) budgetStep() bool {
 // search. The log witness keeps its existing operation-level accounting.
 func (w *witness) innerStep() bool {
 	return w.search != nil && w.search.step()
+}
+
+func (w *witness) innerMutation(size int) bool {
+	return w.search != nil && w.search.mutationStep(size)
 }
 
 // summary is the live store's summary, which shares its leases with the
@@ -384,7 +390,7 @@ func (w *witness) stateAt(j int) *state {
 	if w.search != nil {
 		stop = w.replayStop
 	}
-	s := state{keys: w.keys, kvs: w.kvs, leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: stop}
+	s := state{keys: w.keys, kvs: w.kvs, leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: stop, mutate: w.replayMutate}
 	return s.clone()
 }
 

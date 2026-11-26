@@ -307,6 +307,17 @@ func (r *revisionOrder) step() bool {
 	return r.workItem(ordinaryUnits)
 }
 
+// mutationStep accounts for a write that grows the transaction's prior-
+// value map beyond Go's eight-entry small-map representation. Those writes
+// hash/allocate map groups and event storage; one-key trials stay cheap.
+// This is extra to the scan charge, not a replacement for its stop polls.
+func (r *revisionOrder) mutationStep(size int) bool {
+	if size <= 8 {
+		return r.w.stopped
+	}
+	return r.chargeItems(1, workUnitsPerStep/16)
+}
+
 func (r *revisionOrder) capacityStep() bool {
 	if r.workLeft > 0 && r.budgetLeft > 0 && !r.w.stopped {
 		r.workLeft--

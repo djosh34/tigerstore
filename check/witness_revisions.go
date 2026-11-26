@@ -1712,6 +1712,7 @@ func (r *revisionOrder) search() (err error) {
 	defer func() { w.sorter.step = nil }()
 	w.sorter.step = r.step
 	w.live.stop = r.step
+	w.live.mutate = r.mutationStep
 	if r.step() {
 		return ErrWitnessTimeout
 	}

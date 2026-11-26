@@ -65,6 +65,9 @@ type state struct {
 	// stop charges replay work only in the revision witness. Other model
 	// users leave it nil, and a clone keeps the same cancellation hook.
 	stop func() bool
+	// mutate charges actual key writes separately from cheap scans. It
+	// is set only by the revision witness and survives trial copies.
+	mutate func(int) bool
 	// sum is a fingerprint of the state, kept only by the Porcupine
 	// model, where comparing sets of states is the hot path. It must be
 	// recomputed after every change: same and states.equal rely on it,
@@ -482,6 +485,9 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 				kv.CreateRevision = prev.CreateRevision
 				kv.Version = prev.Version + 1
 			}
+			if s.mutate != nil && s.mutate(len(was)) {
+				return outcome{err: errReplayStopped}
+			}
 			s.kvs[j] = kv
 			changed = true
 			pr := &history.PutResponse{}
@@ -507,6 +513,9 @@ func (s *state) applyTxn(t *history.TxnRequest, withEvents bool) outcome {
 				old := prev
 				if needsBefore || withEvents {
 					old = prior(prev.Key, prev)
+				}
+				if s.mutate != nil && s.mutate(len(was)) {
+					return outcome{err: errReplayStopped}
 				}
 				s.kvs[j] = history.KeyValue{}
 				changed = true

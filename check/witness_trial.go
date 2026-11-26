@@ -115,7 +115,7 @@ func (w *witness) scopedState(i, j int) *state {
 	// One state serves every answer: an answer keeps nothing of it, and a
 	// new one per answer was most of what the check allocated (#499).
 	s := &w.scoped
-	*s = state{keys: keys, kvs: slices.Grow(s.kvs[:0], len(keys))[:len(keys)], leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: w.replayStop}
+	*s = state{keys: keys, kvs: slices.Grow(s.kvs[:0], len(keys))[:len(keys)], leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: w.replayStop, mutate: w.replayMutate}
 	for k, key := range keys {
 		if w.innerStep() {
 			return s

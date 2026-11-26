@@ -34,6 +34,26 @@ func TestWitnessDiagnosticJSONExact(t *testing.T) {
 	}
 }
 
+func TestWitnessDiagnosticJSONSharesCarry(t *testing.T) {
+	w := diagnosticWitness()
+	var bytes int
+	for range 100 {
+		got := w.jsonOf("x")
+		bytes += len(got)
+		want := int64((bytes + diagnosticBytesPerStep - 1) / diagnosticBytesPerStep)
+		if got != `"x"` || w.steps != want {
+			t.Fatalf("small messages rounded independently: %d bytes, %d steps, want %d", bytes, w.steps, want)
+		}
+	}
+	// A bulk writer must poll inside a single large Write, not only
+	// between encodings. No cancelled bytes may reach the builder.
+	w.stop = func() bool { return true }
+	d := &witnessJSONWriter{w: w}
+	if _, err := d.Write(make([]byte, 8<<20)); !errors.Is(err, ErrWitnessTimeout) || d.b.Len() != 0 || w.workTicks != 1024 {
+		t.Fatalf("bulk diagnostic delayed cancellation: %v, %d bytes, %d ticks", err, d.b.Len(), w.workTicks)
+	}
+}
+
 func TestWitnessDiagnosticJSONStops(t *testing.T) {
 	response := &history.Response{Range: &history.RangeResponse{KVs: make([]history.KeyValue, 100_000)}}
 	for i := range response.Range.KVs {
