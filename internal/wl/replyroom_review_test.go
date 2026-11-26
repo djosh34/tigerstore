@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -93,15 +94,7 @@ func TestAPartialSocketDrainWakesAReplyAboveHalfTheShare(t *testing.T) {
 	c, s, st, log := replyRoomClient(t)
 	n := c.node
 	n.connOut, n.reserved = 1<<20, n.sizes.reserve()
-	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_NONBLOCK, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = unix.Close(fds[0]); _ = unix.Close(fds[1]) })
-	if err := unix.SetsockoptInt(fds[0], unix.SOL_SOCKET, unix.SO_SNDBUF, 128<<10); err != nil {
-		t.Fatal(err)
-	}
-	c.fd = fds[0]
+	peer := roomSocket(t, c)
 	other := c.newStream(3, kRange)
 	c.flow.conn, other.win = 1<<30, 1<<30
 	sendMsg(c, other, 800<<10)
@@ -113,11 +106,17 @@ func TestAPartialSocketDrainWakesAReplyAboveHalfTheShare(t *testing.T) {
 		t.Fatal("the reply did not wait behind output without owning reserve room")
 	}
 	n.roomFreed = false
-	n.markDirty(&c.sock)
 	l := &loop{n: n, epfd: -1}
-	l.flush()
-	if c.dead || c.waiting() >= before || c.waiting() <= n.connOut/2 || !c.wantOut {
-		t.Fatalf("not a partial drain above half: before=%d after=%d dead=%v wantOut=%v", before, c.waiting(), c.dead, c.wantOut)
+	// A clamped send buffer may take several drains, not one. Never
+	// assume how many bytes Linux lets a nonblocking flush send.
+	for len(n.roomWait) != 0 {
+		n.markDirty(&c.sock)
+		l.flush()
+		if c.dead || c.waiting() >= before || c.waiting() <= n.connOut/2 || !c.wantOut {
+			t.Fatalf("not a partial drain above half: before=%d after=%d dead=%v wantOut=%v", before, c.waiting(), c.dead, c.wantOut)
+		}
+		before = c.waiting()
+		drainRoomSocket(t, peer)
 	}
 	if len(n.roomWait) != 0 || c.heldCounted != 0 || c.roomHeld != 0 || n.reserved != n.sizes.reserve() {
 		t.Fatal("a reply fitting the partial drain still waits for reserve room")
@@ -125,5 +124,42 @@ func TestAPartialSocketDrainWakesAReplyAboveHalfTheShare(t *testing.T) {
 	reply := roomRangeReply(t, c)
 	if len(reply.Kvs) != 1 || string(reply.Kvs[0].Value) != strings.Repeat("v", 320<<10) {
 		t.Fatal("the partial drain released the wrong reply")
+	}
+}
+
+// roomSocket deliberately asks for a small send buffer. Tests drive as
+// many actual drains as needed, including when Linux clamps it lower.
+func roomSocket(t *testing.T, c *client) int {
+	t.Helper()
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_NONBLOCK, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = unix.Close(fds[0]); _ = unix.Close(fds[1]) })
+	if err := unix.SetsockoptInt(fds[0], unix.SOL_SOCKET, unix.SO_SNDBUF, 32<<10); err != nil {
+		t.Fatal(err)
+	}
+	c.fd = fds[0]
+	return fds[1]
+}
+
+func drainRoomSocket(t *testing.T, fd int) {
+	t.Helper()
+	var buf [64 << 10]byte
+	total := 0
+	for {
+		n, err := unix.Read(fd, buf[:])
+		if n > 0 {
+			total += n
+		}
+		if errors.Is(err, unix.EAGAIN) {
+			break
+		}
+		if err != nil || n == 0 {
+			t.Fatalf("drain: %d bytes, error %v", n, err)
+		}
+	}
+	if total == 0 {
+		t.Fatal("the socket flush sent no bytes")
 	}
 }

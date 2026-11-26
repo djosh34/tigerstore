@@ -223,6 +223,7 @@ type client struct {
 	// many of its messages wait for room (reserve.go).
 	roomHeld    int64
 	roomWaiters int
+	roomWake    bool // queued in node.roomClients
 	// heldCounted is what its held replies and its ranges waiting for
 	// room keep: past its share with what waits for window, its new
 	// requests are refused, as etcd refuses too many (#689's re-check, B6).

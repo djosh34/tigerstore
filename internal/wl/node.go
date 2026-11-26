@@ -152,6 +152,9 @@ type node struct {
 	// roomFreed (reserve.go).
 	reserved int64
 	roomWait []roomRead
+	// roomClients are local wakes: their own output changed without
+	// returning any shared reserve room. roomFreed still wakes all.
+	roomClients []*client
 	// tokenWaits are the clients whose reading waits for the entry of a
 	// call's simple token (tokenwait.go).
 	tokenWaits []*client
