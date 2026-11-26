@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,7 +117,7 @@ var ErrWitnessTimeout = errors.New("timed out")
 type witness struct {
 	h        *history.History
 	deadline time.Time
-	// steps counts the search's steps, and a check with maxSteps above 0
+	// steps counts the index's and search's steps, and maxSteps above 0
 	// stops after that many (MaxSteps).
 	steps, maxSteps int64
 	keys            []string
@@ -637,6 +638,47 @@ func outputOf(o outcome) string {
 
 // describe names op i for a failure.
 func (w *witness) describe(i int) string { return describeOp(w.h, i) }
+
+// describeBrief names op i as describe does, but by the kind of its
+// request and the revision and size of its answer, not their contents:
+// an error the index finds names an op, and describe of a range that
+// answered 100,000 keys made 7 MB of it in one step (#849's review).
+func (w *witness) describeBrief(i int) string {
+	op := &w.h.Ops[i]
+	got := "nothing"
+	switch {
+	case op.Resp != nil:
+		got = "revision " + strconv.FormatInt(op.Resp.Revision, 10)
+		if r := op.Resp.Range; r != nil {
+			got += fmt.Sprintf(", %d keys of %d", len(r.KVs), r.Count)
+		}
+	case op.Err != nil:
+		got = fmt.Sprintf("error %q", op.Err.Message)
+	}
+	return fmt.Sprintf("op %d (client %d, %d to %d), %s, with answer %s", i, op.Client, op.Call, op.Return, requestKind(op.Req), got)
+}
+
+// requestKind is the kind of req: range, put, delete, txn, lease grant,
+// lease revoke or compact.
+func requestKind(req history.Request) string {
+	switch {
+	case req.Range != nil:
+		return "a range"
+	case req.Put != nil:
+		return "a put"
+	case req.Delete != nil:
+		return "a delete"
+	case req.Txn != nil:
+		return "a txn"
+	case req.LeaseGrant != nil:
+		return "a lease grant"
+	case req.LeaseRevoke != nil:
+		return "a lease revoke"
+	case req.Compact != nil:
+		return "a compaction"
+	}
+	return "a request"
+}
 
 // acked reports whether op i got an answer.
 func (w *witness) acked(i int) bool { return w.h.Ops[i].Resp != nil }
