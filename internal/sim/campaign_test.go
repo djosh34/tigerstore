@@ -56,7 +56,10 @@ var campaignKinds = campaignCycle()
 
 // campaignCycle walks seeds until each kind's cost is exactly its target
 // share of the total again. The deficits alone decide the next kind, so
-// the same choices repeat from there.
+// the same choices repeat from there. Costs or shares whose deficits do
+// not return to zero within maxCampaignCycle seeds stop the walk there,
+// rather than hang every test of the package at init, and fail
+// TestCampaignKindCycleCloses.
 func campaignCycle() []string {
 	kinds := [...]string{kindFresh, kindAged, kindLong}
 	costs := [...]int{costFresh, costImage, costLong}
@@ -78,8 +81,16 @@ func campaignCycle() []string {
 		if deficit == [3]int{} {
 			return cycle
 		}
+		if len(cycle) == maxCampaignCycle {
+			// TestCampaignKindCycleCloses fails on a cycle this long.
+			return cycle
+		}
 	}
 }
+
+// maxCampaignCycle bounds campaignCycle's walk: today's cycle is 38,461
+// seeds.
+const maxCampaignCycle = 1 << 20
 
 // longConfig is a long seed: TestSeeds's faults about 16 times further
 // apart, for 4 simulated hours (TestCampaignShapeSeeds), on the cluster

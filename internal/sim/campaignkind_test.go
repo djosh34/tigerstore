@@ -66,6 +66,25 @@ func TestCampaignKindDeterministic(t *testing.T) {
 			t.Errorf("seed %d: gives %s, same place in the cycle gives %s", seed, got, want)
 		}
 	}
+	// Large seeds at an aged and a long place of the cycle (seeds 390 and
+	// 1,052's): a lookup truncated to 32 bits would give fresh there.
+	for _, c := range []struct {
+		seed uint64
+		want string
+	}{{^uint64(0) - 3308, kindAged}, {^uint64(0) - 2646, kindLong}} {
+		if got := campaignKind(c.seed); got != c.want {
+			t.Errorf("seed %d: gives %s, want %s", c.seed, got, c.want)
+		}
+	}
+}
+
+// TestCampaignKindCycleCloses checks that the allocation's deficits
+// return to zero within campaignCycle's bound, so its table is one whole
+// cycle and not a walk cut short.
+func TestCampaignKindCycleCloses(t *testing.T) {
+	if n := len(campaignKinds); n >= maxCampaignCycle {
+		t.Fatalf("the allocation's deficits did not return to zero within %d seeds: the costs or shares need a cycle that closes", n)
+	}
 }
 
 // TestCampaignKindRunningCost checks the table and its repeat against a
