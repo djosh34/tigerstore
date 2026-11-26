@@ -132,7 +132,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 		n.recvSnap = ""
 	}
 	n.abortCkpt()
-	name := ckptName(meta.GetIndex())
+	name := nextCkptName(meta.GetIndex(), n.ckptName)
 	final := filepath.Join(n.ckptDir, name)
 	if err := n.sys.rename(path, final); err != nil {
 		return err
