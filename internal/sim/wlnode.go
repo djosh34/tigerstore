@@ -957,11 +957,18 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 		s.fail("node %d started on a damaged disk: %w", n.id, err)
 		return true
 	}
+	s.fence(n, fmt.Sprintf("refused to start on its damaged disk: %v", err), err.Error())
+	return true
+}
+
+// fence keeps n out for good, after its start refused its damaged disk
+// or loseQuorum found no place for damage. The lock is held.
+func (s *Sim) fence(n *node, why, detail string) {
 	n.fenced = true
-	n.why = fmt.Sprintf("refused to start on its damaged disk: %v", err)
+	n.why = why
 	s.stats.Fenced++
 	s.lastFenceAt = s.now()
-	s.tracef("node %d: fenced: %v", n.id, err)
+	s.tracef("node %d: fenced: %s", n.id, detail)
 	s.down(n)
 	if s.cfg.LoseQuorum && s.quorumLostAt == 0 && s.count(func(m *node) bool { return m.fenced }) > (s.cfg.voters()-1)/2 {
 		s.quorumLostAt, s.stats.QuorumLostAt = s.now(), s.now()
@@ -970,5 +977,4 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 	if s.cfg.Faults.Replace && !s.cfg.LoseQuorum {
 		s.wg.Go(func() { s.replace(n) })
 	}
-	return true
 }

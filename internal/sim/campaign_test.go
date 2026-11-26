@@ -118,7 +118,7 @@ func TestCampaign(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: the campaigns say how many seeds to run")
 	}
-	ran, cost := map[string]int{}, map[string]int{}
+	ran, cost := map[string]int{"requested quorum loss, not lost": 0}, map[string]int{}
 	images := map[uint64]bool{}
 	// An aged seed's image and each of its forks run in gosim runs of
 	// their own, as TestAgedForks's do (#794): all in one process, the
@@ -148,11 +148,12 @@ func TestCampaign(t *testing.T) {
 		default:
 			cfg := Scenario(seed)
 			t.Logf("seed %d: %s", seed, cfg.describe())
-			res := run(t, cfg)
-			checkers(t, res)
-			return scenarioRun{Kind: cfg.kind(), Nodes: cfg.voters(), Stats: res.Stats}
+			return runScenario(t, cfg)
 		}
 	}, func(seed uint64, r scenarioRun) bool {
+		if r.countMissedLoss(ran) {
+			return false
+		}
 		switch r.Kind {
 		case kindAged:
 			// Each fork carries its share of the image's cost.
@@ -186,4 +187,7 @@ func TestCampaign(t *testing.T) {
 	}
 	total := cost[kindFresh] + cost[kindAged] + cost[kindLong]
 	t.Logf("campaign: %s; by cost: fresh %d, aged %d, long %d of %d", strings.Join(counts, ", "), cost[kindFresh], cost[kindAged], cost[kindLong], total)
+	if n := ran["requested quorum loss, not lost"]; n != 0 {
+		t.Errorf("requested quorum loss, not lost: %d, want 0", n)
+	}
 }
