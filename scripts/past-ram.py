@@ -85,6 +85,13 @@ def classify(result, progress):
     result.update(outcome=outcome, limit=limit, termination=failure, failure=None)
 
 
+def driver_command(args, endpoints, out):
+    # The proof target is independent of where either reference limit stops.
+    return [str(Path(args.driver).resolve()), "-endpoints", endpoints,
+            "-mode", args.mode, "-bytes", str(args.preload_bytes or args.memory * 31 // 10),
+            "-duration", f"{args.seconds}s", "-out", str(out)]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--server", required=True)
@@ -179,9 +186,7 @@ def main():
         result["disk_after_start"] = subprocess.run(["df", "-B1", str(out)], capture_output=True, text=True).stdout
         print(result["disk_after_start"], flush=True)
         with (out / "driver.log").open("wb") as log:
-            driver = subprocess.Popen([str(Path(args.driver).resolve()), "-endpoints", endpoints,
-                                       "-mode", args.mode, "-bytes", str(args.preload_bytes or args.memory * 31 // 10),
-                                       "-duration", f"{args.seconds}s", "-out", str(out)],
+            driver = subprocess.Popen(driver_command(args, endpoints, out),
                                       stdout=log, stderr=subprocess.STDOUT)
             started = time.monotonic()
             ready = None

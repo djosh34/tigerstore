@@ -1,8 +1,14 @@
 """Classification regressions. Run in Actions, not on the shared host."""
+import argparse
 import copy
 import importlib.util
+import json
+import os
 from pathlib import Path
+import tempfile
+import textwrap
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("past_ram", Path(__file__).with_name("past-ram.py"))
 past_ram = importlib.util.module_from_spec(spec)
@@ -88,6 +94,53 @@ class ClassificationTests(unittest.TestCase):
             if mode == "proof":
                 with self.subTest(mode=mode, case="explicit preload control"):
                     self.assertEqual(run(dict(preload_bytes=16 << 20))["outcome"], "failed")
+
+    def test_reference_limit_does_not_lower_tigerstore_proof_target(self):
+        # The same acknowledged data, with either a kill or reclaim. Neither
+        # reference outcome is an input to tigerstore's independently run proof.
+        commands = []
+        for limit in ("cgroup-oom", "cgroup-reclaim"):
+            reference = self.result("etcd", "proof")
+            reference["last_acknowledged"].update(objects=280960, live_bytes=411341174)
+            reference["final_cgroups"] = [
+                dict(events=dict(oom_kill=int(limit == "cgroup-oom" and i == 1), max=n))
+                for i, n in enumerate((8949, 11465, 10553))]
+            reference["failure"] = ("a member was OOM-killed" if limit == "cgroup-oom"
+                                    else "driver exited 1; see progress.jsonl and driver.log")
+            progress = [dict(phase="preload-failed", failure="etcdserver: request timed out")]
+            maximum = copy.deepcopy(reference)
+            maximum["mode"] = "max"
+            past_ram.classify(maximum, progress)
+            past_ram.classify(reference, progress)
+            with self.subTest(limit=limit):
+                self.assertEqual(maximum["outcome"], "capacity-limit")
+                self.assertEqual(reference["outcome"], "reference-preload-limit")
+                self.assertEqual(reference["limit"], maximum["limit"])
+                self.assertEqual(reference["last_acknowledged"], maximum["last_acknowledged"])
+                args = argparse.Namespace(driver="pastram", kind="tigerstore", mode="proof",
+                                          memory=640 << 20, preload_bytes=0, seconds=180)
+                command = past_ram.driver_command(args, "http://127.0.0.1:20100", "past-ram")
+                target = int(command[command.index("-bytes") + 1])
+                self.assertEqual(target, 2080374784)
+                # Still exceeds even the previous runs' largest OOM stop.
+                self.assertGreater(target, 734000000)
+                commands.append(command)
+        self.assertEqual(commands[0], commands[1])
+
+    def test_workflow_summary_displays_limit_kind(self):
+        workflow = Path(__file__).parents[1] / ".github/workflows/past-ram.yml"
+        report_step = workflow.read_text().split("          python3 -B - <<'PY'\n")[1]
+        report_step = textwrap.dedent(report_step.split("\n          PY")[0])
+        for limit in ("cgroup-oom", "cgroup-reclaim"):
+            with self.subTest(limit=limit), tempfile.TemporaryDirectory() as directory:
+                report = Path(directory) / "summary.json"
+                summary = Path(directory) / "job-summary.md"
+                report.write_text(json.dumps(dict(outcome="reference-preload-limit", limit=limit)))
+                with mock.patch.dict(os.environ, REPORT=str(report), GITHUB_STEP_SUMMARY=str(summary)):
+                    exec(compile(report_step, str(workflow), "exec"), {})
+                rendered = summary.read_text()
+                self.assertIn(f'"limit": "{limit}"', rendered)
+                self.assertIn("No mixed-load comparison or checker pass is claimed.", rendered)
 
     def test_failures_stay_failures(self):
         cases = [
