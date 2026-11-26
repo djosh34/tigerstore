@@ -109,6 +109,18 @@ func longConfig(seed uint64) Config {
 	return cfg
 }
 
+// countAgedImage counts an image's live leases once, not once per fork.
+func countAgedImage(ran map[string]int, images map[uint64]bool, seed uint64, leases int) {
+	if !images[seed] {
+		ran["live leases at aged images"] += leases
+		if leases >= 3000 {
+			ran["aged images with at least 3,000 leases"]++
+		}
+	}
+	images[seed] = true
+	ran["aged images"] = len(images)
+}
+
 // campaignWallLimit changes only long seeds. Fresh seeds and aged images
 // and forks keep the driver's existing limits.
 func campaignWallLimit(seed uint64) time.Duration {
@@ -167,8 +179,7 @@ func TestCampaign(t *testing.T) {
 		switch r.Kind {
 		case kindAged:
 			// Each fork carries its share of the image's cost.
-			images[seed] = true
-			ran["aged images"] = len(images)
+			countAgedImage(ran, images, seed, r.Stats.ImageLeases)
 			ran["aged forks"] += r.Forks
 			cost[kindAged] += costImage * r.Forks / forksPerImage
 		case kindLong:

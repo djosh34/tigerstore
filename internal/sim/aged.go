@@ -192,7 +192,8 @@ func (l *entryLog) clone() *entryLog {
 
 // agedRequest is one of the calls a fork makes on the image's store
 // besides the small keys' load: a read of every key, a delete of all the
-// keys of one of the image's prefixes, or a revoke of one of its leases.
+// keys of one of the image's prefixes, or a revoke or keepalive of one
+// of its leases.
 // The lock is held.
 func (s *Sim) agedRequest() proto.Message {
 	st := s.cfg.from.start
@@ -205,6 +206,10 @@ func (s *Sim) agedRequest() proto.Message {
 		prefix := key[:strings.LastIndexByte(key, '/')+1]
 		return &pb.DeleteRangeRequest{Key: []byte(prefix), RangeEnd: prefixEnd([]byte(prefix)), PrevKv: s.rng.IntN(2) == 0}
 	default:
-		return &pb.LeaseRevokeRequest{ID: st.Leases[s.rng.IntN(len(st.Leases))]}
+		id := st.Leases[s.rng.IntN(len(st.Leases))]
+		if p < 8 {
+			return &pb.LeaseRevokeRequest{ID: id}
+		}
+		return &pb.LeaseKeepAliveRequest{ID: id}
 	}
 }

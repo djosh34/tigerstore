@@ -379,9 +379,9 @@ func (h *wlHooks) Durable(last uint64, install bool, hs *raftpb.HardState) {
 	_ = install
 }
 
-// Expired notes when a node first expired lease id, for the check that
-// no lease expires before its TTL ran out (leasesExpire), as main's
-// committer's Expired effects do.
+// Expired notes when a node first decided to expire lease id, before
+// proposing its revoke, for the check that no expiry decision comes
+// before its TTL ran out (leasesExpire). The revoke may never commit.
 func (h *wlHooks) Expired(id int64) {
 	s, p := h.s, h.p
 	s.mu.Lock()
@@ -550,6 +550,14 @@ func (h *wlHooks) Turn(st wl.TurnState, values func() []wl.LogValue) {
 	if n.proc != p {
 		s.mu.Unlock()
 		return
+	}
+	if img := s.cfg.from; img != nil && len(img.start.Leases) > 0 {
+		if was := p.wl.turn; st.Lead == n.id && (was.Lead != n.id || was.Term != st.Term) {
+			// Only an image with leases needs these reset times.
+			// A follower learning the leader later resets no deadline;
+			// a fresh process or a new leader term starts the TTL over.
+			s.leaseLeaders = append(s.leaseLeaders, s.now())
+		}
 	}
 	p.wl.turn = st
 	if k := len(n.installs) - 1; k >= 0 {
