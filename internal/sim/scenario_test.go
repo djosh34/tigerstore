@@ -240,7 +240,7 @@ func TestScenarios(t *testing.T) {
 	if os.Getenv("SIM_SEEDS") == "" {
 		t.Skip("set SIM_SEEDS: the campaigns and CI say how many scenarios to run")
 	}
-	ran := map[string]int{}
+	ran := map[string]int{"requested quorum loss, not lost": 0}
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) scenarioRun {
 		cfg := Scenario(seed)
 		t.Logf("seed %d: %s", seed, cfg.describe())
@@ -252,6 +252,9 @@ func TestScenarios(t *testing.T) {
 		return scenarioRun{Kind: cfg.kind(), Nodes: cfg.voters(), Stats: st}
 	}, func(_ uint64, r scenarioRun) bool {
 		ran[fmt.Sprintf("%s on %d voters", r.Kind, r.Nodes)]++
+		if r.Kind == "requested quorum loss" && r.Stats.QuorumLostAt == 0 {
+			ran["requested quorum loss, not lost"]++
+		}
 		if r.Stats.QuorumLostAt > 0 {
 			ran["quorum lost for good"]++
 			if r.Stats.Replaced > 0 {

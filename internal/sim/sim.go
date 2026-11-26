@@ -120,10 +120,11 @@ type Config struct {
 	// rotates it: the same CA issues a new one, and every node restarts
 	// with it. In between no write may succeed (checkExpired).
 	CertExpiresAt, CertRotateAt int64
-	// LoseQuorum makes every crash damage the node's disk until a
-	// majority of the voters is fenced for good, and no operator replaces
-	// one: the cluster must stay safe, and refuse every write from then
-	// on (checkUnavailable).
+	// LoseQuorum damages disks at crashes until a majority of the voters
+	// is fenced for good, and no operator replaces one. Where damage
+	// finds no place, loseQuorum fences a node directly. The cluster must
+	// stay safe and refuse every write from then on (checkUnavailable),
+	// and a requested loss that has not happened by healing fails.
 	LoseQuorum bool
 	// Membership adds, updates, promotes and removes a member after the
 	// voters while the ordinary clients and faults continue.
@@ -2221,11 +2222,12 @@ func (s *Sim) beforeSync(p *proc) {
 	}
 }
 
-// loseQuorum crashes a node that is up and undamaged every second, its
-// disk damaged at the crash (maybeCorrupt), until a majority of the
-// voters is fenced for good (Config.LoseQuorum): the random crashes, half
-// of them kills, which damage nothing, may not get there in time. It
-// starts once a client's write succeeded, so that the checkers have a
+// loseQuorum crashes a node that is up every second, its disk damaged at
+// the crash (maybeCorrupt), or fenced directly if damage finds no place,
+// until a majority of the voters is fenced for good (Config.LoseQuorum):
+// the random crashes, half of them kills, which damage nothing, may not
+// get there in time. It starts once a client's write succeeded, so that
+// the checkers have a
 // committed log to check: under the race detector, with the host's
 // timing, seed 1 of TestLoseQuorum had committed none a quarter into the
 // run.
@@ -2245,7 +2247,10 @@ func (s *Sim) loseQuorum() {
 		}
 		var up []*node
 		for _, n := range s.nodes {
-			if n.proc != nil && !n.mayBeDamaged() && !n.out() {
+			// A rotted node may still run on its damaged disk. Restart it
+			// too, so it refuses that disk instead of holding a damage
+			// slot without being fenced (Scenario seed 2322).
+			if n.proc != nil && (!n.mayBeDamaged() || n.corrupted) && !n.out() {
 				up = append(up, n)
 			}
 		}
@@ -2253,7 +2258,9 @@ func (s *Sim) loseQuorum() {
 			n := up[s.rng.IntN(len(up))]
 			n.why = "the run crashed it to lose the quorum"
 			s.crash(n)
-			s.maybeCorrupt(n)
+			if noPlace := s.maybeCorrupt(n); noPlace {
+				s.fence(n, "the run fenced it to lose the quorum: damage found no place")
+			}
 			s.restartLater(n, 1+s.rng.Int64N(s.cfg.Faults.MaxDown))
 		}
 		s.mu.Unlock()
@@ -2378,12 +2385,12 @@ func (s *Sim) loseUnsyncedAs(n *node, img simfs.Image) {
 	n.tornCrash = n.tornCrash || img >= simfs.Sectors
 }
 
-// mayBeDamaged reports whether n's disk is damaged, or may be: a torn
-// crash image that no start recovered since may make recovery refuse its
-// log (loseUnsynced), which only its next start finds out. The faults that
-// must leave a quorum whole count such a node as damaged. The lock is
-// held.
-func (n *node) mayBeDamaged() bool { return n.corrupted || n.tornCrash }
+// mayBeDamaged reports whether n is fenced for good, or its disk is
+// damaged, or may be: a torn crash image that no start recovered since
+// may make recovery refuse its log (loseUnsynced), which only its next
+// start finds out. The faults that must leave a quorum whole count such
+// a node as damaged. The lock is held.
+func (n *node) mayBeDamaged() bool { return n.fenced || n.corrupted || n.tornCrash }
 
 // installSpan is a snapshot a node took (#775's rulings): from when it
 // reached the node (its first stream, or else the install's start), the
@@ -2571,6 +2578,11 @@ func (s *Sim) heal() {
 	s.mu.Lock()
 	s.healed = true
 	s.tracef("healing")
+	if s.cfg.LoseQuorum && s.quorumLostAt == 0 {
+		s.fail("requested a quorum loss and none happened by healing")
+		s.mu.Unlock()
+		return
+	}
 	if !s.grayOnce || s.grayDropped {
 		s.gray, s.grayOnce = nil, false
 	}

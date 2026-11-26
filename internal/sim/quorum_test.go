@@ -6,8 +6,79 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/djosh34/tigerstore/internal/simrun"
 	"github.com/djosh34/tigerstore/internal/wl"
 )
+
+// TestLoseQuorumWithoutDamage runs the scenarios whose damage found no
+// place on main (#873): each must lose its quorum and pass every check.
+func TestLoseQuorumWithoutDamage(t *testing.T) {
+	simrun.Each(t, []uint64{932, 1196, 1436, 1945, 2322}, func(t *testing.T, seed uint64) Stats {
+		cfg := Scenario(seed)
+		if !cfg.LoseQuorum {
+			t.Fatalf("seed %d no longer requests a quorum loss", seed)
+		}
+		res := run(t, cfg)
+		checkers(t, res)
+		st := res.Stats
+		if st.QuorumLostAt == 0 || st.Fenced != cfg.voters()/2+1 {
+			t.Fatalf("seed %d: %d fenced, quorum lost at %s", seed, st.Fenced, seconds(st.QuorumLostAt))
+		}
+		t.Logf("seed %d: %d voters, %d fenced, damage %v, quorum lost at %s", seed, cfg.voters(), st.Fenced, st.Damage, seconds(st.QuorumLostAt))
+		for _, l := range res.Trace {
+			if strings.Contains(l, "fenced:") || strings.Contains(l, "damage after a sync:") || strings.Contains(l, "unavailable:") {
+				t.Log(l)
+			}
+		}
+		return st
+	}, nil)
+}
+
+// TestLoseQuorumWithDamage writes checkpoints before the quorum loss, so
+// damage finds a place: nodes must refuse their disks, not take the
+// direct fence that loseQuorum uses when no damage fits.
+func TestLoseQuorumWithDamage(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.LoseQuorum, cfg.Duration = true, 40*Second
+		cfg.Faults = Faults{Corrupt: true, MaxDown: 100 * Millisecond, DiskBudget: 32 << 10}
+		cfg.damageKinds = []damageKind{flippedRoot}
+		res := run(t, cfg)
+		checkers(t, res)
+		st := res.Stats
+		if st.QuorumLostAt == 0 || st.Damage[flippedRoot] != cfg.voters()/2+1 || st.Fenced != st.Damage[flippedRoot] {
+			t.Fatalf("%d fenced, damage %v, quorum lost at %s", st.Fenced, st.Damage, seconds(st.QuorumLostAt))
+		}
+		for _, l := range res.Trace {
+			if strings.Contains(l, "damage found no place") {
+				t.Fatalf("damage took the fallback: %s", l)
+			}
+			if strings.Contains(l, "damage after a sync:") || strings.Contains(l, "fenced:") {
+				t.Log(l)
+			}
+		}
+		return st
+	}, nil)
+}
+
+// TestRequestedQuorumLossMustHappen disables damage and its fallback:
+// reaching healing with a quorum must fail, not take the ordinary checks.
+func TestRequestedQuorumLossMustHappen(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.LoseQuorum, cfg.Duration = true, 4*Second
+		cfg.Faults = Faults{MaxDown: 100 * Millisecond}
+		res, err := runSeed(t, cfg)
+		if err == nil || !strings.Contains(err.Error(), "requested a quorum loss and none happened by healing") {
+			t.Fatalf("run returned %v, want the requested-loss failure", err)
+		}
+		if res.Stats.QuorumLostAt != 0 || res.Stats.Fenced != 0 {
+			t.Fatalf("the run lost its quorum: %+v", res.Stats)
+		}
+		t.Log(err)
+		return res.Stats
+	}, nil)
+}
 
 // TestReplacementLosesQuorum is the end of TestCampaign seed 780 on main
 // (#850), built directly, as no seed keeps that timing once runs change
