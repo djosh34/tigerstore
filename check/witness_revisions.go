@@ -123,10 +123,12 @@ type revisionOrder struct {
 	// optional mutations not used yet (dueIndex). restore drops both.
 	placedPrefix int
 	dues         *dueIndex
-	// dueWork retains late due sets and their call order across queries;
-	// workLeft batches the inner search loops' work into budget steps.
-	dueWork  *dueWork
-	workLeft uint8
+	// dueWork retains late due sets and their call order across queries.
+	// Inner work shares a poll every 64 items, even when classes mix.
+	// budgetLeft weighs that work separately in 1/16,384-step units.
+	dueWork    *dueWork
+	workLeft   uint8
+	budgetLeft uint16
 	// counts are, per revision, how many keys of a range clients saw
 	// then, and countRevs those revisions in order. putRevs and delRevs
 	// are, per key, the revisions whose acked writer may create or delete

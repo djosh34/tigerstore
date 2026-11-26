@@ -67,6 +67,10 @@ func (m WitnessMode) String() string {
 // finishing within timeout, or within MaxSteps, is a failure, never a
 // pass.
 func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts ...Option) error {
+	o := optionsOf(opts)
+	if o.stepsUsed != nil {
+		*o.stepsUsed = 0
+	}
 	if err := h.Validate(); err != nil {
 		return err
 	}
@@ -74,7 +78,9 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
 	w := newWitness(h, time.Now().Add(timeout))
-	o := optionsOf(opts)
+	if o.stepsUsed != nil {
+		defer func() { *o.stepsUsed = w.steps }()
+	}
 	w.maxSteps, w.stop, w.slow = o.steps, o.stop, o.slow
 	var err error
 	switch mode {
@@ -120,7 +126,10 @@ type witness struct {
 	// steps counts the index's and search's steps, and maxSteps above 0
 	// stops after that many (MaxSteps).
 	steps, maxSteps int64
-	keys            []string
+	// workTicks counts polling opportunities independently of weighted
+	// budget steps, so lighter inner work never delays cancellation.
+	workTicks int64
+	keys      []string
 	// reqs are the ops' requests as the model sees them.
 	reqs []history.Request
 	// calls and returns are the ops' times, by op: the passes and sorts by
@@ -283,12 +292,29 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 
 // tick counts a step of work and reports whether the deadline passed or
 // the steps ran out.
-func (w *witness) tick() bool {
+func (w *witness) tick() bool { return w.tickWork(true) }
+
+// tickWork polls at the old, unweighted frequency. charge says whether
+// this polling opportunity also spends a weighted budget step.
+func (w *witness) tickWork(charge bool) bool {
+	if w.stopped {
+		return true
+	}
+	if charge && w.budgetStep() {
+		return true
+	}
+	w.workTicks++
+	w.stopped = w.workTicks%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
+	return w.stopped
+}
+
+// budgetStep spends one step without moving the independent polling clock.
+func (w *witness) budgetStep() bool {
 	if w.stopped {
 		return true
 	}
 	w.steps++
-	w.stopped = w.maxSteps > 0 && w.steps > w.maxSteps || w.steps%1024 == 0 && (time.Now().After(w.deadline) || w.stop != nil && w.stop())
+	w.stopped = w.maxSteps > 0 && w.steps > w.maxSteps
 	return w.stopped
 }
 

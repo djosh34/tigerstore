@@ -16,7 +16,8 @@ import (
 // the hook again or turn that cancellation into a failure explanation.
 func armSearchStop(r *revisionOrder) *int {
 	calls := new(int)
-	r.w.steps, r.workLeft = 0, 0
+	r.w.steps, r.w.workTicks = 0, 0
+	r.workLeft, r.budgetLeft = 0, 0
 	r.w.stop = func() bool {
 		*calls++
 		return *calls == 2
@@ -26,17 +27,17 @@ func armSearchStop(r *revisionOrder) *int {
 
 func assertSearchStopped(t *testing.T, r *revisionOrder, calls *int) {
 	t.Helper()
-	if !r.w.stopped || *calls != 2 || r.w.steps != 2048 {
-		t.Fatalf("stopped=%v, polls=%d, steps=%d; want stop at the second poll, within 2*1024*64 work items", r.w.stopped, *calls, r.w.steps)
+	if !r.w.stopped || *calls != 2 || r.w.workTicks != 2048 {
+		t.Fatalf("stopped=%v, polls=%d, ticks=%d, steps=%d; want stop within 2*1024*64 work items regardless of weight", r.w.stopped, *calls, r.w.workTicks, r.w.steps)
 	}
 	if r.failure != nil || strings.Contains(r.w.stoppedAt(), "cannot write it") || strings.Contains(r.w.stoppedAt(), "the furthest it got") {
 		t.Fatalf("stop invented a failure explanation: %s", r.w.stoppedAt())
 	}
-	before := r.w.steps
+	before, polls := r.w.steps, r.w.workTicks
 	if err := r.search(); !errors.Is(err, ErrWitnessTimeout) {
 		t.Fatalf("search lost its inner phase's cancellation: %v", err)
 	}
-	if *calls != 2 || r.w.steps != before || len(r.w.events) != 0 {
+	if *calls != 2 || r.w.steps != before || r.w.workTicks != polls || len(r.w.events) != 0 {
 		t.Fatal("search kept working after the stop")
 	}
 }
@@ -127,7 +128,7 @@ func TestSearchStopInsideCountsAndSolver(t *testing.T) {
 				for j := range actions {
 					actions[j] = []int{0}
 				}
-				if fewestActions([]int{1}, actions, 1, r.step) <= 1 {
+				if fewestActions([]int{1}, actions, 1, r.capacityStep) <= 1 {
 					t.Fatal("cancelled solver found a cover")
 				}
 			case "readsFit":
@@ -142,7 +143,7 @@ func TestSearchStopInsideCountsAndSolver(t *testing.T) {
 }
 
 func TestSearchInnerWorkBudget(t *testing.T) {
-	for _, budget := range []int64{1, 100, 1000} {
+	for _, budget := range []int64{1, 10, 100} {
 		t.Run(strconv.FormatInt(budget, 10), func(t *testing.T) {
 			r := dueShape(20_000)
 			r.w.maxSteps = budget

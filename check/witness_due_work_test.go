@@ -142,7 +142,7 @@ func dueShape(n int) *revisionOrder {
 }
 
 func TestDueWorkScale(t *testing.T) {
-	const n, queries, budget = 4096, 256, 30_000
+	const n, queries, budget = 4096, 256, 2000
 	for _, old := range []bool{false, true} {
 		t.Run(fmt.Sprint("reference=", old), func(t *testing.T) {
 			r := dueShape(n)

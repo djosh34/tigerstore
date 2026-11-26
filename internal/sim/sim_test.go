@@ -721,19 +721,34 @@ func checkers(t *testing.T, res *Result) {
 	}
 }
 
-// Under gosim the clock stands still while a check computes, so the
-// checks are bounded by steps too. #872 charges inner replay and search
-// work that the old 50,000,000-step witness budget left uncharged. Across
-// all nine saved check/testdata histories, including the three hard ones,
-// the new/37e51817 ratios are 1.00 to 506.38; 81,000 same-revision grants
-// take 1.38 times the old steps after removing answered's quadratic scan.
-// The worst is 8,041,749 / 15,881 on witness-control-320-1529.json.gz.
-// Round that ratio up to 507: 50,000,000 * 507 = 25,350,000,000 steps.
-// At that history's native rate (about 2 s) this buys roughly two hours
-// of work. The one-minute native deadline and the run's real-time wallStop
-// still stop a check sooner; Porcupine keeps its own, costlier step bound.
+// Under gosim the clock stands still while a check computes, so weighted
+// steps are the deterministic bound; wallStop is only a backstop. #872
+// charges ordinary inner work at 1/1,024 and cheap capacity-vector items
+// and sort estimates at 1/16,384; index work stays at 1/256 and operation
+// turns at one. Stop polls still tick every 64 inner items, independently
+// of those weights. No-cap measurements against base 37e51817 (maximum
+// of three runs, ratios rounded up to four decimals):
+//
+//	history                     base  weighted   ratio
+//	planted-B01a-1                10        10  1.0000
+//	seed-5058843                1479      1653  1.1177
+//	seed-5068434                 107       114  1.0655
+//	seed-59113215                272       293  1.0773
+//	seed-77148                   777       840  1.0811
+//	seed-888737                  141       156  1.1064
+//	witness-425                23712     25425  1.0723
+//	witness-control-80-201      9764     12293  1.2591
+//	witness-control-320-1529   15881    110295  6.9451
+//	81000 same-revision grants 87330     89394  1.0237
+//	256 gaps, 4096 expiries    13271     62810  4.7329
+//
+// Round the worst ratio, 110,295 / 15,881, up to seven: the old
+// 50,000,000 * 7 = 350,000,000 preserves every measured margin.
+// This ratio-derived budget is PROVISIONAL until TestCampaignShapeSeeds
+// seed 1's full revision check reports its steps: the final budget is at
+// least twice that count as well. Long checks log it through StepsUsed.
 var (
-	witnessSteps   = check.MaxSteps(25_350_000_000)
+	witnessSteps   = check.MaxSteps(350_000_000)
 	porcupineSteps = check.MaxSteps(1_000_000)
 	wallStop       = check.StopWhen(simrun.WallLimitPassed)
 )
@@ -741,6 +756,13 @@ var (
 // independent runs the durability, revision and watch checkers of package
 // check on a run.
 func independent(res *Result) error {
+	return independentWithSteps(res, nil)
+}
+
+// independentWithSteps reports the revision witness's weighted count before
+// returning its verdict, including a timeout. Long runs log it for sizing
+// their deterministic budget without relying on the real-time backstop.
+func independentWithSteps(res *Result, report func(int64)) error {
 	// A long run's checks drop its history as they convert it: they need
 	// only their own copy, and a report decodes it again (#500). Its
 	// hashes, which cover the history, are taken before.
@@ -762,7 +784,12 @@ func independent(res *Result) error {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
-		if err := check.Witnessed(h, mode, time.Minute, witnessSteps, wallStop); err != nil {
+		var steps int64
+		err := check.Witnessed(h, mode, time.Minute, witnessSteps, wallStop, check.StepsUsed(&steps))
+		if mode == check.FromRevisions && report != nil {
+			report(steps)
+		}
+		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
 		}
 	}

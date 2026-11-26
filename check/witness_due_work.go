@@ -252,38 +252,85 @@ func (r *revisionOrder) due(call, rev int64) iter.Seq[optional] {
 	}
 }
 
-// charge accounts for a bulk operation without a callback per item. It
-// polls tick at each budget step before the copy, sort or compaction runs.
+// Inner work still offers a stop poll every 64 items, but budget steps
+// weigh it by cost: ordinary replay/search items at 1/1,024, and capacity
+// items at 1/16,384. The latter are short integer-vector/bitmap operations
+// and bulk sort estimates, not operation replays. #872's saved-history
+// measurements give the weights and the simulator budget's conversion.
+const (
+	searchWeight     = 16
+	capacityWeight   = 256
+	workUnitsPerStep = 64 * capacityWeight
+	ordinaryUnits    = capacityWeight / searchWeight
+)
+
+// charge accounts for bulk ordinary work without a callback per item.
 func (r *revisionOrder) charge(work int64) bool {
-	if r.w.stopped {
-		return true
-	}
-	if work <= int64(r.workLeft) {
-		r.workLeft -= uint8(work)
-		return false
-	}
-	work -= int64(r.workLeft)
-	for work > 0 {
-		if r.w.tick() {
-			return true
-		}
-		work -= 64
-	}
-	r.workLeft = uint8(-work)
-	return false
+	return r.chargeItems(work, ordinaryUnits)
 }
 
-// step bounds work inside a search phase as indexStep does in the index.
-// A search work item is at most one candidate, key, bitmap word, or sort
-// comparison. Every 64 items spend a step of the shared budget; cancellation
-// is latched by tick, so partial results can never turn a stop into a verdict.
+func (r *revisionOrder) capacityCharge(work int64) bool {
+	return r.chargeItems(work, 1)
+}
+
+// chargeItems stops at each polling or budget boundary, just as item-wise
+// work does. The two classes share both carries, so switching between them
+// cannot delay a poll or leave fractional work uncharged.
+func (r *revisionOrder) chargeItems(work int64, units uint16) bool {
+	for work > 0 {
+		if r.w.stopped {
+			return true
+		}
+		n := min(work, int64(r.workLeft), int64(r.budgetLeft/units))
+		if n > 0 {
+			r.workLeft -= uint8(n)
+			r.budgetLeft -= uint16(n) * units
+			work -= n
+		} else {
+			if r.workItem(units) {
+				return true
+			}
+			work--
+		}
+	}
+	return r.w.stopped
+}
+
+// step charges an ordinary inner item: a candidate, key, bitmap word or
+// sort comparison. The slow path handles either counter's boundary.
 func (r *revisionOrder) step() bool {
+	if r.workLeft > 0 && r.budgetLeft >= ordinaryUnits && !r.w.stopped {
+		r.workLeft--
+		r.budgetLeft -= ordinaryUnits
+		return false
+	}
+	return r.workItem(ordinaryUnits)
+}
+
+func (r *revisionOrder) capacityStep() bool {
+	if r.workLeft > 0 && r.budgetLeft > 0 && !r.w.stopped {
+		r.workLeft--
+		r.budgetLeft--
+		return false
+	}
+	return r.workItem(1)
+}
+
+func (r *revisionOrder) workItem(units uint16) bool {
 	if r.w.stopped {
 		return true
 	}
+	if r.budgetLeft < units {
+		if r.w.budgetStep() {
+			return true
+		}
+		r.budgetLeft += workUnitsPerStep
+	}
+	r.budgetLeft -= units
 	if r.workLeft > 0 {
 		r.workLeft--
 		return false
 	}
-	return r.charge(1)
+	r.workLeft = 63
+	return r.w.tickWork(false)
 }

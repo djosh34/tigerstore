@@ -47,10 +47,21 @@ func longSeeds(t *testing.T, config func(seed uint64) Config) {
 	}
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
 		res := run(t, config(seed))
-		checkers(t, res)
+		longCheckers(t, res)
 		t.Logf("%+v, %d committed writes", res.Stats, len(res.Log))
 		return res.Stats
 	}, func(uint64, Stats) bool { return false })
+}
+
+// longCheckers logs the revision witness's steps before handling its
+// verdict, so Actions records the full check's count (or its limit).
+func longCheckers(t *testing.T, res *Result) {
+	t.Helper()
+	if err := independentWithSteps(res, func(steps int64) {
+		t.Logf("revision witness used %d weighted steps", steps)
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestHostErrorComesFirst checks that a run whose pages on the runner's

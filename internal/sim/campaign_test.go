@@ -99,7 +99,7 @@ func TestCampaign(t *testing.T) {
 		case kindLong:
 			cfg := longConfig(seed)
 			res := run(t, cfg)
-			checkers(t, res)
+			longCheckers(t, res)
 			t.Logf("seed %d: long, %s: %d ok, %d failed, %d ambiguous, %d fenced, %d replaced", seed, cfg.describe(), res.Stats.OK, res.Stats.Failed, res.Stats.Ambiguous, res.Stats.Fenced, res.Stats.Replaced)
 			return scenarioRun{Kind: kind, Nodes: cfg.voters(), Stats: res.Stats}
 		default:

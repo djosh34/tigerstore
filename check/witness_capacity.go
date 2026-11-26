@@ -287,7 +287,7 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 	n := len(s.keys)
 	var out []int
 	add := func(ops []int) {
-		if !r.charge(int64(len(ops))) {
+		if !r.capacityCharge(int64(len(ops))) {
 			out = append(out, ops...)
 		}
 	}
@@ -303,7 +303,7 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 			// A key holds a lease only from a put of the history, so its
 			// lease now is one of these.
 			for _, id := range x.leasesOf[k] {
-				if r.step() {
+				if r.capacityStep() {
 					return nil
 				}
 				add(x.revokesOf[id])
@@ -314,11 +314,11 @@ func (r *revisionOrder) coverers(s *state, need []int) []int {
 	// budget step, not at each comparison. A merge sort with per-item
 	// callbacks made this bound dominate a saved hard history (#872).
 	work := int64(len(out))
-	if r.charge(work * int64(bits.Len(uint(len(out))))) {
+	if r.capacityCharge(work * int64(bits.Len(uint(len(out))))) {
 		return nil
 	}
 	slices.Sort(out)
-	if r.charge(work) {
+	if r.capacityCharge(work) {
 		return nil
 	}
 	return slices.Compact(out)
@@ -377,7 +377,7 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 		need := r.roomNeed(s, end)
 		total := 0
 		for _, v := range need {
-			if r.step() {
+			if r.capacityStep() {
 				return false
 			}
 			total += v
@@ -389,18 +389,18 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 		add := func(a []int) {
 			useful := false
 			for j := range a {
-				if r.step() {
+				if r.capacityStep() {
 					return
 				}
 				a[j] = min(a[j], need[j])
 				useful = useful || a[j] > 0
 			}
-			if useful && !slices.ContainsFunc(actions, func(b []int) bool { return r.step() || slices.Equal(a, b) }) {
+			if useful && !slices.ContainsFunc(actions, func(b []int) bool { return r.capacityStep() || slices.Equal(a, b) }) {
 				actions = append(actions, a)
 			}
 		}
 		for _, i := range r.coverers(s, need) {
-			if r.step() {
+			if r.capacityStep() {
 				return false
 			}
 			if _, held := r.reserved[i]; i == skip || r.used[i] || r.lb[i] >= end || held {
@@ -409,7 +409,7 @@ func (r *revisionOrder) roomReachable(s *state, skip int) bool {
 			add(slices.Clone(x.actions[i]))
 		}
 		free := int(end-now) - between(x.fixed, now, end)
-		if r.w.stopped || fewestActions(need, actions, free, r.step) > free {
+		if r.w.stopped || fewestActions(need, actions, free, r.capacityStep) > free {
 			return false
 		}
 	}
@@ -456,7 +456,7 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 	// The lives that end by end after now, and those created after now by
 	// end: no other one needs anything by end.
 	for _, l := range x.byM[sort.Search(len(x.byM), func(j int) bool { return x.byM[j].m > now }):] {
-		if r.step() {
+		if r.capacityStep() {
 			return nil
 		}
 		if l.m > end {
@@ -465,7 +465,7 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 		life(l)
 	}
 	for _, l := range x.byC[sort.Search(len(x.byC), func(j int) bool { return x.byC[j].c > now }):] {
-		if r.step() {
+		if r.capacityStep() {
 			return nil
 		}
 		if l.c > end {
@@ -476,19 +476,19 @@ func (r *revisionOrder) roomNeed(s *state, end int64) []int {
 		}
 	}
 	for _, rev := range r.countRevs[sort.Search(len(r.countRevs), func(j int) bool { return r.countRevs[j] > now }):] {
-		if r.step() {
+		if r.capacityStep() {
 			return nil
 		}
 		if rev > end {
 			break
 		}
 		for _, c := range r.counts[rev] {
-			if r.step() {
+			if r.capacityStep() {
 				return nil
 			}
 			if c.n == 0 {
 				for k := c.lo; k < c.hi; k++ {
-					if r.step() {
+					if r.capacityStep() {
 						return nil
 					}
 					mustDelete(k, rev)

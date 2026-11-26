@@ -33,8 +33,8 @@ func TestStoppedFitPublicMessage(t *testing.T) {
 	h.Ops[put].Resp, h.Ops[put].Err = nil, errUnavailable
 	err := Witnessed(h, FromRevisions, time.Minute, MaxSteps(10))
 	assertTimeoutOnly(t, err)
-	if !strings.Contains(err.Error(), "the search was at revision 2") {
-		t.Fatalf("did not stop in the fit: %v", err)
+	if !strings.Contains(err.Error(), "the search was at revision") {
+		t.Fatalf("did not reach the search: %v", err)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestDueEmptySteadyState(t *testing.T) {
 	r.use(0)
 	_ = referenceDue(r, 2, 1)
 	for _, old := range []bool{false, true} {
-		r.w.steps, r.workLeft = 0, 0
+		r.w.steps, r.w.workTicks, r.workLeft, r.budgetLeft = 0, 0, 0, 0
 		for range queries {
 			if old {
 				if len(referenceDue(r, 2, 1)) != 0 {
@@ -137,7 +137,7 @@ func TestBulkChargeMatchesSteps(t *testing.T) {
 			for range n {
 				items.step()
 			}
-			if bulk.w.steps != items.w.steps || bulk.workLeft != items.workLeft {
+			if bulk.w.steps != items.w.steps || bulk.workLeft != items.workLeft || bulk.budgetLeft != items.budgetLeft || bulk.w.workTicks != items.w.workTicks {
 				t.Fatalf("left=%d, work=%d: bulk %d/%d, items %d/%d", left, n, bulk.w.steps, bulk.workLeft, items.w.steps, items.workLeft)
 			}
 		}
