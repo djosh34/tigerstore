@@ -13,6 +13,7 @@ permissions:
 # keep theirs.
 env:
   ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
+  GOTRACEBACK: all
 
 jobs:
   rolling:
