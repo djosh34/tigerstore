@@ -128,14 +128,13 @@ func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
 	if got, ok := valueAt(t, n.st, "/kept", n.st.rev); !ok || got != value {
 		t.Fatal("the cut lost the value before it")
 	}
-	// As on main, a copy whose old file names a retired segment fails
-	// cleanly, rather than returning a wrong value or hanging. Retrying
-	// such copies belongs to #863, not the same-index checkpoint fix.
+	// The old copy reports the cut rather than returning a wrong value
+	// or hanging. Snapshot completions retry that cut, not corruption.
 	copied := make(chan error, 1)
 	go func() { copied <- selfContained(src, w, &bytes.Buffer{}) }()
 	select {
 	case err := <-copied:
-		if err == nil || !errors.Is(err, ErrBadValue) && !strings.Contains(err.Error(), "does not hold") {
+		if err == nil || !errors.Is(err, errLogCut) && !errors.Is(err, ErrBadValue) && !strings.Contains(err.Error(), "does not hold") {
 			t.Fatalf("the retired file's copy did not fail cleanly: %v", err)
 		}
 	case <-time.After(5 * time.Second):

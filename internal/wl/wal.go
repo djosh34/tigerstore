@@ -94,7 +94,8 @@ const (
 )
 
 // ErrCorruptLog is a log with a record that does not check where no crash
-// can have torn it (wal.go's head).
+// can have torn it (wal.go's head), or a live durable segment that ends
+// before the bytes a read needs. Retirement and I/O failures are separate.
 var ErrCorruptLog = errors.New("wl: corrupt log")
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
@@ -1140,6 +1141,10 @@ func (w *wal) read(p []byte, off int64) error {
 	return w.readDurable(p, off)
 }
 
+// errLogCut is a read of a segment a cut retired, not a damaged value.
+// A snapshot copy racing the cut can retry from a fresh checkpoint.
+var errLogCut = errors.New("the log was cut")
+
 // errAway is a value the loop would wait on the disk for: it is read off
 // the loop (fetch.go).
 var errAway = errors.New("the value is not in memory")
@@ -1188,18 +1193,30 @@ func (w *wal) readSegments(p []byte, off int64, pread func(fd int, p []byte, off
 		k := min(len(p)-got, int(segSize-o%segSize))
 		w.mu.Lock()
 		i := o/segSize - w.rbase
-		if i < 0 || i >= int64(len(w.rfds)) {
+		if i < 0 {
+			w.mu.Unlock()
+			return fmt.Errorf("read the log at %d, in retired segment %d: %w", o, o/segSize, errLogCut)
+		}
+		if i >= int64(len(w.rfds)) {
 			w.mu.Unlock()
 			return fmt.Errorf("read the log at %d, in segment %d, which it does not hold", o, o/segSize)
 		}
 		fd := w.rfds[i]
 		w.mu.Unlock()
 		n, err := pread(fd, p[got:got+k], o%segSize)
+		w.mu.Lock()
+		retired := o/segSize < w.rbase
+		w.mu.Unlock()
+		if retired {
+			// An open descriptor keeps the file, not its segment's
+			// identity: the ring may have reused it while pread ran.
+			return fmt.Errorf("read the log at %d, in segment %d retired during the read: %w", o, o/segSize, errLogCut)
+		}
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || err == nil && n == 0 {
+			return fmt.Errorf("%w: segment %d ends before %d", ErrCorruptLog, o/segSize, o+int64(n))
+		}
 		if err != nil {
 			return err
-		}
-		if n == 0 {
-			return fmt.Errorf("the log's segment %d ends before %d", o/segSize, o)
 		}
 		got += n
 	}
