@@ -959,6 +959,7 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 	n.fenced = true
 	n.why = fmt.Sprintf("refused to start on its damaged disk: %v", err)
 	s.stats.Fenced++
+	s.lastFenceAt = s.now()
 	s.tracef("node %d: fenced: %v", n.id, err)
 	s.down(n)
 	if s.cfg.LoseQuorum && s.quorumLostAt == 0 && s.count(func(m *node) bool { return m.fenced }) > (s.cfg.voters()-1)/2 {
