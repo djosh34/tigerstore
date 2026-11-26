@@ -75,7 +75,7 @@ func TestTheReserveGoesToWaitingRepliesBeforeTheNextTurn(t *testing.T) {
 	if n.inTurn != a {
 		t.Fatal("setup: a has no turn")
 	}
-	n.roomWait = append(n.roomWait, awayRead{h: mkHandle(b, 99)}) // a range waits for room
+	n.roomWait = append(n.roomWait, roomRead{h: mkHandle(b, 99)}) // a range waits for room
 	a.endStream(a.get(1))
 	l.serveWaiting()
 	if len(n.roomWait) != 0 {

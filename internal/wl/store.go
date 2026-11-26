@@ -178,6 +178,10 @@ type store struct {
 	// Records replaced or deleted during an apply, freed once its
 	// replies and watch events are written.
 	freeLater []uint64
+
+	// tag lets reply-room waiters check identity without keeping this
+	// store and its tables alive after a snapshot replaces it.
+	tag *byte
 }
 
 // The store's tables reserve their room once (maxKeys, maxHist, keyArena,
@@ -189,6 +193,7 @@ const (
 
 func newStore() (*store, error) {
 	st := &store{
+		tag:    new(byte),
 		rev:    1, // etcd's empty store is at revision 1
 		mask:   hashStart - 1,
 		seed:   maphash.MakeSeed(),
