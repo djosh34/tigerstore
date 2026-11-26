@@ -1963,12 +1963,16 @@ func (r *revisionOrder) candidates(rev int64) ([]int, eventCertificate) {
 // fits. No answer need show such a lease in use, so its grant need not be
 // an optional mutation, and an ambiguous put that a client saw write could
 // not go in at all (#514). A grant changes no key and no revision; a
-// wrong one is undone with the candidate.
+// wrong one is undone with the candidate. Test traces record a successful
+// return before the caller's expire/apply: nested expiry may invalidate a fit.
 func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	if r.testTrace != nil {
 		r.testTrace("fit", i)
 	}
 	if r.fits(i, rev) {
+		if r.testTrace != nil {
+			r.testTrace("fit-accepted", i)
+		}
 		return true
 	}
 	grants := r.grantsFor(leasesOfWithStep(r.w.reqs[i], r.step), rev-1)
@@ -1978,6 +1982,9 @@ func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	m := r.saveOrder()
 	r.grant(grants)
 	if r.fits(i, rev) {
+		if r.testTrace != nil {
+			r.testTrace("fit-accepted", i)
+		}
 		return true
 	}
 	r.restoreOrder(m)

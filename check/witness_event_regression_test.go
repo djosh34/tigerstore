@@ -237,6 +237,22 @@ func TestEventCertificatePoolScale(t *testing.T) {
 		}
 		read.Client = n
 		h.Ops = append(h.Ops, read)
+		// Independent construction-only baseline, with exactly the same
+		// mark and original enumeration/sort, but no fits probes. Merely
+		// staying below the old whole-search cost admits a second scan.
+		buildW := newWitness(h, time.Now().Add(time.Minute))
+		buildR := newRevisionOrder(buildW)
+		buildW.search = buildR
+		if err := buildR.index(); err != nil {
+			t.Fatal(err)
+		}
+		if !buildR.finish(buildR.first) {
+			t.Fatal(buildR.failure)
+		}
+		beforeBuild := buildW.steps
+		_ = buildR.save()
+		_ = oldEventCandidates(buildR, 11)
+		constructionSteps := buildW.steps - beforeBuild
 		var steps [2]int64
 		for j, old := range []bool{true, false} {
 			w := newWitness(h, time.Now().Add(time.Minute))
@@ -266,6 +282,9 @@ func TestEventCertificatePoolScale(t *testing.T) {
 			if old && probes != n || !old && probes != 0 {
 				t.Fatalf("old=%v pool=%d probes=%d", old, n, probes)
 			}
+		}
+		if steps[1] != constructionSteps {
+			t.Fatalf("pool %d: certificate hit costs %d steps, construction-only baseline %d; extra pool work is forbidden", n, steps[1], constructionSteps)
 		}
 		if steps[1] >= steps[0] {
 			t.Fatalf("pool %d: old %d new %d", n, steps[0], steps[1])

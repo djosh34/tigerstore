@@ -158,18 +158,20 @@ func runEventOracle(h *history.History, old bool, budget int64, setup func(*revi
 			o.sites[eventPrefix(r, f.rev)] = site
 			active[f] = site
 		case "candidate":
-			if site := active[f]; site != nil {
+			if site := active[f]; site != nil && f.rev == r.rev {
 				site.probes++
 			}
 		case "fit":
-			if site := active[f]; site != nil {
+			if site := active[f]; site != nil && f.rev == r.rev {
 				site.fits++
 			}
 			if stopAtFit {
 				w.stopped = true
 			}
-		case "apply":
-			if site := active[f]; site != nil && w.live.rev == f.rev {
+		case "fit-accepted":
+			// Acceptance precedes expire/apply: nested expiry may make the
+			// later apply fail without writing the requested revision.
+			if site := active[f]; site != nil && f.rev == r.rev {
 				site.accepted = true
 			}
 		case "exhaust":
@@ -264,12 +266,13 @@ func compareEventRuns(t *testing.T, old, got *eventOracleRun) [eventRejectReason
 }
 
 // Randomized impossible revision: observations pin four image keys, and a
-// shuffled ambiguous pool mixes all six negative reasons. The independent
-// oracle must actually enumerate every nonempty pool, not merely certify an
-// empty candidate list. General randomized histories supply unknown fallbacks.
+// shuffled ambiguous pool mixes all six negative reasons, successful/missing-
+// key CASes and a live image lease. Grant-bearing variants force unknown. The
+// independent oracle must enumerate every nonempty pool, not merely certify an
+// empty candidate list. General randomized histories supply further fallbacks.
 func eventDeadHistory(seed uint64, n int) *history.History {
 	rng := rand.New(rand.NewPCG(seed, 876))
-	st := &history.Start{Rev: 10}
+	st := &history.Start{Rev: 10, Leases: []int64{7}}
 	for _, key := range []string{"a", "b", "c", "d"} {
 		st.KVs = append(st.KVs, history.KeyValue{Key: key, Value: key, CreateRevision: 2, ModRevision: 9, Version: 3})
 	}
@@ -277,7 +280,7 @@ func eventDeadHistory(seed uint64, n int) *history.History {
 	for i := range n {
 		key := st.KVs[rng.IntN(len(st.KVs))].Key
 		var req history.Request
-		switch rng.IntN(eventRejectReasons) {
+		switch rng.IntN(eventRejectReasons + 3) {
 		case eventEmptyDelete:
 			req.Delete = &history.DeleteRequest{Key: "m"}
 		case eventBlockedDelete:
@@ -287,13 +290,28 @@ func eventDeadHistory(seed uint64, n int) *history.History {
 		case eventMissingLease:
 			req.Put = &history.PutRequest{Key: "m", Value: "v", Lease: 99}
 		case eventReadOnlyCAS:
-			req.Txn = &history.TxnRequest{Compare: []history.Compare{{Key: key, Target: history.TargetMod, Result: history.Equal, Number: 8}}, Success: []history.TxnOp{{Put: &history.PutRequest{Key: "m", Value: "v"}}}, Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: key, Revision: 1}}}}
+			rev := int64(0)
+			if rng.IntN(2) == 0 {
+				rev = 1
+			}
+			req.Txn = &history.TxnRequest{Compare: []history.Compare{{Key: key, Target: history.TargetMod, Result: history.Equal, Number: 8}}, Success: []history.TxnOp{{Put: &history.PutRequest{Key: "m", Value: "v"}}}, Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: key, Revision: rev}}}}
 		case eventCompaction:
 			req.Compact = &history.CompactRequest{Revision: 9}
+		case eventRejectReasons:
+			req = eventCAS(key, 9, key) // Successful branch, blocked write event.
+		case eventRejectReasons + 1:
+			req = eventCAS("missing", 0, key) // Missing mod zero is true.
+		case eventRejectReasons + 2:
+			req.Put = &history.PutRequest{Key: key, Value: "leased", Lease: 7}
 		}
 		h.Ops = append(h.Ops, history.Op{Client: i, Call: 1 + rng.Int64N(20), Return: 30, Req: req, Err: errUnavailable})
 	}
-	h.Ops = append(h.Ops, history.Op{Client: n, Call: 100, Return: 101, Req: history.Request{Range: &history.RangeRequest{Key: "a", End: history.AllKeys}}, Resp: &history.Response{Revision: 11, Range: &history.RangeResponse{KVs: slices.Clone(st.KVs), Count: int64(len(st.KVs))}}})
+	if seed%8 == 0 {
+		// A grant can make a missing-lease writer possible: such pools
+		// must stay unknown, not merely add more negative certificates.
+		h.Ops = append(h.Ops, history.Op{Client: n, Call: 1, Return: 30, Req: history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 99, TTL: 10}}, Err: errUnavailable})
+	}
+	h.Ops = append(h.Ops, history.Op{Client: n + 1, Call: 100, Return: 101, Req: history.Request{Range: &history.RangeRequest{Key: "a", End: history.AllKeys}}, Resp: &history.Response{Revision: 11, Range: &history.RangeResponse{KVs: slices.Clone(st.KVs), Count: int64(len(st.KVs))}}})
 	return h
 }
 
