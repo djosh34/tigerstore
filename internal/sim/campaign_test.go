@@ -76,11 +76,26 @@ func TestCampaign(t *testing.T) {
 		t.Skip("set SIM_SEEDS: the campaigns say how many seeds to run")
 	}
 	ran, cost := map[string]int{}, map[string]int{}
-	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) scenarioRun {
+	images := map[uint64]bool{}
+	// An aged seed's image and each of its forks run in gosim runs of
+	// their own, as TestAgedForks's do (#794): all in one process, the
+	// forks piled up memory to the runner's limit.
+	forksOf := func(seed uint64) int {
+		if campaignKind(seed) == kindAged {
+			return forksPerImage
+		}
+		return 0
+	}
+	simrun.ImageSeedsBy(t, 1, 0, forksOf, func(t *testing.T, seed uint64) scenarioRun {
 		switch kind := campaignKind(seed); kind {
 		case kindAged:
+			_, only := forkMode(t, forksPerImage)
+			forks := forksPerImage
+			if only >= 0 {
+				forks = 1
+			}
 			st := agedForks(t, seed, agingConfig(seed), forksPerImage, forkConfig)
-			return scenarioRun{Kind: kind, Stats: st}
+			return scenarioRun{Kind: kind, Stats: st, Forks: forks}
 		case kindLong:
 			cfg := longConfig(seed)
 			res := run(t, cfg)
@@ -94,12 +109,14 @@ func TestCampaign(t *testing.T) {
 			checkers(t, res)
 			return scenarioRun{Kind: cfg.kind(), Nodes: cfg.voters(), Stats: res.Stats}
 		}
-	}, func(_ uint64, r scenarioRun) bool {
+	}, func(seed uint64, r scenarioRun) bool {
 		switch r.Kind {
 		case kindAged:
-			ran["aged images"]++
-			ran["aged forks"] += forksPerImage
-			cost[kindAged] += costImage
+			// Each fork carries its share of the image's cost.
+			images[seed] = true
+			ran["aged images"] = len(images)
+			ran["aged forks"] += r.Forks
+			cost[kindAged] += costImage * r.Forks / forksPerImage
 		case kindLong:
 			ran["long seeds"]++
 			cost[kindLong] += costLong
