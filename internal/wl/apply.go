@@ -22,6 +22,10 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 	if err := n.checkFormat(data[16]); err != nil {
 		return err
 	}
+	traces := n.putBatchTimings(data)
+	if len(traces) > 0 {
+		defer n.forgetPutTimings(binary.LittleEndian.Uint64(data[4:]))
+	}
 	origin := uint64(binary.LittleEndian.Uint32(data))
 	nops := int(binary.LittleEndian.Uint32(data[12:]))
 	p := batchHdr
@@ -78,6 +82,7 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 		}
 		who, whoNamed := caller, named
 		caller, named = authInfo{}, false
+		n.tracePutApply(traces, i)
 		var err error
 		n.txnWrote = false
 		n.plantedSubs = 0
@@ -111,6 +116,10 @@ func (n *node) applyBatch(data []byte, index uint64, walOff int64) error {
 			err = n.applyDowngrade(req, c, s)
 		case kind == kAuthOp:
 			err = n.applyAuthOp(req, index, c, s)
+		}
+		n.tracePutApplied()
+		if n.putTimings != nil {
+			n.putTimings.applying = nil
 		}
 		if n.plantedSubs > 1 {
 			// Planted (B09a): the store's revision is the last key's.
@@ -369,6 +378,7 @@ func (n *node) applyPut(req []byte, voff int64, c *client, s *stream) error {
 		return err
 	}
 	n.st.rev = rev
+	n.tracePutApplied()
 	if c != nil {
 		if !r.prevKV {
 			prev = nil
@@ -637,6 +647,7 @@ func (n *node) applyTxn(req []byte, voff int64, c *client, s *stream) error {
 		n.st.rev = t.rev
 	}
 	n.txnWrote = t.wrote
+	n.tracePutApplied()
 	if s != nil {
 		s.readonly = !t.wrote // for its request type, etcd's ReadonlyTxn
 	}

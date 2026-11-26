@@ -168,6 +168,9 @@ func run(ctx context.Context, cfg Config) error {
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
 		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
 	}
+	if cfg.TraceLargePuts {
+		n.putTimings = &putTimings{pending: make(map[uint64][]*putTiming)}
+	}
 	n.startRun(run)
 	if n.sideSecret, err = newSideSecret(); err != nil {
 		return err
@@ -908,12 +911,14 @@ func (l *loop) closeSock(idx int) {
 		n.cancelSides(idx)
 		for i := range v.slots {
 			st := &v.slots[i]
+			n.tracePutClosed(st)
 			if st.open && st.watch {
 				n.closeWatchStream(v, st)
 			}
 			st.fail = nil
 		}
 		for _, st := range v.over {
+			n.tracePutClosed(st)
 			if st.watch {
 				n.closeWatchStream(v, st)
 			}

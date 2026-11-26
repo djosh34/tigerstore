@@ -94,6 +94,8 @@ type node struct {
 
 	stats   counters
 	metrics *nodeMetrics
+	// putTimings is nil unless large-request diagnostics are enabled.
+	putTimings *putTimings
 
 	socks    []any // *client, *peerIn or *peerOut, by index
 	gens     []uint16
@@ -665,6 +667,7 @@ func (n *node) replyError(c *client, sid uint32, code int, msg string) {
 		copy(b[9:], blk)
 	}
 	if s != nil {
+		n.tracePutReply(s, code)
 		c.endStream(s)
 	}
 	n.markDirty(&c.sock)
@@ -817,6 +820,7 @@ func (n *node) endStreamOK(c *client, s *stream) {
 		putFrameHeader(b, len(respTrailers), frHeaders, flEndHeaders|flEndStream, s.id)
 		copy(b[9:], respTrailers)
 	}
+	n.tracePutReply(s, 0)
 	c.endStream(s)
 	n.markDirty(&c.sock)
 }

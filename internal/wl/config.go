@@ -46,6 +46,10 @@ type Config struct {
 	// startFollowers).
 	MemoryBudget int64
 	Logger       *log.Logger
+	// TraceLargePuts logs the local receive/propose/commit/apply/reply
+	// timeline of Put and Txn messages >=1 MiB. Off by default; intended
+	// for difftest diagnostics, including requests refused before apply.
+	TraceLargePuts bool
 	// Sys, in a binary built for the simulator, stands in for the system
 	// calls it cannot run; nil otherwise (sys.go).
 	Sys Sys

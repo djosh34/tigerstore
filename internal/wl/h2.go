@@ -122,13 +122,14 @@ type stream struct {
 	snapRetries   uint8
 	// began is the turn of the call's request, for its time; readonly
 	// says a Txn has no write, etcd's ReadonlyTxn.
-	began    time.Time
-	readonly bool
-	ended    bool   // the client ended its side
-	buf      []byte // a gRPC message across DATA frames
-	counted  int64  // what of buf its client counts in partial
-	watch    bool
-	wids     []int32 // the watchers of a watch stream
+	began     time.Time
+	putTiming *putTiming // opt-in diagnostics; no request bytes retained
+	readonly  bool
+	ended     bool   // the client ended its side
+	buf       []byte // a gRPC message across DATA frames
+	counted   int64  // what of buf its client counts in partial
+	watch     bool
+	wids      []int32 // the watchers of a watch stream
 	// nextWatch is the next watch ID a create that names none may take.
 	nextWatch int64
 	fail      []byte // a Txn's failure branch, kept here and not replicated
@@ -488,6 +489,7 @@ func (c *client) endStream(s *stream) {
 	if !s.open {
 		return
 	}
+	c.node.tracePutClosed(s)
 	c.partial -= s.counted
 	c.grow(-int(s.counted))
 	c.streams--
@@ -930,7 +932,7 @@ func inflate(s *stream, msg []byte) ([]byte, string) {
 	}
 	out, err := gunzip(msg)
 	if err != nil {
-		return nil, "grpc: failed to decompress the received message: " + err.Error()
+		return out, "grpc: failed to decompress the received message: " + err.Error()
 	}
 	return out, ""
 }
@@ -944,10 +946,12 @@ func gunzip(b []byte) ([]byte, error) {
 	}
 	out, err := io.ReadAll(io.LimitReader(zr, maxRequestBytes+grpcOverhead+1))
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	if len(out) > maxRequestBytes+grpcOverhead {
-		return nil, errors.New("the message is larger than the server takes")
+		// Retain the bounded prefix only until the caller logs its size:
+		// a compressed large put may be refused before full decoding.
+		return out, errors.New("the message is larger than the server takes")
 	}
 	return out, nil
 }
@@ -1057,6 +1061,7 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 	}
 	for len(p) >= 5 {
 		l := int(binary.BigEndian.Uint32(p[1:5]))
+		n.tracePutStart(s, l)
 		if l > maxMsg {
 			// As grpc-go's server refuses it, before taking it in.
 			n.replyError(c, s.id, codeResourceExhausted, "grpc: received message larger than max ("+itoa(l)+" vs. "+itoa(maxMsg)+")")
@@ -1074,10 +1079,14 @@ func (c *client) data(n *node, s *stream, p []byte) error {
 		if p[0] != 0 {
 			var bad string
 			if msg, bad = inflate(s, msg); bad != "" {
+				n.tracePutDecoded(s, l, msg, false)
+				n.tracePutEvent(s.putTiming, "decode_refused", -1)
 				n.replyError(c, s.id, codeInternal, bad)
 				return nil
 			}
 		}
+		n.tracePutDecoded(s, l, msg, true)
+		n.tracePutEvent(s.putTiming, "received", -1)
 		p = p[5+l:]
 		if err := n.request(c, s, msg); errors.Is(err, errProto) {
 			// A request it cannot read ends the call, not the
