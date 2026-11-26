@@ -188,8 +188,9 @@ func (d *dueWork) query(r *revisionOrder, call, rev, from int64, yield func(opti
 	// candidates or making trial copies. Nested queries may move it either
 	// way, just as they move the time and revision thresholds.
 	d.move(r, d.from, &d.fromAt, d.eligible, &d.eligibleLeft, func(o optional) bool { return o.from <= from })
-	// Thresholds may match only candidates already used or compacted.
-	// Keep the available counts too, so an unchanged empty query is O(1).
+	// Available eligible counts keep unchanged all-future queries O(1).
+	// Empty due sets also exit here; an empty intersection alone can still
+	// scan bitmap words when both inputs contain available candidates.
 	if d.eligibleLeft == 0 || timedLeft == 0 && revisionLeft == 0 {
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -52,6 +53,41 @@ func TestFutureDueWorkScales(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Once every eligible candidate is used, only future candidates remain.
+// The available-eligible count must be decremented on use, or unchanged
+// queries keep scanning the bitmap despite yielding nothing (review M4).
+func TestUsedEligibleDueWorkScales(t *testing.T) {
+	const eligible, queries = 4, 128
+	for _, n := range []int{8192, 131_072} {
+		t.Run(strconv.Itoa(n), func(t *testing.T) {
+			r := dueShape(n)
+			for i := range eligible {
+				r.optional[i].from = 1
+			}
+			used := 0
+			for o := range r.dueAt(1000, 1, 1) {
+				r.use(o.op)
+				used++
+			}
+			if used != eligible || r.dueWork.remaining != n-eligible || r.dueWork.timedLeft == 0 || r.dueWork.revisionLeft == 0 {
+				t.Fatal("scale setup must consume every eligible candidate but leave future candidates due")
+			}
+			before := r.w.steps
+			for range queries {
+				for range r.dueAt(1000, 1, 1) {
+					t.Fatal("used/future candidates remained eligible")
+				}
+			}
+			if work := r.w.steps - before; work > 4 {
+				t.Fatalf("%d warm all-future queries cost %d weighted steps, want <=4 independent of %d candidates", queries, work, n)
+			}
+			if r.w.stopped {
+				t.Fatal("warm all-future queries stopped")
+			}
+		})
 	}
 }
 
@@ -112,8 +148,19 @@ func TestEligibleDueStopsWhileMovingThreshold(t *testing.T) {
 			}
 			for range r.dueAt(1000, 1, bound) {
 			}
+			start, target := r.dueWork.fromAt, 0
+			if forward {
+				target = len(r.dueWork.from)
+			}
+			if start == target {
+				t.Fatal("threshold must move before reaching its target")
+			}
 			calls := armSearchStop(r)
 			for range r.dueAt(1000, 1, next) {
+			}
+			cursor := r.dueWork.fromAt
+			if cursor <= min(start, target) || cursor >= max(start, target) {
+				t.Fatalf("stop cursor %d must be strictly between start %d and target %d", cursor, start, target)
 			}
 			assertSearchStopped(t, r, calls)
 		})
