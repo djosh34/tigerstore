@@ -254,6 +254,11 @@ func TestScenarios(t *testing.T) {
 		ran[fmt.Sprintf("%s on %d voters", r.Kind, r.Nodes)]++
 		if r.Stats.QuorumLostAt > 0 {
 			ran["quorum lost for good"]++
+			if r.Stats.Replaced > 0 {
+				// Through a replacement (#850; Config.LoseQuorum replaces
+				// none), which TestReplacementLosesQuorum builds directly.
+				ran["quorum lost through a replacement"]++
+			}
 		}
 		if r.Kind == "membership" {
 			ran["membership work completed"] += min(r.Stats.MembershipChanges[3], 1)

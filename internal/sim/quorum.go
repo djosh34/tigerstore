@@ -22,7 +22,11 @@ import (
 // them and elect, so the run is left to convergence then, which a failure
 // to apply fails (#850's re-check). A run that converged, or a LoseQuorum
 // run, which decides at its fences, is left as it is.
-func (s *Sim) lostQuorum() error {
+func (s *Sim) lostQuorum() error { return s.lostQuorumBy(s.lastOnDisk) }
+
+// lostQuorumBy is lostQuorum with each running node's last entry from
+// lastOf (canElectBy).
+func (s *Sim) lostQuorumBy(lastOf func(*node) (lastEntry, error)) error {
 	s.mu.Lock()
 	skip := s.quorumLostAt > 0 || s.cfg.LoseQuorum || s.lastFenceAt == 0 || hasLeader(s.nodes)
 	s.mu.Unlock()
@@ -52,7 +56,7 @@ func (s *Sim) lostQuorum() error {
 	if behind {
 		return nil
 	}
-	ok, err := s.canElect()
+	ok, err := s.canElectBy(lastOf)
 	if err != nil || ok {
 		return err
 	}
