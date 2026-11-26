@@ -3,12 +3,14 @@ package check
 import (
 	"cmp"
 	"iter"
+	"math"
 	"math/bits"
 )
 
 // dueWork keeps late candidates in call order, and the sets due by time and
-// revision separately. A query moves only the thresholds that changed; it
-// neither visits the dueIndex again nor sorts and copies optional mutations.
+// revision and eligible by lower-bound revision separately. A query moves
+// only the thresholds that changed; it neither visits the dueIndex again nor
+// sorts and copies optional mutations.
 // Zero is queried separately (expireEarly and fits alternate those queries),
 // so asking by revision does not undo the last query by time, or vice versa.
 // The sets are bitmaps in candidate order. Used candidates leave available
@@ -19,14 +21,14 @@ import (
 // Without that snapshot a nested query could change the outer query's set.
 type dueWork struct {
 	candidates                []optional
-	gone, by                  []int
+	gone, by, from            []int
 	rank                      []int
 	available                 []uint64
-	timed, revision           []uint64
+	timed, revision, eligible []uint64
 	zeroTime, zeroRev         []uint64
-	timeAt, revAt             int
+	timeAt, revAt, fromAt     int
 	valid                     bool
-	remaining                 int
+	remaining, eligibleLeft   int
 	timedLeft, revisionLeft   int
 	zeroTimeLeft, zeroRevLeft int
 	buffers                   [][]uint64
@@ -52,11 +54,14 @@ func (r *revisionOrder) newDueWork() *dueWork {
 		d.rank[o.op] = j + 1
 		d.gone = append(d.gone, j)
 		d.by = append(d.by, j)
+		d.from = append(d.from, j)
 	}
 	sortWithStep(d.gone, func(a, b int) int { return cmp.Compare(d.candidates[a].gone, d.candidates[b].gone) }, r.step)
 	sortWithStep(d.by, func(a, b int) int { return cmp.Compare(d.candidates[a].by, d.candidates[b].by) }, r.step)
+	sortWithStep(d.from, func(a, b int) int { return cmp.Compare(d.candidates[a].from, d.candidates[b].from) }, r.step)
 	n := (len(d.candidates) + 63) / 64
 	d.available, d.timed, d.revision = make([]uint64, n), make([]uint64, n), make([]uint64, n)
+	d.eligible = make([]uint64, n)
 	d.zeroTime, d.zeroRev = make([]uint64, n), make([]uint64, n)
 	for j, o := range d.candidates {
 		if r.step() {
@@ -87,6 +92,9 @@ func (d *dueWork) remove(j int) {
 	if d.available[j/64]&bit != 0 {
 		d.available[j/64] &^= bit
 		d.remaining--
+		if d.eligible[j/64]&bit != 0 {
+			d.eligibleLeft--
+		}
 		for _, set := range []struct {
 			words []uint64
 			left  *int
@@ -100,7 +108,7 @@ func (d *dueWork) remove(j int) {
 
 func (d *dueWork) reset(r *revisionOrder) {
 	clear(d.available)
-	d.remaining = 0
+	d.remaining, d.eligibleLeft = 0, 0
 	d.timedLeft, d.revisionLeft, d.zeroTimeLeft, d.zeroRevLeft = 0, 0, 0, 0
 	for j, o := range d.candidates {
 		if r.step() {
@@ -110,6 +118,9 @@ func (d *dueWork) reset(r *revisionOrder) {
 			d.remaining++
 			bit := uint64(1) << (j % 64)
 			d.available[j/64] |= bit
+			if d.eligible[j/64]&bit != 0 {
+				d.eligibleLeft++
+			}
 			for _, set := range []struct {
 				words []uint64
 				left  *int
@@ -152,7 +163,7 @@ func (d *dueWork) move(r *revisionOrder, order []int, at *int, set []uint64, lef
 	}
 }
 
-func (d *dueWork) query(r *revisionOrder, call, rev int64, yield func(optional) bool) {
+func (d *dueWork) query(r *revisionOrder, call, rev, from int64, yield func(optional) bool) {
 	if r.step() {
 		return
 	}
@@ -172,9 +183,14 @@ func (d *dueWork) query(r *revisionOrder, call, rev int64, yield func(optional) 
 		d.move(r, d.by, &d.revAt, d.revision, &d.revisionLeft, func(o optional) bool { return o.by <= rev })
 		revision, revisionLeft = d.revision, d.revisionLeft
 	}
+	// Candidates due by rejection time can still be many revisions ahead
+	// of this order. Intersect their retained lower-bound set before walking
+	// candidates or making trial copies. Nested queries may move it either
+	// way, just as they move the time and revision thresholds.
+	d.move(r, d.from, &d.fromAt, d.eligible, &d.eligibleLeft, func(o optional) bool { return o.from <= from })
 	// Thresholds may match only candidates already used or compacted.
 	// Keep the available counts too, so an unchanged empty query is O(1).
-	if timedLeft == 0 && revisionLeft == 0 {
+	if d.eligibleLeft == 0 || timedLeft == 0 && revisionLeft == 0 {
 		return
 	}
 	// Match the old slice's snapshot even if a nested putIn advances
@@ -191,7 +207,7 @@ func (d *dueWork) query(r *revisionOrder, call, rev int64, yield func(optional) 
 		if r.step() {
 			return
 		}
-		snapshot[j] = (timed[j] | revision[j]) & d.available[j]
+		snapshot[j] = (timed[j] | revision[j]) & d.available[j] & d.eligible[j]
 	}
 	for j, word := range snapshot {
 		if r.step() {
@@ -223,13 +239,21 @@ func (d *dueWork) query(r *revisionOrder, call, rev int64, yield func(optional) 
 // after it, which ends the rejection's states. The slow witness keeps the
 // old scan; its stable sort also defines the order of tied calls.
 func (r *revisionOrder) due(call, rev int64) iter.Seq[optional] {
+	return r.dueAt(call, rev, math.MaxInt64)
+}
+
+// dueAt keeps due's snapshot and stable call order, restricted to candidates
+// whose lower-bound revision is at most from. Callers that cannot advance
+// the revision while walking may use their live revision; expireEnd must use
+// due instead, because one expiry can write a revision enabling a later one.
+func (r *revisionOrder) dueAt(call, rev, from int64) iter.Seq[optional] {
 	if !r.w.slow {
 		return func(yield func(optional) bool) {
 			if r.dueWork == nil {
 				r.dueWork = r.newDueWork()
 			}
 			if !r.w.stopped {
-				r.dueWork.query(r, call, rev, yield)
+				r.dueWork.query(r, call, rev, from, yield)
 			}
 		}
 	}
@@ -239,7 +263,7 @@ func (r *revisionOrder) due(call, rev int64) iter.Seq[optional] {
 			if r.step() {
 				return
 			}
-			if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
+			if o.late && o.from <= from && !r.used[o.op] && (o.gone < call || o.by <= rev) {
 				out = append(out, o)
 			}
 		}
