@@ -33,9 +33,9 @@ type shell interface {
 	wakeLoop()
 	// membersChanged dials the members the list now holds.
 	membersChanged()
-	// prepareClientSnap writes a client's snapshot of the checkpoint src
-	// with head before it, and has the loop send it to h.
-	prepareClientSnap(h handle, src file, head []byte)
+	// prepareClientSnap writes a client's snapshot of the checkpoint src,
+	// takes its header from the verified copy, and has the loop send it.
+	prepareClientSnap(h handle, src file)
 	// sendSnapshot sends the checkpoint f to the follower m is for, with
 	// every value in it, and reports to Raft how it went.
 	sendSnapshot(m *pb.Message, f file)
@@ -267,11 +267,14 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 			l.logger.Printf("send a snapshot to %d: %v", to, err)
 		}
 		l.post(func() error {
-			if errors.Is(err, ErrBadValue) {
-				// The disk damaged a value the snapshot holds: the node
-				// stops instead of serving it.
+			if snapshotDamage(err) {
+				// The disk damaged the checkpoint or one of its values:
+				// the node stops instead of serving it.
 				return err
 			}
+			// A copy that read a retired segment (errLogCut) failed,
+			// not the disk: Raft probes again and sends its newest
+			// snapshot. Damage above still stops the node.
 			l.n.rn.ReportSnapshot(to, status)
 			return nil
 		})

@@ -159,7 +159,7 @@ func (n *node) dropCkpt(why error, need int64) {
 	if r == nil {
 		return
 	}
-	waiters := r.snapWaiters
+	// abortCkpt requeues the live client waiters exactly once.
 	n.abortCkpt()
 	// The writer may have named the file before CURRENT's write failed,
 	// and the file takes the room the next needs. A CURRENT that names it
@@ -170,8 +170,10 @@ func (n *node) dropCkpt(why error, need int64) {
 			_ = n.sys.remove(filepath.Join(n.ckptDir, r.w.name))
 		}
 	}
-	n.snapWaiters = append(waiters, n.snapWaiters...)
-	n.storage.wantCkpt = true
+	// A client that has gone must not become independent demand.
+	// Periodic and ring-pressure checkpoints stay due; Raft's request
+	// belongs to the run until a successful checkpoint answers it.
+	n.storage.wantCkpt = n.storage.wantCkpt || r.raftWanted
 	n.ckptRoomAt = n.now.Add(ckptRoomRetry)
 	n.ckptShort, n.ckptShortNeed, n.ckptShortSize = need > 0, need, n.st.quotaSize()
 	n.logf("checkpoint at index %d: %v: dropped, NOSPACE, and no checkpoint until there is room", r.meta.index, why)
