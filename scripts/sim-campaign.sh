@@ -20,10 +20,10 @@ for ((p=0; p<$(jq length <<<"$PROCESSES"); p++)); do
   # never concurrently, preserving the four-process limit per runner.
   (
     status=0
-    while read -r seed n; do
+    while read -r seed n twice; do
       echo "process $p: seeds $seed to $((seed + n - 1)) of $TEST"
-      SIM_SEED=$seed SIM_SEEDS=$n SIM_TWICE=$((n / 100)) "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run "^$TEST\$" -test.v -test.timeout 340m || status=1
-    done < <(jq -r --argjson p "$p" '.[$p][] | "\(.first) \(.seeds)"' <<<"$PROCESSES")
+      SIM_SEED=$seed SIM_SEEDS=$n SIM_TWICE=$twice "$GITHUB_WORKSPACE/.gosim/bin/sim.test" -test.run "^$TEST\$" -test.v -test.timeout 340m || status=1
+    done < <(jq -r --argjson p "$p" '.[$p][] | "\(.first) \(.seeds) \(.twice)"' <<<"$PROCESSES")
     exit "$status"
   ) >"$RUNNER_TEMP/seeds-$p.log" 2>&1 &
   pids+=($!)
@@ -37,5 +37,9 @@ done
 for p in "${procs[@]}"; do
   grep -E -- '^--- FAIL|^    --- FAIL| seeds: |took effect|^(ok|FAIL|PASS)$' "$RUNNER_TEMP/seeds-$p.log" | head -50 || true
   PKG=./internal/sim "$GITHUB_WORKSPACE/scripts/replay.sh" "$RUNNER_TEMP/seeds-$p.log" -gosim || status=1
+  if ! grep -qE "^simrun: seed $TEST/[0-9]+ (PASS|FAIL|SKIP known-failure)\$" "$RUNNER_TEMP/seeds-$p.log"; then
+    echo "process $p reported no seed of $TEST"
+    status=1
+  fi
 done
 exit "$status"

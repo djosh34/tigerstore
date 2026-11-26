@@ -320,8 +320,9 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 	}
 	for i, seed := range seeds {
 		stop := false
-		anyFailed = !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			if bug, ok := known[knownSeed{test, seed}]; ok {
+		bug, knownFailure := known[knownSeed{test, seed}]
+		anyFailed = !seedSubtest(t, test, seed, knownFailure, func(t *testing.T) {
+			if knownFailure {
 				// Printed also without -test.v, which shows no skip.
 				msg := fmt.Sprintf("known failure: seed %d of %s fails because of %s (known-failures.txt)", seed, test, bug)
 				if _, err := fmt.Fprintln(os.Stdout, msg); err != nil {
@@ -334,7 +335,7 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 				return
 			}
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
-			double := twice > 0 && i%max(1, len(seeds)/twice) == 0
+			double := doubleSeed(i, len(seeds), twice)
 			if forks := forksOf(seed); forks > 0 {
 				stop = imageAndForks(t, Run{Test: test, Seed: seed, Env: env}, forks, double, add)
 				return
@@ -355,6 +356,44 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 		}
 	}
 	return true
+}
+
+// driverVerdict writes directly, not through testing's buffered subtest
+// log. A later killed seed must not erase the verdicts of finished seeds.
+func driverVerdict(t *testing.T, part, name, status string) {
+	t.Helper()
+	if _, err := fmt.Fprintf(os.Stdout, "simrun: %s %s %s\n", part, name, status); err != nil {
+		t.Error(err)
+	}
+}
+
+// seedSubtest reports after t.Run returns, including its cleanups. Go's
+// own PASS/FAIL lines may remain buffered until the parent test ends.
+func seedSubtest(t *testing.T, test string, seed uint64, knownFailure bool, body func(*testing.T)) bool {
+	t.Helper()
+	skipped := false
+	passed := t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+		t.Cleanup(func() { skipped = t.Skipped() })
+		body(t)
+	})
+	status := "PASS"
+	if !passed {
+		status = "FAIL"
+	} else if skipped {
+		status = "SKIP"
+		if knownFailure {
+			status += " known-failure"
+		}
+	}
+	driverVerdict(t, "seed", fmt.Sprintf("%s/%d", test, seed), status)
+	return passed
+}
+
+// doubleSeed selects exactly min(n, twice) evenly spaced seeds, starting
+// with the first. Integer division's old stride could select extra seeds.
+func doubleSeed(i, n, twice int) bool {
+	twice = min(n, max(0, twice))
+	return twice > 0 && i*twice%n < twice
 }
 
 // errNoInput is OpenInput's error outside gosim, which gives a run no
@@ -408,6 +447,11 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 	env := slices.DeleteFunc(slices.Clone(r.Env), func(v string) bool { return strings.HasPrefix(v, "SIM_FORK=") })
 	r.Env = append(slices.Clone(env), "SIM_FORK=image")
 	path, hash, ok := runImage(t, r, double)
+	status := "PASS"
+	if !ok {
+		status = "FAIL"
+	}
+	driverVerdict(t, "image", fmt.Sprintf("%s/%d", r.Test, r.Seed), status)
 	if !ok || imageOnly {
 		return false
 	}
@@ -420,17 +464,28 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 			Test: r.Test, Seed: r.Seed, Env: append(slices.Clone(env), fmt.Sprintf("SIM_FORK=%d", k)),
 			Inputs: map[string]string{"image": path}, ReplayEnv: []string{"SIM_IMAGE_SHA256=" + hash},
 		}
-		res := part(t, fork, double)
-		if res.Failed {
-			continue
-		}
-		t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])
-		var v T
-		if err := json.Unmarshal(res.Artifacts["seed.json"], &v); err != nil {
-			t.Fatalf("fork %d of seed %d left no result: %v", k, r.Seed, err)
-		}
-		stop = add(r.Seed, v) || stop
+		stop = imageFork(t, fork, k, double, add) || stop
 	}
+	return stop
+}
+
+// imageFork reports each completed fork separately, without presenting a
+// fork's result as the verdict of the seed that owns all the forks.
+func imageFork[T any](t *testing.T, r Run, k int, double bool, add func(uint64, T) bool) bool {
+	t.Helper()
+	status := "FAIL"
+	defer func() { driverVerdict(t, "fork", fmt.Sprintf("%s/%d/%d", r.Test, r.Seed, k), status) }()
+	res := part(t, r, double)
+	if res.Failed {
+		return false
+	}
+	t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])
+	var v T
+	if err := json.Unmarshal(res.Artifacts["seed.json"], &v); err != nil {
+		t.Fatalf("fork %d of seed %d left no result: %v", k, r.Seed, err)
+	}
+	stop := add(r.Seed, v)
+	status = "PASS"
 	return stop
 }
 

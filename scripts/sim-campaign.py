@@ -20,10 +20,11 @@ def plan(test, first, seeds, long_seeds):
     longs = sorted(set(long_seeds))
     if any(seed < first or seed >= end for seed in longs):
         raise ValueError("long seed outside the requested range")
-    if test == "TestCampaignShapeSeeds" and len(longs) != seeds:
-        raise ValueError("every TestCampaignShapeSeeds seed must be long")
-    if len(longs) > MAX_JOBS:
+    all_long = test in ("TestCampaignShapeSeeds", "TestKubernetesLoadLong")
+    if len(longs) > MAX_JOBS or (all_long and seeds > MAX_JOBS):
         raise ValueError("too many long seeds for a 256-job matrix; use a smaller campaign")
+    if all_long and len(longs) != seeds:
+        raise ValueError(f"every {test} seed must be long")
 
     normal = seeds - len(longs)
     processes = []
@@ -52,36 +53,31 @@ def plan(test, first, seeds, long_seeds):
         raise ValueError("campaign exceeds the 256-job matrix limit; use a smaller campaign")
     for shard, job in enumerate(jobs):
         job["shard"] = shard
+        for process in job["processes"]:
+            # Divide the queue's replay budget over its spans, not each
+            # span's rounded-down 1%. A 121-seed queue split 83+38 still
+            # replays one seed. Cumulative ceilings put the first replay
+            # in the first span, as the unsplit driver's selection does.
+            total = sum(span["seeds"] for span in process)
+            twice, before = total // 100, 0
+            for span in process:
+                after = before + span["seeds"]
+                span["twice"] = ((after * twice + total - 1) // total
+                                 - (before * twice + total - 1) // total)
+                before = after
     return dict(test=test, first=first, seeds=seeds, jobs=jobs)
 
 
 def reported(log, test):
-    """A driver's seed PASS/FAIL, or an explicitly known-failure SKIP.
+    """Only unbuffered native seed-driver verdicts count as reported.
 
-    RUN alone is not a result. Only the unprefixed RUN and four-space
-    terminal line belong to the native driver's direct seed subtest.
-    Gosim's embedded log (including an aged image and each fork) is
-    indented further or prefixed by a source location. Its PASS is not
-    evidence that the driver finished the other forks. The driver emits
-    its own PASS/FAIL only after its seed's work finishes or fails.
-    Match the whole test name: TestCampaignShapeSeeds is not TestCampaign.
+    Go buffers subtest PASS/FAIL until the parent ends, so a killed
+    process can lose those lines for completed seeds. Numeric subtests
+    that do not use simrun are not seeds. Image/fork verdicts and embedded
+    gosim output also cannot stand in for the whole seed's verdict.
     """
-    name = re.escape(test)
-    run = re.compile(rf"^=== RUN   {name}/([0-9]+)$")
-    result = re.compile(rf"^    --- (PASS|FAIL|SKIP): {name}/([0-9]+) \([^\n]*\)$")
-    known = re.compile(rf"^known failure: seed ([0-9]+) of {name} fails because of .+ \(known-failures.txt\)$")
-    started, skipped, done = set(), set(), set()
-    for line in log:
-        line = line.rstrip("\r\n")
-        if match := run.fullmatch(line):
-            started.add(int(match[1]))
-        if match := known.fullmatch(line):
-            skipped.add(int(match[1]))
-        if match := result.fullmatch(line):
-            status, seed = match[1], int(match[2])
-            if seed in started and (status != "SKIP" or seed in skipped):
-                done.add(seed)
-    return done
+    result = re.compile(rf"simrun: seed {re.escape(test)}/([0-9]+) (PASS|FAIL|SKIP known-failure)")
+    return {int(match[1]) for line in log if (match := result.fullmatch(line.rstrip("\r\n")))}
 
 
 def summary(campaign, artifacts, out):
@@ -100,17 +96,21 @@ def summary(campaign, artifacts, out):
     for job in campaign["jobs"]:
         shard = job["shard"]
         for p, ranges in enumerate(job["processes"]):
-            path = artifacts / f"sim-campaign-{shard}" / f"seeds-{p}.log"
+            path = artifacts / f"sim-campaign-logs-{shard}" / f"seeds-{p}.log"
             done = set()
             if path.exists():
                 with path.open(errors="replace") as log:
                     done = reported(log, campaign["test"])
             for span in ranges:
-                for seed in range(span["first"], span["first"] + span["seeds"]):
-                    total += 1
-                    if seed not in done:
-                        print(f"Missing seed {seed}: seeds ({shard}), process {p}", file=out)
-                        missing += 1
+                first, end = span["first"], span["first"] + span["seeds"]
+                total += span["seeds"]
+                cursor = first
+                for seed in sorted(seed for seed in done if first <= seed < end) + [end]:
+                    if cursor < seed:
+                        label = str(cursor) if cursor == seed - 1 else f"{cursor}–{seed - 1}"
+                        print(f"Missing seeds {label}: seeds ({shard}), process {p}", file=out)
+                        missing += seed - cursor
+                    cursor = seed + 1
     if total != campaign["seeds"]:
         raise ValueError("plan does not cover the requested seed count")
     print(f"{total - missing} of {total} seeds reported; {missing} missing", file=out)
@@ -124,7 +124,7 @@ def main():
     planner.add_argument("--long-seeds", type=Path, required=True)
     planner.add_argument("--output", type=Path, required=True)
     checker = commands.add_parser("summary")
-    checker.add_argument("--plan", type=Path, required=True)
+    checker.add_argument("--plan", type=Path, help="saved plan; otherwise use the workflow's planning outputs")
     checker.add_argument("--artifacts", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -136,7 +136,14 @@ def main():
                 print("matrix=" + json.dumps(dict(include=campaign["jobs"]), separators=(",", ":")), file=output)
             print(f"{len(campaign['jobs'])} jobs; {len(longs)} long seeds run alone")
             return 0
-        return summary(json.loads(args.plan.read_text()), args.artifacts, sys.stdout)
+        if args.plan:
+            campaign = json.loads(args.plan.read_text())
+        else:
+            # Job outputs survive an artifact-download failure. The
+            # summary needs only logs, not the potentially huge sim-out.
+            campaign = dict(test=os.environ["TEST"], first=int(os.environ["FIRST"]),
+                            seeds=int(os.environ["SEEDS"]), jobs=json.loads(os.environ["MATRIX"])["include"])
+        return summary(campaign, args.artifacts, sys.stdout)
     except (ValueError, OSError, KeyError) as error:
         parser.exit(1, f"{error}\n")
 

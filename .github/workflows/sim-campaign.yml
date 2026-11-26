@@ -4,6 +4,15 @@
 # The planner uses campaignKind, not a second allocation in the workflow.
 # A final summary requires a native driver result for every requested seed,
 # including seeds whose runner never uploaded an artifact.
+# TestSeeds on 100,000 seeds keeps 2,500 a process: each fault must take
+# effect in 95% of the seeds; a process of at least 64 seeds also runs the
+# deliberate stalled leader, and one of at least 2,000 seeds must have a
+# random stalled leader that went silent and a write torn by a crash.
+# TestMembershipFaults on 10,000 seeds keeps 250 a process. Shorter sets
+# apply only the rules their size supports. SIM_TWICE replays 1% of each
+# process queue and requires identical hashes, even across a long-seed gap.
+# A failing seed prints its hashes and replay command; its trace, nodes,
+# history and disks are uploaded separately from the seed and memory logs.
 #   gh workflow run sim-campaign.yml -f test=<test> -f seeds=<count> -f first=<seed>
 name: sim-campaign
 # The title names the test and the count, which release.yml looks for.
@@ -45,6 +54,7 @@ jobs:
       - name: Test the planner and completeness check (no simulator runs)
         run: |
           python3 -m unittest discover -s scripts -p test_sim_campaign.py
+          go test ./internal/simrun
           go test -tags simio ./internal/sim -run '^TestCampaignLongSeeds$'
       - id: plan
         env:
@@ -86,11 +96,15 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: sim-campaign-${{ matrix.shard }}
+          name: sim-campaign-logs-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/seeds-*.log
             ${{ runner.temp }}/memory.log
-            ${{ runner.temp }}/sim-out
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sim-campaign-files-${{ matrix.shard }}
+          path: ${{ runner.temp }}/sim-out
   summary:
     needs: [plan, seeds]
     if: always()
@@ -98,17 +112,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
-          pattern: sim-campaign-*
+          pattern: sim-campaign-logs-*
           path: ${{ runner.temp }}/campaign
       - name: Require a result for every requested seed
         env:
           SEEDS_RESULT: ${{ needs.seeds.result }}
           PLAN_RESULT: ${{ needs.plan.result }}
+          TEST: ${{ inputs.test }}
+          FIRST: ${{ inputs.first }}
+          SEEDS: ${{ inputs.seeds }}
+          MATRIX: ${{ needs.plan.outputs.matrix }}
         run: |
           set +e
           set -uo pipefail
-          python3 scripts/sim-campaign.py summary --plan "$RUNNER_TEMP/campaign/sim-campaign-plan/plan.json" --artifacts "$RUNNER_TEMP/campaign" | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 scripts/sim-campaign.py summary --artifacts "$RUNNER_TEMP/campaign" | tee -a "$GITHUB_STEP_SUMMARY"
           status=$?
           # Completeness is not success: a reported FAIL or a failed
           # aggregate checker must still fail the campaign.

@@ -14,12 +14,13 @@ import (
 // and stops before producing more than an Actions matrix can hold.
 func campaignLongSeeds(test string, first, seeds uint64) []uint64 {
 	longs := []uint64{}
-	if test != "TestCampaign" && test != "TestCampaignShapeSeeds" {
+	allLong := test == "TestCampaignShapeSeeds" || test == "TestKubernetesLoadLong"
+	if test != "TestCampaign" && !allLong {
 		return longs
 	}
 	for i := range seeds {
 		seed := first + i
-		if test == "TestCampaignShapeSeeds" || campaignKind(seed) == kindLong {
+		if allLong || campaignKind(seed) == kindLong {
 			longs = append(longs, seed)
 			if len(longs) > 256 {
 				break
@@ -64,6 +65,9 @@ func TestCampaignLongSeeds(t *testing.T) {
 		{"TestCampaign", 1052, 1, 1},
 		{"TestCampaignShapeSeeds", 17, 4, 4},
 		{"TestCampaignShapeSeeds", 1, 100_000, 257},
+		{"TestKubernetesLoadLong", 1, 4, 4},
+		{"TestKubernetesLoadLong", 1, 100_000, 257},
+		{"TestBusySeeds", 1, 4, 0},
 		{"TestSeeds", 1, 100_000, 0},
 	} {
 		longs := campaignLongSeeds(c.test, c.first, c.seeds)
