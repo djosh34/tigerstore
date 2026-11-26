@@ -249,6 +249,10 @@ func (r *revisionOrder) due(call, rev int64) iter.Seq[optional] {
 func (r *revisionOrder) dueAt(call, rev, from int64) iter.Seq[optional] {
 	if !r.w.slow {
 		return func(yield func(optional) bool) {
+			if r.testDueQuery != nil {
+				r.testDueQuery(call, rev, from, yield)
+				return
+			}
 			if r.dueWork == nil {
 				r.dueWork = r.newDueWork()
 			}
