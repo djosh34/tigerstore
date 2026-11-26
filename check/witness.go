@@ -368,6 +368,9 @@ func (w *witness) apply(op int, req *history.Request) outcome {
 		w.at[op] = placeAt(len(w.events), false, 0)
 		w.placed = append(w.placed, op)
 	}
+	if w.search != nil && w.search.testTrace != nil {
+		w.search.testTrace("apply", op)
+	}
 	return o
 }
 
