@@ -3,7 +3,6 @@ package sim
 import (
 	"fmt"
 	"maps"
-	"math/rand/v2"
 	"os"
 	"slices"
 	"strings"
@@ -37,16 +36,49 @@ const (
 	kindLong  = "long"
 )
 
-// campaignKind draws seed's kind, each with a weight by count that gives
-// its share by cost: share/cost, scaled to whole numbers.
+// campaignKind allocates seeds from 1 by running cost. Each seed takes
+// the kind with the largest deficit after adding its cost: target cost
+// minus that kind's cost, in hundredths of a fresh scenario's cost. Ties
+// go to fresh, then aged, then long. This starts with 389 fresh seeds;
+// seeds 1 to 2,404 are 2,400 fresh, 3 aged and 1 long (79.2/15.8/5.0 by
+// cost). The deficits return to zero after 38,461 seeds, so a table of
+// that cycle makes even a seed far from 1 a constant-time lookup, with
+// no dependence on which seeds a run includes. Seed 0 is fresh too.
 func campaignKind(seed uint64) string {
-	const scale = costFresh * costImage * costLong
-	weights := []weighted[string]{
-		{kindFresh, shareFresh * scale / costFresh},
-		{kindAged, shareAged * scale / costImage},
-		{kindLong, shareLong * scale / costLong},
+	if seed == 0 {
+		return kindFresh
 	}
-	return pick(rand.New(rand.NewPCG(seed, 0x63616d70)), weights)
+	return campaignKinds[(seed-1)%uint64(len(campaignKinds))]
+}
+
+// campaignKinds holds one cycle of the running cost allocation.
+var campaignKinds = campaignCycle()
+
+// campaignCycle walks seeds until each kind's cost is exactly its target
+// share of the total again. The deficits alone decide the next kind, so
+// the same choices repeat from there.
+func campaignCycle() []string {
+	kinds := [...]string{kindFresh, kindAged, kindLong}
+	costs := [...]int{costFresh, costImage, costLong}
+	shares := [...]int{shareFresh, shareAged, shareLong}
+	var deficit [3]int
+	var cycle []string
+	for {
+		kind := 0
+		for k := 1; k < len(kinds); k++ {
+			if deficit[k]-(100-shares[k])*costs[k] > deficit[kind]-(100-shares[kind])*costs[kind] {
+				kind = k
+			}
+		}
+		cycle = append(cycle, kinds[kind])
+		for k := range deficit {
+			deficit[k] += shares[k] * costs[kind]
+		}
+		deficit[kind] -= 100 * costs[kind]
+		if deficit == [3]int{} {
+			return cycle
+		}
+	}
 }
 
 // longConfig is a long seed: TestSeeds's faults about 16 times further
@@ -65,8 +97,8 @@ func longConfig(seed uint64) Config {
 	return cfg
 }
 
-// TestCampaign runs $SIM_SEEDS seeds from $SIM_SEED, each of the kind it
-// draws (campaignKind): a fresh scenario (Scenario), an aged image and its
+// TestCampaign runs $SIM_SEEDS seeds from $SIM_SEED, each of the kind
+// campaignKind allocates: a fresh scenario (Scenario), an aged image and its
 // forks (TestAgedForks), or a long seed (longConfig), every checker on
 // each, and logs how many of each kind ran and what they cost, the
 // membership work's runs among them. It skips unless $SIM_SEEDS is set:
