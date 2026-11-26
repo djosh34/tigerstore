@@ -2,6 +2,14 @@ package wl
 
 import "testing"
 
+func TestFetchWorkRoundsDownToWholeArenaUnits(t *testing.T) {
+	const budget = 83<<20 + 12345
+	b := newFetchWorkBook(budget)
+	if b.limit%stageUnit != 0 || b.limit > fetchedMax(budget) || fetchedMax(budget)-b.limit >= stageUnit {
+		t.Fatal("the work allowance is not a whole-arena floor of B/32")
+	}
+}
+
 func TestFetchWorkLegacyAndCursorShareOneAllowance(t *testing.T) {
 	for _, budget := range []int64{83 << 20, 137 << 20, 191 << 20} {
 		for _, legacyFirst := range []bool{false, true} {

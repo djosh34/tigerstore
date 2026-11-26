@@ -162,6 +162,12 @@ type wal struct {
 	// be taken by another file before the read.
 	readers int
 	unused  []int
+	// Cursor fetches pin physical files together with their logical
+	// generations. A cut stops before a pin, so ring reuse cannot turn
+	// an open descriptor into a different segment beneath a read.
+	fetchPins  [2]walFetchPin
+	fetchEpoch uint64
+	fetchCut   int64
 
 	stats walStats
 	// The helper's time in its writes, for the stats line: how long the
@@ -556,19 +562,28 @@ func (w *wal) removeSegments(k, to int64) error {
 // checkpoint. It returns their paths, for the caller to remove off the
 // loop (remover). Only the loop calls it.
 func (w *wal) cut(off int64) []string {
-	k := min(off, w.stable) / segSize
+	w.fetchCut = max(w.fetchCut, off)
+	k := min(w.fetchCut, w.stable) / segSize
 	if planted.On("B19") && k < w.stable/segSize {
 		// Planted: the segment that holds off goes too, though recovery
 		// from the checkpoint still reads it.
 		k++
 	}
 	if k <= w.rbase {
+		w.fetchCut = 0
 		return nil
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	var paths []string
 	for w.rbase < k && len(w.rfds) > 0 {
+		pinned := false
+		for _, pin := range w.fetchPins {
+			pinned = pinned || pin.refs > 0 && pin.segment == w.rbase
+		}
+		if pinned {
+			break
+		}
 		if w.readers > 0 {
 			w.unused = append(w.unused, w.rfds[0])
 		} else {
@@ -581,6 +596,9 @@ func (w *wal) cut(off int64) []string {
 		}
 		w.rfds = w.rfds[1:]
 		w.rbase++
+	}
+	if w.rbase >= k {
+		w.fetchCut = 0
 	}
 	if len(w.freed) > 0 {
 		// A ring's segments go back to its pool, off the loop (maker).

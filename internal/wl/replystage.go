@@ -144,7 +144,6 @@ func (s *replyStage) commit() bool {
 	s.flags |= stageCommitted
 	if s.owner != nil {
 		s.owner.stagePending -= int64(s.size)
-		s.owner.heldCounted -= s.charged
 	}
 	return true
 }
@@ -191,7 +190,6 @@ func (s *replyStage) free() {
 		c := s.owner
 		c.growOut(-int(s.charged))
 		if s.flags&stageCommitted == 0 {
-			c.heldCounted -= s.charged
 			c.stagePending -= int64(s.size)
 		}
 		c.stages--

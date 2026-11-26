@@ -586,6 +586,9 @@ func notReadNow(n, want int, err error) bool {
 // readFileNoWait reads p at off of checkpoint f from the page cache, or
 // fails with errAway. A checkpoint in memory reads as ever.
 func readFileNoWait(f ckptFile, p []byte, off int64) error {
+	if leased, ok := f.(*leasedCkpt); ok {
+		f = leased.ckptFile
+	}
 	d, ok := f.(interface{ Fd() uintptr })
 	if !ok {
 		_, err := f.ReadAt(p, off)

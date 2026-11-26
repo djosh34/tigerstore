@@ -26,7 +26,11 @@ type fetchWorkLease struct {
 }
 
 func newFetchWorkBook(budget int64) fetchWorkBook {
-	return fetchWorkBook{limit: fetchedMax(budget), used: fetchCoreWork}
+	limit := fetchedMax(budget)
+	if budget > 0 {
+		limit &^= stageUnit - 1
+	}
+	return fetchWorkBook{limit: limit, used: fetchCoreWork}
 }
 
 // reserve is called before allocating the job/cache storage it covers.

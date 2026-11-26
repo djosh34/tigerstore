@@ -102,6 +102,21 @@ func TestAStagedReplyCannotSpendTheLogicalInputTurn(t *testing.T) {
 	b.dropAll()
 }
 
+func TestPrivateStageIsNotParkedRequestBackpressure(t *testing.T) {
+	c, s := flowClient(t)
+	n := c.node
+	n.sizes, n.connOut, c.flow.conn = sizeFor(83<<20), 64<<10, 0
+	stage := n.admitStage(c, (64<<10)+(1<<20))
+	if stage == nil || c.holdsTooMuch() || c.heldCounted != 0 || n.cout < stage.charged {
+		t.Fatal("private destination credit was mistaken for parked request bytes")
+	}
+	stage.append(stageRangeBytes(t, stage.size))
+	if !c.holdStage(s, stage) || !c.holdsTooMuch() {
+		t.Fatal("completed held output did not acquire main's ordinary backpressure")
+	}
+	c.dropAll()
+}
+
 func TestAnUnbackedOutputCannotBorrowTheInputGuarantee(t *testing.T) {
 	c, _ := flowClient(t)
 	n := c.node

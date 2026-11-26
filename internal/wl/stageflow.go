@@ -29,7 +29,9 @@ func (n *node) admitStage(c *client, size int) *replyStage {
 	}
 	stage.owner = c
 	c.growOut(int(stage.charged))
-	c.heldCounted += stage.charged
+	// Physical capacity belongs to outPool, not heldCounted (parked
+	// requests/captures). An unpublished fill must not manufacture a
+	// busy refusal before ordinary finished output exists.
 	c.stagePending += int64(size)
 	c.stages++
 	c.stagePromise += promise
