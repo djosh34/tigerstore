@@ -90,45 +90,30 @@ func (l *loop) prepareClientSnap(h handle, src file, head []byte) {
 			_ = l.n.sys.remove(f.Name())
 			err = selfContained(src, l.n.wal, f)
 		}
-		cs := &clientSnap{h: h, f: f, head: head}
+		var size int64
 		if err == nil {
-			cs.size, err = f.Seek(0, io.SeekCurrent)
+			size, err = f.Seek(0, io.SeekCurrent)
 		}
 		if err == nil {
 			_, err = f.Seek(0, io.SeekStart)
 		}
-		l.post(func() error { return l.n.clientSnapCopied(cs, src.Name(), err) })
-	}()
-}
-
-// clientSnapCopied takes back a client's copy. A replaced checkpoint's
-// file stays open, but a cut may have returned the log it names to the
-// ring. Retry that copy through a new checkpoint, whose header and values
-// describe the same applied state, or a later one. An error copying the
-// current checkpoint is not a cut racing the copy: it is still reported,
-// and a bad value still stops the node. Errors unrelated to a cut or a
-// value's checksum, such as a failed write of the copy, are not retried.
-func (n *node) clientSnapCopied(cs *clientSnap, name string, err error) error {
-	if err != nil {
-		if cs.f != nil {
-			_ = cs.f.Close()
-		}
-		if (errors.Is(err, errLogCut) || errors.Is(err, ErrBadValue)) && filepath.Base(name) != n.ckptName {
-			n.snapWaiters = append(n.snapWaiters, cs.h)
-			n.storage.wantCkpt = true
+		l.post(func() error {
+			if err != nil {
+				if f != nil {
+					_ = f.Close()
+				}
+				l.n.replyErrorH(h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
+				if errors.Is(err, ErrBadValue) {
+					return err
+				}
+				return nil
+			}
+			body := int64(len(head)) + size
+			total := body + clientSnapPad(body) + sha256.Size
+			l.n.clientSnaps = append(l.n.clientSnaps, &clientSnap{h: h, f: f, head: head, size: total, sum: sha256.New()})
 			return nil
-		}
-		n.replyErrorH(cs.h, codeInternal, fmt.Sprintf("etcdserver: snapshot: %v", err))
-		if errors.Is(err, ErrBadValue) {
-			return err
-		}
-		return nil
-	}
-	body := int64(len(cs.head)) + cs.size
-	cs.size = body + clientSnapPad(body) + sha256.Size
-	cs.sum = sha256.New()
-	n.clientSnaps = append(n.clientSnaps, cs)
-	return nil
+		})
+	}()
 }
 
 // clientSnapPad is the zero padding after n bytes that makes them a

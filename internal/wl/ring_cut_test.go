@@ -1,6 +1,10 @@
 package wl
 
 import (
+	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -88,6 +92,16 @@ func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
 	n, value, from := lowRingCheckpoint(t)
 	w := n.wal
 	id, _ := n.st.find([]byte("/kept"))
+	// A sender may still hold the old checkpoint open. Its values lie
+	// in the WAL, so an open file alone does not protect their segments.
+	src, err := n.sys.openFile(filepath.Join(n.ckptDir, n.ckptName), os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = src.Close() }()
+	if err := selfContained(src, w, &bytes.Buffer{}); err != nil {
+		t.Fatalf("copy before the forced cut: %v", err)
+	}
 	if !n.ringDue() {
 		t.Fatal("no checkpoint is due at the newest's own index after its cut freed nothing")
 	}
@@ -113,6 +127,19 @@ func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
 	}
 	if got, ok := valueAt(t, n.st, "/kept", n.st.rev); !ok || got != value {
 		t.Fatal("the cut lost the value before it")
+	}
+	// As on main, a copy whose old file names a retired segment fails
+	// cleanly, rather than returning a wrong value or hanging. Retrying
+	// such copies belongs to #863, not the same-index checkpoint fix.
+	copied := make(chan error, 1)
+	go func() { copied <- selfContained(src, w, &bytes.Buffer{}) }()
+	select {
+	case err := <-copied:
+		if err == nil || !errors.Is(err, ErrBadValue) && !strings.Contains(err.Error(), "does not hold") {
+			t.Fatalf("the retired file's copy did not fail cleanly: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the retired file's copy hung after its segment was cut")
 	}
 	// Even if unapplied appends keep the ring low and the byte threshold
 	// passed, the forced cut can free nothing more at this index.

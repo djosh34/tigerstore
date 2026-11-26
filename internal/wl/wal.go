@@ -1140,11 +1140,6 @@ func (w *wal) read(p []byte, off int64) error {
 	return w.readDurable(p, off)
 }
 
-// errLogCut is a read of log bytes a cut has already let go of. A
-// snapshot copy of a replaced checkpoint may race that cut and retries
-// from the newest checkpoint (clientSnapCopied, snapshotSent).
-var errLogCut = errors.New("the log was cut")
-
 // errAway is a value the loop would wait on the disk for: it is read off
 // the loop (fetch.go).
 var errAway = errors.New("the value is not in memory")
@@ -1193,11 +1188,7 @@ func (w *wal) readSegments(p []byte, off int64, pread func(fd int, p []byte, off
 		k := min(len(p)-got, int(segSize-o%segSize))
 		w.mu.Lock()
 		i := o/segSize - w.rbase
-		if i < 0 {
-			w.mu.Unlock()
-			return fmt.Errorf("read the log at %d, in segment %d, which it does not hold: %w", o, o/segSize, errLogCut)
-		}
-		if i >= int64(len(w.rfds)) {
+		if i < 0 || i >= int64(len(w.rfds)) {
 			w.mu.Unlock()
 			return fmt.Errorf("read the log at %d, in segment %d, which it does not hold", o, o/segSize)
 		}
