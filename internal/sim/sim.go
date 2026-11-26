@@ -123,8 +123,10 @@ type Config struct {
 	// LoseQuorum damages disks at crashes until a majority of the voters
 	// is fenced for good, and no operator replaces one. Where damage
 	// finds no place, loseQuorum fences a node directly. The cluster must
-	// stay safe and refuse every write from then on (checkUnavailable),
-	// and a requested loss that has not happened by healing fails.
+	// stay safe and refuse every write from then on (checkUnavailable).
+	// At healing the loss must have happened, or enough damaged nodes
+	// must still be awaiting recovery's verdict; those must fence by the
+	// run's end.
 	LoseQuorum bool
 	// Membership adds, updates, promotes and removes a member after the
 	// voters while the ordinary clients and faults continue.
@@ -1342,6 +1344,7 @@ func (s *Sim) run() error {
 		}
 	}
 	s.mu.Lock()
+	s.checkRequestedQuorumLoss(false)
 	s.stop()
 	s.mu.Unlock()
 	s.wg.Wait()
@@ -2227,10 +2230,9 @@ func (s *Sim) beforeSync(p *proc) {
 // until a majority of the voters is fenced for good (Config.LoseQuorum):
 // the random crashes, half of them kills, which damage nothing, may not
 // get there in time. It starts once a client's write succeeded, so that
-// the checkers have a
-// committed log to check: under the race detector, with the host's
-// timing, seed 1 of TestLoseQuorum had committed none a quarter into the
-// run.
+// the checkers have a committed log to check: under the race detector,
+// with the host's timing, seed 1 of TestLoseQuorum had committed none a
+// quarter into the run.
 func (s *Sim) loseQuorum() {
 	for {
 		s.mu.Lock()
@@ -2247,10 +2249,7 @@ func (s *Sim) loseQuorum() {
 		}
 		var up []*node
 		for _, n := range s.nodes {
-			// A rotted node may still run on its damaged disk. Restart it
-			// too, so it refuses that disk instead of holding a damage
-			// slot without being fenced (Scenario seed 2322).
-			if n.proc != nil && (!n.mayBeDamaged() || n.corrupted) && !n.out() {
+			if n.quorumLossTarget() {
 				up = append(up, n)
 			}
 		}
@@ -2259,7 +2258,8 @@ func (s *Sim) loseQuorum() {
 			n.why = "the run crashed it to lose the quorum"
 			s.crash(n)
 			if noPlace := s.maybeCorrupt(n); noPlace {
-				s.fence(n, "the run fenced it to lose the quorum: damage found no place")
+				why := "the run fenced it to lose the quorum: damage found no place"
+				s.fence(n, why, why)
 			}
 			s.restartLater(n, 1+s.rng.Int64N(s.cfg.Faults.MaxDown))
 		}
@@ -2268,6 +2268,15 @@ func (s *Sim) loseQuorum() {
 			return
 		}
 	}
+}
+
+// quorumLossTarget reports whether loseQuorum may crash n. A rotted
+// node may still run on its damaged disk and hold a damage slot without
+// being fenced (Scenario seed 2322): restart it too, but never interrupt
+// a damaged disk's recovery before it can refuse it. The lock is held.
+func (n *node) quorumLossTarget() bool {
+	p := n.proc
+	return p != nil && !n.out() && (!n.mayBeDamaged() || n.rotted && n.corrupted && p.wl.recovered)
 }
 
 // crashRandom crashes a node that is up and restarts it up to MaxDown
@@ -2572,14 +2581,38 @@ func (s *Sim) setLinks(mask uint64) {
 	}
 }
 
+// errRequestedQuorumLoss marks a requested loss that did not happen,
+// so even a failed seed can report that outcome to its set.
+var errRequestedQuorumLoss = errors.New("requested a quorum loss and none happened by healing")
+
+// checkRequestedQuorumLoss checks the requested loss. At healing, damage
+// already on disks still to recover may yet fence a majority; only those
+// pending refusals can defer the verdict until the end. The lock is held.
+func (s *Sim) checkRequestedQuorumLoss(atHealing bool) {
+	if !s.cfg.LoseQuorum || s.quorumLostAt > 0 {
+		return
+	}
+	if atHealing && s.count(func(n *node) bool {
+		return n.fenced || n.corrupted && (n.proc == nil || !n.proc.wl.recovered)
+	}) > s.tolerance() {
+		s.tracef("requested quorum loss: waiting for the damaged disks' pending recoveries")
+		return
+	}
+	if atHealing {
+		s.fail("%w", errRequestedQuorumLoss)
+	} else {
+		s.fail("%w or the pending recoveries", errRequestedQuorumLoss)
+	}
+}
+
 // heal ends the faults: every link comes up, half-open links and disk
 // stalls end, and every node that is down starts.
 func (s *Sim) heal() {
 	s.mu.Lock()
 	s.healed = true
 	s.tracef("healing")
-	if s.cfg.LoseQuorum && s.quorumLostAt == 0 {
-		s.fail("requested a quorum loss and none happened by healing")
+	s.checkRequestedQuorumLoss(true)
+	if s.err != nil {
 		s.mu.Unlock()
 		return
 	}

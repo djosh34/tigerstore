@@ -105,11 +105,12 @@ func TestCampaign(t *testing.T) {
 		default:
 			cfg := Scenario(seed)
 			t.Logf("seed %d: %s", seed, cfg.describe())
-			res := run(t, cfg)
-			checkers(t, res)
-			return scenarioRun{Kind: cfg.kind(), Nodes: cfg.voters(), Stats: res.Stats}
+			return runScenario(t, cfg)
 		}
 	}, func(seed uint64, r scenarioRun) bool {
+		if r.countMissedLoss(ran) {
+			return false
+		}
 		switch r.Kind {
 		case kindAged:
 			// Each fork carries its share of the image's cost.
@@ -126,9 +127,6 @@ func TestCampaign(t *testing.T) {
 			if r.Kind == "membership" && r.Stats.MembershipChanges[3] > 0 {
 				ran["membership work completed"]++
 			}
-		}
-		if r.Kind == "requested quorum loss" && r.Stats.QuorumLostAt == 0 {
-			ran["requested quorum loss, not lost"]++
 		}
 		if r.Stats.QuorumLostAt > 0 {
 			ran["quorum lost for good"]++

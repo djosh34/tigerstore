@@ -12,6 +12,43 @@ import (
 	"github.com/jellevandenhooff/gosim/metatesting"
 )
 
+// missedLoss is a failed seed's outcome that still belongs in its set's
+// report, as a requested quorum loss that never happened does.
+type missedLoss struct {
+	Missed bool
+}
+
+func (r missedLoss) ReportFailedSeed() bool { return r.Missed }
+
+// TestAddFailedSeed checks the path from a failed run's saved result to
+// the driver's counts: one missed loss counts once, while an ordinary
+// failure, a fatal failure with no result, and malformed data count none.
+func TestAddFailedSeed(t *testing.T) {
+	count := 0
+	add := func(seed uint64, r missedLoss) bool {
+		if seed != 1 || !r.Missed {
+			t.Fatalf("reported seed %d: %+v", seed, r)
+		}
+		count++
+		return true
+	}
+	if !addFailedSeed(1, []byte(`{"Missed":true}`), add) || count != 1 {
+		t.Fatalf("missed loss count %d, want 1", count)
+	}
+	for _, data := range [][]byte{nil, []byte(`{`), []byte(`{"Missed":false}`)} {
+		if addFailedSeed(1, data, add) || count != 1 {
+			t.Fatalf("result %q changed the count to %d, want 1", data, count)
+		}
+	}
+	// A result without the opt-in interface is left out as before.
+	if addFailedSeed(1, []byte(`true`), func(uint64, bool) bool {
+		t.Fatal("reported a failed seed that did not opt in")
+		return true
+	}) {
+		t.Fatal("a result without FailedSeed stopped the set")
+	}
+}
+
 // TestKeepBlackbox checks the files keepBlackbox adds to a run's: for a
 // run gosim ended past its limit of real time, its stacks, and for a run
 // that panicked, its log, each with the trace and nodes the watchdog saved

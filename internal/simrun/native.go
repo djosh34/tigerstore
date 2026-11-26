@@ -341,6 +341,7 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 			}
 			r := part(t, Run{Test: test, Seed: seed, Env: env}, double)
 			if r.Failed {
+				stop = addFailedSeed(seed, r.Artifacts["seed.json"], add)
 				return
 			}
 			t.Logf("hashes: %s", r.Artifacts["hashes"])
@@ -355,6 +356,19 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 		}
 	}
 	return true
+}
+
+// addFailedSeed passes a failed seed's result to add only when it asks
+// to be reported (FailedSeed). A fatal failure may have saved no result.
+func addFailedSeed[T any](seed uint64, data []byte, add func(uint64, T) bool) bool {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return false
+	}
+	if f, ok := any(v).(FailedSeed); ok && f.ReportFailedSeed() {
+		return add(seed, v)
+	}
+	return false
 }
 
 // errNoInput is OpenInput's error outside gosim, which gives a run no
@@ -422,6 +436,7 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 		}
 		res := part(t, fork, double)
 		if res.Failed {
+			stop = addFailedSeed(r.Seed, res.Artifacts["seed.json"], add) || stop
 			continue
 		}
 		t.Logf("fork %d hashes: %s", k, res.Artifacts["hashes"])

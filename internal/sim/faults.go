@@ -351,8 +351,8 @@ func (s *Sim) maybeCorrupt(n *node) bool {
 		s.tracef("node %d: damage after a sync: %v", n.id, kind)
 		return false
 	}
-	// The kind drawn found no place. A test that picks the kinds waits
-	// for one that does.
+	// The kind drawn found no place. A test that picks the kinds skips
+	// the record flip; loseQuorum can still fence the node directly.
 	switch {
 	case len(s.cfg.damageKinds) > 0:
 	case (s.cfg.flipRecords || s.cfg.LoseQuorum) && s.formed > 0 && s.flipWLRecord(n):
