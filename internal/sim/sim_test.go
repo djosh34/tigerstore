@@ -593,7 +593,7 @@ func TestSeeds(t *testing.T) {
 		total.Disk.TornWrites += st.Disk.TornWrites
 		total.Disk.Reordered += st.Disk.Reordered
 		total.TornRefusals += st.TornRefusals
-		total.OutOfSpace += st.OutOfSpace
+		total.OutOfSpace += st.OutOfSpace + st.NoRoom
 		return false
 	}) {
 		return
@@ -624,7 +624,7 @@ func TestSeeds(t *testing.T) {
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0 ||
 		total.Disk.Reordered == 0 || total.OutOfSpace == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a first checkpoint, %d after a removal, %d crashes that kept a write and lost an earlier one, %d nodes out of space; each must happen",
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a first checkpoint, %d after a removal, %d crashes that kept a write and lost an earlier one, %d nodes out of space, stopped or with a checkpoint held; each must happen",
 			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval, total.Disk.Reordered, total.OutOfSpace)
 	}
 	// A crash tears a write in about 1 seed in 300, so 400 seeds have none
@@ -1094,8 +1094,9 @@ func faultCases() []faultCase {
 		{"client link down", Faults{LinkEvery: Second}, nil, func(st Stats) int { return st.ClientLinksDown }},
 		// A small budget checkpoints often (Config.CheckpointLog): a
 		// node then needs room while its disk is full, which its log's
-		// ring, made once, does not.
-		{"full disk", Faults{DiskFullEvery: Second, DiskBudget: 32 << 10}, nil, func(st Stats) int { return st.OutOfSpace }},
+		// ring, made once, does not. It stops on the write, or holds the
+		// checkpoint with NOSPACE raised and stays up (#769).
+		{"full disk", Faults{DiskFullEvery: Second, DiskBudget: 32 << 10}, nil, func(st Stats) int { return st.OutOfSpace + st.NoRoom }},
 		{"the log cut within the budget", Faults{DiskBudget: 32 << 10, DiskCapacity: 128 << 10}, nil, func(st Stats) int { return st.LogCuts }},
 		damage(flippedRoot, func(st Stats) int { return min(st.Damage[flippedRoot], st.Fenced) }),
 		damage(misdirected, func(st Stats) int { return min(st.Damage[misdirected], st.Fenced) }),

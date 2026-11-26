@@ -111,6 +111,22 @@ type ckptMeta struct {
 
 func ckptName(index uint64) string { return fmt.Sprintf("%016x.ckpt", index) }
 
+// nextCkptName gives a checkpoint at the newest's own index a new name.
+// Its file and the values in it stay readable until ckptDone, and a
+// removal queued for an older name must never remove a newer file.
+// CURRENT holds the whole name, and cleanup recognizes the .ckpt suffix.
+func nextCkptName(index uint64, prev string) string {
+	name := ckptName(index)
+	if prev == name {
+		return fmt.Sprintf("%016x-%016x.ckpt", index, uint64(1))
+	}
+	var before, seq uint64
+	if _, err := fmt.Sscanf(prev, "%016x-%016x.ckpt", &before, &seq); err == nil && before == index {
+		return fmt.Sprintf("%016x-%016x.ckpt", index, seq+1)
+	}
+	return name
+}
+
 // ckptState is one state of a key, as a checkpoint holds it.
 type ckptState struct {
 	deleted                 bool
@@ -352,12 +368,19 @@ type ckptRun struct {
 	// force cuts the log at prevFrom whatever the store names before it,
 	// which the checkpoint takes in: the log's ring ran low (logring.go).
 	force bool
+	// raftWanted is the independent Raft request this run took in; a
+	// drop for lack of room restores it, not client-only demand.
+	raftWanted bool
 	// snapWaiters are the clients' Snapshots that asked before it started.
 	snapWaiters []handle
 	cut         int64
 	rels        []ckptRel
 	segLive     map[int64]int64
 	relAt       int // the next value to hand the writer
+	// nKeys, keyBytes and nStates count the keys the scan found states
+	// of, their bytes and the states, which the room it needs counts
+	// (ckptNeed).
+	nKeys, keyBytes, nStates int64
 
 	// For the stats line: when it started, the loop's time encoding, and
 	// the bytes of values it takes in and of those it leaves in the log.
@@ -377,7 +400,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 		_ = st.ckpts[gen].Close()
 		st.setCkpt(gen, nil)
 	}
-	name := ckptName(index)
+	name := nextCkptName(index, n.ckptName)
 	tmp := name + ".tmp"
 	st.hold()
 	r := &ckptRun{
@@ -395,6 +418,7 @@ func (n *node) startCkpt(index, term uint64, logFrom int64) error {
 	r.leases = st.encodeLeases(nil)
 	r.members = n.encodeMembers(nil)
 	r.snapWaiters, n.snapWaiters = n.snapWaiters, nil
+	r.raftWanted, n.storage.wantCkpt = n.storage.wantCkpt, false
 	dl, _ := st.log.(durableLog)
 	r.w = &ckptWriter{
 		sys: n.sys,
@@ -437,6 +461,11 @@ func (n *node) ckptStep(block bool) error {
 		}
 		r.sent--
 		if c.err != nil {
+			if isNoSpace(c.err) {
+				// The node stays up with NOSPACE raised (#769).
+				n.ckptNoSpace(c.err)
+				return nil
+			}
 			return c.err
 		}
 		if c.last {
@@ -450,6 +479,9 @@ func (n *node) ckptStep(block bool) error {
 		n.turnCkpt.scan = time.Since(t)
 		if r.phase == ckptScanning {
 			return nil
+		}
+		if !n.ckptFits(r) {
+			return nil // dropped, with NOSPACE raised (#769)
 		}
 	}
 	te := time.Now()
@@ -507,6 +539,11 @@ func (n *node) scanKeys(r *ckptRun) {
 		r.states, walked = st.takeStates(r.next, r.meta.rev, st.ckptRev(), r.states[:0])
 		// What it walked counts, behind a hold a key's long history.
 		states += max(len(r.states), walked)
+		if len(r.states) > 0 {
+			r.nKeys++
+			r.keyBytes += int64(st.keys[r.next].klen)
+			r.nStates += int64(len(r.states))
+		}
 		for i := range r.states {
 			s := &r.states[i]
 			switch {

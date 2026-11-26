@@ -44,6 +44,7 @@ func kubeConfig(seed uint64, long bool) Config {
 	cfg.SegmentBytes = 4 << 20
 	cfg.Faults.DiskBudget = max(16<<20, int64(cfg.Objects)*8<<10)
 	cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
+	fitDisk(&cfg, kubeQuota(cfg.Objects))
 	return cfg
 }
 

@@ -133,8 +133,17 @@ func sysErr(err error) error {
 	case errors.Is(err, simfs.ErrIsDir):
 		return unix.EISDIR
 	}
-	return err
+	return noSpaceErr(err)
 }
+
+// noSpace is a disk's ErrNoSpace as the system's ENOSPC, which the node
+// tells apart (#769), and still the disk's error, whose text and whose
+// errors.Is the simulator's reports and fault counts read.
+type noSpace struct{ err error }
+
+func (e noSpace) Error() string        { return e.err.Error() }
+func (e noSpace) Unwrap() error        { return e.err }
+func (e noSpace) Is(target error) bool { return target == unix.ENOSPC }
 
 // ---- files
 
@@ -364,7 +373,15 @@ func (o *OS) Pwrite(fd int, p []byte, off int64) (int, error) {
 	if err == nil && f.direct {
 		err = f.h.Sync()
 	}
-	return k, err
+	return k, noSpaceErr(err)
+}
+
+// noSpaceErr is err, the disk's, with ErrNoSpace as ENOSPC too (noSpace).
+func noSpaceErr(err error) error {
+	if errors.Is(err, simfs.ErrNoSpace) {
+		return noSpace{err}
+	}
+	return err
 }
 
 // Allocate allocates fd's space up to size, keeping its size, as
@@ -426,7 +443,7 @@ func (o *OS) Fsync(fd int) error {
 	}
 	switch v := e.(type) {
 	case *file:
-		return v.h.Sync()
+		return noSpaceErr(v.h.Sync())
 	case *dir:
 		// A directory's sync makes its own names durable, where the
 		// disk tells directories apart (simfs.Disk.SyncDirOf).
@@ -473,7 +490,7 @@ func (o *OS) Write(fd int, p []byte) (int, error) {
 		if err == nil && v.direct {
 			err = v.h.Sync()
 		}
-		return k, err
+		return k, noSpaceErr(err)
 	case *eventfd:
 		return v.write(p)
 	case *socket:
