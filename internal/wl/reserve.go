@@ -40,8 +40,8 @@ const smallMsg = 1 << 10
 // now: within its share, or with the room the reserve gives it for what
 // passes it, which it takes.
 func (n *node) msgRoom(c *client, m int64) bool {
-	past := c.waiting() + c.flow.bytes + m - n.connOut - c.roomHeld
-	if past <= 0 || m <= smallMsg {
+	past := n.roomNeeded(c, m)
+	if past == 0 {
 		return true
 	}
 	if n.reserved+past > n.sizes.reserve() {
@@ -52,6 +52,15 @@ func (n *node) msgRoom(c *client, m int64) bool {
 	c.roomHeld += past
 	n.reserved += past
 	return true
+}
+
+// roomNeeded is the extra reserve room a message needs, beyond the room
+// client c holds already. Checking it does not reserve anything.
+func (n *node) roomNeeded(c *client, m int64) int64 {
+	if m <= smallMsg {
+		return 0
+	}
+	return max(0, c.waiting()+c.flow.bytes+m-n.connOut-c.roomHeld)
 }
 
 // giveRoom gives back the room of the reserve that client c holds past
@@ -82,14 +91,30 @@ func (n *node) giveRoom(c *client, closed bool) {
 	c.roomHeld = keep
 }
 
+// roomRead is a range waiting for reply room, without any record bytes.
+// Its body size excludes the header and stays right while its store,
+// revision and compacted revision stay the same. The tag identifies the
+// store without keeping its tables alive after a snapshot install.
+type roomRead struct {
+	awayRead
+	c               *client // owns the charge even after the stream ends
+	tag             *byte
+	rev, compactRev int64
+	body            int
+}
+
 // waitRoom keeps range request msg of stream s of client c until the
-// reserve has room for its reply.
-func (n *node) waitRoom(c *client, s *stream, msg []byte) {
+// reserve has room for its reply, whose body size excludes the header.
+func (n *node) waitRoom(c *client, s *stream, msg []byte, body int) {
 	c.roomWaiters++
 	// Its request, kept, counts in the client's pool (B9).
 	c.growOut(len(msg))
 	c.heldCounted += int64(len(msg))
-	n.roomWait = append(n.roomWait, awayRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg)})
+	r := roomRead{h: mkHandle(c, s.id), msg: bytes.Clone(msg), c: c, body: body}
+	if n.st != nil {
+		r.tag, r.rev, r.compactRev = n.st.tag, n.st.rev, n.st.compactRev
+	}
+	n.roomWait = append(n.roomWait, r)
 }
 
 // cannotFit reports whether a message of m bytes could never be built for
@@ -158,7 +183,24 @@ func (n *node) serveRoomWait() {
 	for _, r := range reads {
 		c, s := n.clientOf(r.h)
 		if c == nil {
+			if r.c != nil {
+				r.c.growOut(-len(r.msg))
+				r.c.heldCounted -= int64(len(r.msg))
+				r.c.roomWaiters--
+			}
 			continue
+		}
+		if r.tag != nil && r.tag == n.st.tag && r.rev == n.st.rev && r.compactRev == n.st.compactRev {
+			// A small return of room need not fit this reply. Checking
+			// first avoids reading and rebuilding its records just to
+			// discard them again (#833). The header and share are current.
+			m := int64(5 + sizeBytesField(1, n.hdrSize()) + r.body)
+			if past := n.roomNeeded(c, m); past > 0 && n.reserved+past > n.sizes.reserve() && !n.cannotFit(m) {
+				n.stats.roomWaits++
+				n.roomShort = true
+				n.roomWait = append(n.roomWait, r)
+				continue
+			}
 		}
 		c.roomWaiters--
 		c.growOut(-len(r.msg))
