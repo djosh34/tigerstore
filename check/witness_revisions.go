@@ -71,8 +71,9 @@ type revisionOrder struct {
 	ambiguous []int
 	lb        []int64
 	// alive is, per lease, the highest revision at which an answer shows
-	// it in use: an acked put with it wrote that revision, or a key a
-	// client saw still had it there. Its revoke writes a later revision,
+	// it in use: an acked put with it wrote that revision, a key a
+	// client saw still had it there, or an acked revoke needed it alive
+	// before taking it away. An ambiguous revoke writes a later revision,
 	// unless the ID was granted more than once (grants).
 	alive  map[int64]int64
 	grants map[int64]int
@@ -381,6 +382,16 @@ func (r *revisionOrder) index() error {
 		op := &h.Ops[i]
 		if op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
 			r.alive[op.Req.Put.Lease] = max(r.alive[op.Req.Put.Lease], op.Resp.Revision)
+		}
+		if op.Resp != nil && op.Req.LeaseRevoke != nil {
+			// A successful revoke still found its lease alive. With no
+			// other grant of the ID, no expiry can precede it, including
+			// at its header revision: only the acked revoke can write
+			// that revision by deleting its keys. The image's expiries
+			// are called at the start, so trying one of these first left
+			// every order of the other gaps to fail at this revoke (#867).
+			id := op.Req.LeaseRevoke.ID
+			r.alive[id] = max(r.alive[id], op.Resp.Revision)
 		}
 		if g := op.Req.LeaseGrant; g != nil {
 			id := g.ID
