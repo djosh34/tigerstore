@@ -3,14 +3,16 @@ package wl
 import (
 	"strings"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/raft/v3/raftpb"
 )
 
-// A follower may apply no further than its newest checkpoint while the
-// next append has no room. If that checkpoint cut nothing, another at
-// its own index must take in the values and force the cut (#815).
-func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
+// lowRingCheckpoint is #815's wedge: applied 14, newest checkpoint 14,
+// cut 0 and a low ring with no room for the next append. It returns the
+// node, its value and the record the checkpoint starts at.
+func lowRingCheckpoint(t *testing.T) (*node, string, int64) {
+	t.Helper()
 	was := segSize
 	segSize = 16 << 10
 	t.Cleanup(func() { segSize = was })
@@ -76,6 +78,16 @@ func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
 	if n.storage.offOf(n.applied) >= 0 {
 		t.Fatal("the test needs the checkpoint's entry compacted")
 	}
+	return n, value, from
+}
+
+// A follower may apply no further than its newest checkpoint while the
+// next append has no room. If that checkpoint cut nothing, another at
+// its own index must take in the values and force the cut (#815).
+func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
+	n, value, from := lowRingCheckpoint(t)
+	w := n.wal
+	id, _ := n.st.find([]byte("/kept"))
 	if !n.ringDue() {
 		t.Fatal("no checkpoint is due at the newest's own index after its cut freed nothing")
 	}
@@ -93,12 +105,20 @@ func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
 	if w.ringLow() || w.ringRoom() < w.wanted || w.rbase != from/segSize {
 		t.Fatalf("the forced checkpoint freed no room: low %v, room %d, wanted %d, base %d, start %d", w.ringLow(), w.ringRoom(), w.wanted, w.rbase, from)
 	}
+	// Read from the repointed checkpoint, not the Put's cached record.
+	n.st.fit()
+	if k := &n.st.keys[id]; k.rec != 0 {
+		n.st.slab.free(k.rec, int(k.rlen))
+		k.rec, k.rlen = 0, 0
+	}
 	if got, ok := valueAt(t, n.st, "/kept", n.st.rev); !ok || got != value {
 		t.Fatal("the cut lost the value before it")
 	}
 	// Even if unapplied appends keep the ring low and the byte threshold
 	// passed, the forced cut can free nothing more at this index.
 	w.wanted = w.ringRoom() + 1
+	n.ckptLog = 1
+	n.now = n.ckptNotBefore.Add(time.Second)
 	if n.ringDue() {
 		t.Fatal("another checkpoint is due after forcing the cut to its start")
 	}

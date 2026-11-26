@@ -36,6 +36,8 @@ func TestAHeldReadOutlivesASameIndexCheckpoint(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := n.ckpt
+		// The name check guards against rename-over: reads through the
+		// store's open handle alone would not catch that on Linux.
 		if r.w.name == before || r.w.prev != st.ckpts[gen] {
 			n.abortCkpt()
 			t.Fatal("the same-index checkpoint reused the file it reads")
@@ -151,10 +153,27 @@ func TestSameIndexCheckpointDoneRemovesOnlyTheOldFiles(t *testing.T) {
 func TestSameIndexCheckpointKeepsStorageTermAndIndex(t *testing.T) {
 	n, l := ckptNode(t)
 	putValue(t, n.st, l, "/a", "value")
+	takeEveryValue(t)
+	n.ckptFrom = int64(len(l.b))
+	checkpoint := func() {
+		t.Helper()
+		if err := n.startCkpt(14, 7, 0); err != nil {
+			t.Fatal(err)
+		}
+		for n.ckpt != nil {
+			if err := n.ckptStep(n.ckpt.sent > 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	checkpoint()
+	s := n.storage
+	s.applySnapshot(s.snap.GetMetadata(), n.ckptName)
 	var ents []*pb.Entry
 	var offs []int64
-	for i := uint64(1); i <= 16; i++ {
-		e := testEntry(i, 1, "entry")
+	// The compacted snapshot's term differs from both remaining entries.
+	for i := uint64(15); i <= 16; i++ {
+		e := testEntry(i, 8, "entry")
 		ents = append(ents, e)
 		offs = append(offs, addRecord(l, e))
 	}
@@ -162,11 +181,8 @@ func TestSameIndexCheckpointKeepsStorageTermAndIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	n.applied = 14
-	writeCkpt(t, n, 14)
-	s := n.storage
-	s.compact(14)
 	before := n.ckptName
-	writeCkptAt(t, n, 14)
+	checkpoint()
 	if n.ckptName == before {
 		t.Fatal("the new snapshot reused the old file")
 	}
@@ -174,19 +190,19 @@ func TestSameIndexCheckpointKeepsStorageTermAndIndex(t *testing.T) {
 		s.compact(14)
 		first, _ := s.FirstIndex()
 		term, err := s.Term(14)
-		if err != nil || term != 1 || first != 15 || s.lastIndex() != 16 || s.offOf(14) != -1 || s.offOf(15) != offs[14] {
+		if err != nil || term != 7 || first != 15 || s.lastIndex() != 16 || s.offOf(14) != -1 || s.offOf(15) != offs[0] {
 			t.Fatalf("after same-index compaction: term %d (%v), first %d, last %d, offsets %d, %d", term, err, first, s.lastIndex(), s.offOf(14), s.offOf(15))
 		}
 		if _, err := s.Term(13); !errors.Is(err, raft.ErrCompacted) {
 			t.Fatalf("term before the checkpoint: %v", err)
 		}
 		got, err := s.Entries(15, 17, 1<<20)
-		if err != nil || len(got) != 2 || got[0].GetIndex() != 15 || got[1].GetIndex() != 16 {
+		if err != nil || len(got) != 2 || got[0].GetIndex() != 15 || got[1].GetIndex() != 16 || got[0].GetTerm() != 8 || got[1].GetTerm() != 8 {
 			t.Fatalf("the entries after the checkpoint: %v, %v", got, err)
 		}
 	}
 	snap, err := s.Snapshot()
-	if err != nil || snap.GetMetadata().GetIndex() != 14 || snap.GetMetadata().GetTerm() != 1 || string(snap.GetData()) != n.ckptName {
+	if err != nil || snap.GetMetadata().GetIndex() != 14 || snap.GetMetadata().GetTerm() != 7 || string(snap.GetData()) != n.ckptName {
 		t.Fatalf("the snapshot: %v, %v", snap, err)
 	}
 	// Receive a self-contained copy, then install at the same index.
@@ -207,7 +223,7 @@ func TestSameIndexCheckpointKeepsStorageTermAndIndex(t *testing.T) {
 	}
 	first, _ := s.FirstIndex()
 	term, err := s.Term(14)
-	if err != nil || term != 1 || first != 15 || s.lastIndex() != 14 || s.offOf(14) != -1 {
+	if err != nil || term != 7 || first != 15 || s.lastIndex() != 14 || s.offOf(14) != -1 {
 		t.Fatalf("after same-index install: term %d (%v), first %d, last %d, offset %d", term, err, first, s.lastIndex(), s.offOf(14))
 	}
 	if got, ok := valueAt(t, n.st, "/a", n.st.rev); !ok || got != "value" {

@@ -529,7 +529,7 @@ func TestARingIsReadOnlyWithItsSegmentSize(t *testing.T) {
 // forced cut at the newest's own index cannot help if its start is in
 // the segment the cut already reached. Once an entry applies past the
 // newest, one is due again.
-func TestARingIsNeverDueForACheckpointItCannotMake(t *testing.T) {
+func TestARingIsNotDueWhenAForcedCutFreesNoSegment(t *testing.T) {
 	was := segSize
 	segSize = 16 << 10
 	t.Cleanup(func() { segSize = was })

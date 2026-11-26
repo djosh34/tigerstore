@@ -84,6 +84,30 @@ func TestASnapshotRestoresIntoANewCluster(t *testing.T) {
 	}
 }
 
+// An explicit snapshot must finish even if the store has not advanced
+// past its newest checkpoint and the ring needs no cut (#859's review).
+func TestAQuietNodeAnswersConsecutiveSnapshots(t *testing.T) {
+	tc := newTestClusterOf(t, 1, nil)
+	c := tc.clientOf(t, tc.endpoints[0])
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := c.Put(ctx, "/quiet", "value"); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 5 {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		rc, err := c.Snapshot(ctx)
+		if err == nil {
+			_, err = io.Copy(io.Discard, rc)
+			_ = rc.Close()
+		}
+		cancel()
+		if err != nil {
+			t.Fatalf("snapshot %d without another write: %v", i+1, err)
+		}
+	}
+}
+
 // A restore never goes into a data dir that holds files, as etcdutl's
 // and main's: the old log there would go on after the new checkpoint,
 // and the restored node's store would part from its cluster's.

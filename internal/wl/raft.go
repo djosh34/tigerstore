@@ -458,12 +458,13 @@ func (n *node) maybeCkpt() error {
 	}
 	off := s.offOf(index)
 	if s.snap != nil && index == s.snap.GetMetadata().GetIndex() {
-		if !ringDue {
+		if !ringDue && !s.wantCkpt {
 			return nil
 		}
 		// The ring may need a forced cut at the newest's own index
-		// (#815). Storage may have compacted that entry already; the
-		// checkpoint keeps its record's place for just this purpose.
+		// (#815), or a client may ask for a snapshot of a quiet store.
+		// Storage may have compacted that entry already; the checkpoint
+		// keeps its record's place for just this purpose.
 		off = n.ckptFrom + walEntHdr
 	}
 	if off < 0 {

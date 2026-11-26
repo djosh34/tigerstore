@@ -261,21 +261,27 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 		defer strays.Add(-1)
 		err := l.sendSelfContained(mem, m, f)
 		_ = f.Close()
-		status := raft.SnapshotFinish
 		if err != nil {
-			status = raft.SnapshotFailure
 			l.logger.Printf("send a snapshot to %d: %v", to, err)
 		}
-		l.post(func() error {
-			if errors.Is(err, ErrBadValue) {
-				// The disk damaged a value the snapshot holds: the node
-				// stops instead of serving it.
-				return err
-			}
-			l.n.rn.ReportSnapshot(to, status)
-			return nil
-		})
+		l.post(func() error { return l.n.snapshotSent(to, f.Name(), err) })
 	}()
+}
+
+// snapshotSent reports a send's result to Raft, which retries a failed
+// send with its newest checkpoint. A replaced checkpoint may have lost
+// the log its copy reads to the ring (clientSnapCopied); a bad value from
+// that copy is not evidence that the current checkpoint is damaged.
+func (n *node) snapshotSent(to uint64, name string, err error) error {
+	if errors.Is(err, ErrBadValue) && filepath.Base(name) == n.ckptName {
+		return err
+	}
+	status := raft.SnapshotFinish
+	if err != nil {
+		status = raft.SnapshotFailure
+	}
+	n.rn.ReportSnapshot(to, status)
+	return nil
 }
 
 // sendSelfContained sends the follower the checkpoint in f with every
