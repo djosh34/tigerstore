@@ -743,19 +743,18 @@ func checkers(t *testing.T, res *Result) {
 //	256 gaps, 4096 expiries    13271     62810  4.7329
 //
 // Round the worst ratio, 110,295 / 15,881, up to seven: the old
-// 50,000,000 * 7 = 350,000,000 preserves every measured margin.
-// Fresh, aged and busy seeds retain this ratio-derived budget. For the
-// four-hour long seeds only, run 45795895733 on e8b9858f reported 70,222,032
-// steps at revision 250,251 of 634,611 before its 30-minute wall stopped
-// it. The projected full count is 178M, NOT a completed measurement.
-// Part 2a uses max(350M, 2 * 178M), rounded up to 10M: 360M.
-// Part 2b will use max(witnessStepLimit, 2 * measuredFullSteps) and resize
-// the long-only wall backstop (longSeedWallLimit) from the runner's rate.
+// 50,000,000 * 7 = 350,000,000 preserves every measured margin; ordinary
+// checks get 360,000,000, a little above that floor. Long-seed revision
+// checks instead get 180,000,000: run 45803627951 used 219,708,153 steps
+// in about 149 search minutes and stopped at 68% of seed 1. Its measured
+// rate (about 24,600 steps/s) puts 180M near 122 search minutes, leaving
+// the six-minute simulation and more than 15% margin before the 160-minute
+// wall backstop. That budget, not wall time, must stop long searches.
+// Seed 1 is a known timeout under #876; its full check and #502 evidence
+// belong there, not to #872. See longSeedWallLimit for the sizing math.
 const (
-	witnessStepLimit         int64 = 350_000_000
-	provisionalLongFullSteps int64 = 178_000_000
-	longStepQuantum          int64 = 10_000_000
-	longWitnessStepLimit           = (max(witnessStepLimit, 2*provisionalLongFullSteps) + longStepQuantum - 1) / longStepQuantum * longStepQuantum
+	witnessStepLimit     int64 = 360_000_000
+	longWitnessStepLimit int64 = 180_000_000
 )
 
 var (

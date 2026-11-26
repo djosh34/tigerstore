@@ -7,17 +7,23 @@ import (
 
 // These tests select policies only. They run no seed or simulation.
 func TestLongSeedLimits(t *testing.T) {
-	if witnessStepLimit != 350_000_000 || longSeedBudget(0) != witnessStepLimit {
-		t.Fatal("fresh, aged or busy seeds lost their existing step limit")
+	if witnessStepLimit != 360_000_000 || longSeedBudget(0) != witnessStepLimit {
+		t.Fatal("ordinary checks lost their ratio-derived step limit")
 	}
-	if longWitnessStepLimit != 360_000_000 || longSeedBudget(longSeedWallLimit) != longWitnessStepLimit {
-		t.Fatal("long seed budget is not the rounded ratio/projected-full-count maximum")
+	if longWitnessStepLimit != 180_000_000 || longSeedBudget(longSeedWallLimit) != longWitnessStepLimit {
+		t.Fatal("long seeds did not get their separate deterministic step budget")
 	}
-	if longBudgetTime != 123*time.Minute+13*time.Second {
-		t.Fatalf("estimated budget time %s, want 123m13s", longBudgetTime)
+	if kubeWallLimit(true) != longSeedWallLimit || kubeWallLimit(false) != 0 {
+		t.Fatal("Kubernetes long/short wall selection is wrong")
+	}
+	if longBudgetTime != 122*time.Minute+27*time.Second {
+		t.Fatalf("estimated budget time %s, want 122m27s", longBudgetTime)
 	}
 	if longSeedWallLimit != 160*time.Minute || longSeedWallLimit < longBudgetTime+longSeedSetupAllowance+longSeedWallMargin {
 		t.Fatalf("long backstop %s does not cover the budget, setup and margin", longSeedWallLimit)
+	}
+	if (longBudgetTime+longSeedSetupAllowance)*100 > longSeedWallLimit*85 {
+		t.Fatal("long budget leaves less than 15% margin before the wall")
 	}
 	const grace = 10 * time.Minute
 	const job = 340 * time.Minute

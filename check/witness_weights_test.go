@@ -140,8 +140,9 @@ func TestMixedWeightsSharePollingAndBudget(t *testing.T) {
 
 // TestWeightedSavedMargins guards the ratio constraint independently of
 // the wall stop. The old counts are measured on base 37e51817; multiplying
-// each by seven preserves its fraction of a 50M budget under provisional
-// 350M. A seed-1-derived increase can only improve these margins later.
+// each by seven preserves its fraction of a 50M budget under the 350M
+// ratio floor. The final ordinary 360M budget gives still more margin;
+// long seeds have a separate, runner-time-sized cap under #876.
 func TestWeightedSavedMargins(t *testing.T) {
 	for _, tc := range []struct {
 		name string

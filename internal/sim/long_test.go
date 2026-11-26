@@ -15,16 +15,16 @@ import (
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
-// On e8b9858f, Actions run 45795895733 logged 70,222,032 weighted steps
-// after about 24 search minutes, at revision 250,251 of 634,611. That is
-// about 48,700 steps/s and a projected 178M full count, not a completion.
-// The provisional 360M budget takes 123m13s at that partial-run rate.
-// Add six minutes for the run and other checks, thirty minutes of margin,
-// and round up to five minutes: 160m soft / 170m non-yield kill, below
-// the campaign binary's 340m. Part 2b must use a completed seed 1's
-// measured full count and runner timing for the final budget and limit.
+// Run 45803627951 on 116ba5f4 used 219,708,153 weighted steps in about
+// 149 search minutes, reaching revision 432,505 of 634,611 before its
+// 155-minute wall stopped it. Its rate is about 24,600 steps/s; round
+// down to 24,500. The separate 180M long budget then takes 122m27s.
+// Add six minutes for simulation/other checks and thirty minutes of
+// margin, rounded up to five minutes: 160m soft / 170m non-yield kill,
+// within the campaign binary's 340m. The step budget must stop the search
+// first. Seed 1's full check is #876's work, not evidence met by #872.
 const (
-	longWitnessEstimatedRate = 48_700
+	longWitnessEstimatedRate = 24_500
 	longSeedSetupAllowance   = 6 * time.Minute
 	longSeedWallMargin       = 30 * time.Minute
 	longSeedWallQuantum      = 5 * time.Minute
