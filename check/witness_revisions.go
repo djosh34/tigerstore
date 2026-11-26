@@ -130,6 +130,9 @@ type revisionOrder struct {
 	dueWork    *dueWork
 	workLeft   uint8
 	budgetLeft uint16
+	// diagnosticLeft carries paid-for JSON bytes across writes and across
+	// messages, so small explanations do not each round up to a whole step.
+	diagnosticLeft int
 	// counts are, per revision, how many keys of a range clients saw
 	// then, and countRevs those revisions in order. putRevs and delRevs
 	// are, per key, the revisions whose acked writer may create or delete
@@ -1793,7 +1796,7 @@ func (r *revisionOrder) write(rev int64) bool {
 			return false
 		}
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
-			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, outputOf(o), w.around(len(w.events))))
+			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, w.outputOf(o), w.around(len(w.events))))
 		}
 		return true
 	}
@@ -2119,7 +2122,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 			return false
 		}
 		if o.err != nil || !w.gives(i, o) {
-			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
+			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), w.outputOf(o), w.around(len(w.events))))
 		}
 		r.use(i)
 		r.insertOptional(rev)

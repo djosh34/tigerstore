@@ -728,7 +728,7 @@ func (w *witness) unanswered(i, f, l, lo, hi int) error {
 		return ErrWitnessTimeout
 	}
 	o := s.step(w.reqs[i], false)
-	fmt.Fprintf(&b, " gets no state from %d to %d that answers it; at state %d (revision %d) the model gives %s", lo, hi, lo, w.states[lo].rev, outputOf(o))
+	fmt.Fprintf(&b, " gets no state from %d to %d that answers it; at state %d (revision %d) the model gives %s", lo, hi, lo, w.states[lo].rev, w.outputOf(o))
 	fmt.Fprintf(&b, "; the order around it: %s", w.around(lo))
 	return errors.New(b.String())
 }
@@ -742,7 +742,7 @@ func (w *witness) around(j int) string {
 		if ev.op >= 0 {
 			who = fmt.Sprintf("op %d", ev.op)
 		}
-		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequest(*ev.req)))
+		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequestWithJSON(*ev.req, w.jsonOf)))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -755,7 +755,7 @@ func outputOf(o outcome) string {
 }
 
 // describe names op i for a failure.
-func (w *witness) describe(i int) string { return describeOp(w.h, i) }
+func (w *witness) describe(i int) string { return describeOpWithJSON(w.h, i, w.jsonOf) }
 
 // describeBrief names op i as describe does, but by the kind of its
 // request and the revision and size of its answer, not their contents:
