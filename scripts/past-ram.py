@@ -35,7 +35,41 @@ def healthy(port):
         return json.loads(response.read().decode()).get("health") == "true"
 
 
-def classify(result, progress):
+def reclaim_near_timeout(samples, memory, exited):
+    """Require sustained memory pressure and page reads, not old max events."""
+    if len(samples) < 3 or exited is None:
+        return False
+    recent = samples[-3:]
+    times = [sample.get("seconds", -1) for sample in recent]
+    # Sample and observed driver-exit times share the harness's clock.
+    # Progress seconds use the driver's later preload start, not this clock.
+    # Require three consecutive polls and an exit observed shortly afterward.
+    if (not 0 <= exited - times[-1] <= 4
+            or not 0 < times[-1] - times[0] <= 6
+            or any(not 0 < b - a <= 4 for a, b in zip(times, times[1:]))
+            or any(len(sample.get("nodes", [])) != 3 for sample in recent)):
+        return False
+    for member in range(3):
+        nodes = [sample["nodes"][member] for sample in recent]
+        if any(node.get("current", 0) < memory * 95 // 100 for node in nodes):
+            return False
+        hits = [node.get("events", {}).get("max", 0) for node in nodes]
+        reads = []
+        for node in nodes:
+            counters = [int(field.split("=")[1]) for line in node.get("io", "").splitlines()
+                        for field in line.split()[1:] if field.startswith("rbytes=")]
+            if not counters:
+                return False
+            reads.append(sum(counters))
+        # Every member must still hit max and read at least 16 MiB from
+        # disk in each interval; a WAL fsync stall alone is not evidence.
+        if (any(b <= a for a, b in zip(hits, hits[1:]))
+                or any(b - a < 16 << 20 for a, b in zip(reads, reads[1:]))):
+            return False
+    return True
+
+
+def classify(result, progress, samples=()):
     """Keep test failures distinct from measured, cgroup-confirmed limits."""
     # A kill after the last poll shows only in the final counters.
     if not result["failure"] and any(g["events"]["oom_kill"] for g in result.get("final_cgroups", [])):
@@ -49,12 +83,17 @@ def classify(result, progress):
     # A member at its memory.max can also reclaim instead of being killed:
     # etcd then reads its database pages back from disk until a write
     # times out (#419). Every member must have hit the limit, and the
-    # driver must have stopped on that timeout, for etcd in max mode
-    # only: tigerstore keeps to its memory budget, so for it this is a
-    # failure.
-    reclaim = (result["kind"] == "etcd" and result["mode"] == "max" and len(groups) == 3
+    # driver must have stopped on that timeout, for etcd in max mode or
+    # the proof's reference-preload-limit case below. Proof additionally
+    # requires sustained pressure and disk reads near the timeout; max
+    # retains its historical cumulative-events rule. Tigerstore keeps
+    # to its memory budget, so for it this is a failure.
+    reclaim = (result["kind"] == "etcd" and result["mode"] in ("max", "proof") and len(groups) == 3
                and all(g["events"].get("max", 0) > 0 for g in groups)
-               and bool(progress) and progress[-1].get("failure") == "etcdserver: request timed out")
+               and bool(progress) and progress[-1].get("failure") == "etcdserver: request timed out"
+               and (result["mode"] == "max"
+                    or (result.get("driver_exit") == 1
+                        and reclaim_near_timeout(samples, result["memory"], result.get("driver_exit_seconds")))))
     if (len(groups) != 3 or not (oom or reclaim)
             or ack.get("objects", 0) <= 0 or ack.get("live_bytes", 0) <= 0
             or ack.get("phase") != "preload" or result["kills"]
@@ -83,6 +122,13 @@ def classify(result, progress):
         return
     limit = "cgroup-oom" if oom else "cgroup-reclaim"
     result.update(outcome=outcome, limit=limit, termination=failure, failure=None)
+
+
+def driver_command(args, endpoints, out):
+    # The proof target is independent of where either reference limit stops.
+    return [str(Path(args.driver).resolve()), "-endpoints", endpoints,
+            "-mode", args.mode, "-bytes", str(args.preload_bytes or args.memory * 31 // 10),
+            "-duration", f"{args.seconds}s", "-out", str(out)]
 
 
 def main():
@@ -179,9 +225,7 @@ def main():
         result["disk_after_start"] = subprocess.run(["df", "-B1", str(out)], capture_output=True, text=True).stdout
         print(result["disk_after_start"], flush=True)
         with (out / "driver.log").open("wb") as log:
-            driver = subprocess.Popen([str(Path(args.driver).resolve()), "-endpoints", endpoints,
-                                       "-mode", args.mode, "-bytes", str(args.preload_bytes or args.memory * 31 // 10),
-                                       "-duration", f"{args.seconds}s", "-out", str(out)],
+            driver = subprocess.Popen(driver_command(args, endpoints, out),
                                       stdout=log, stderr=subprocess.STDOUT)
             started = time.monotonic()
             ready = None
@@ -235,6 +279,8 @@ def main():
                     result["censored"] = True
                     raise RuntimeError("runner time limit, not a store capacity result")
                 time.sleep(2)
+            # Same origin as sample.seconds, unlike the driver's progress clock.
+            result["driver_exit_seconds"] = time.monotonic() - started
             result["driver_exit"] = driver.returncode
             if driver.returncode:
                 raise RuntimeError(f"driver exited {driver.returncode}; see progress.jsonl and driver.log")
@@ -272,7 +318,7 @@ def main():
         progress = []
         if (out / "progress.jsonl").exists():
             progress = [json.loads(line) for line in (out / "progress.jsonl").read_text().splitlines()]
-        classify(result, progress)
+        classify(result, progress, samples)
         (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         summary = {"outcome": result["outcome"], "limit": result.get("limit"),
                    "termination": result.get("termination"),
