@@ -816,13 +816,24 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 		}
 		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
 		if measure {
+			simrun.Artifact("sim-out/dial-evidence/gaps.json", check.Dial876Measurements())
 			// Timing is diagnostic: a failed counter must not change a
 			// check's verdict. Zero means the counter was unavailable.
 			var elapsed time.Duration
 			if cpuTo, err := simrun.CPUTime(); cpuErr == nil && err == nil {
 				elapsed = max(0, cpuTo-cpuFrom)
 			}
-			report(steps, elapsed, time.Duration(max(0, wallclock.Now()-wallFrom)))
+			wall := time.Duration(max(0, wallclock.Now()-wallFrom))
+			report(steps, elapsed, wall)
+			verdict := "pass"
+			if err != nil {
+				verdict = err.Error()
+			}
+			b, _ := json.MarshalIndent(struct {
+				Steps, Budget      int64
+				CPU, Wall, Verdict string
+			}{steps, budget, elapsed.String(), wall.String(), verdict}, "", "  ")
+			simrun.Artifact("sim-out/dial-evidence/witness.json", b)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
