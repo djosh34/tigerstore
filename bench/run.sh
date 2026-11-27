@@ -138,7 +138,7 @@ fi
 # closes a stream 64 MiB behind. One watcher of 10 KiB takes about as many
 # bytes as three of 1 KiB.
 if [ "$workload" = watch ] && [ "$size" = 10240 ]; then watchers=1; fi
-if [ "$workload" = watch ] || [ "$workload" = delete ]; then ramp=(); fi
+if [ "$workload" = watch ] || [ "$workload" = delete ] || [ "${FETCH_MEASURE_FIXED_LOAD:-}" = 1 ]; then ramp=(); fi
 if [ "$workload" = list ]; then
 	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
 	concurrency=(-conns 2 -streams 16)

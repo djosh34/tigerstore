@@ -159,8 +159,9 @@ type result struct {
 	// Latency counts from the intended send time, ServiceLatency from the
 	// actual send. They differ when the generator or a full window held a
 	// request back.
-	Latency        latency `json:"latency_us"`
-	ServiceLatency latency `json:"service_latency_us"`
+	FetchMeasure   [2][]map[string]float64 `json:"fetch_measure"`
+	Latency        latency                 `json:"latency_us"`
+	ServiceLatency latency                 `json:"service_latency_us"`
 	// Cohort counts the requests that arrived in the window, which the
 	// latencies describe, and CohortFailed those of them that failed.
 	Cohort       int64 `json:"cohort"`
@@ -915,6 +916,11 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		res.ServerCores = append(res.ServerCores, d.Seconds()/elapsed.Seconds())
 	}
 	res.PeerSentBytesPerOp = peerBytesPerOp(samples[0].nodes, samples[1].nodes, res.Ops)
+	for i := range samples {
+		for _, node := range samples[i].nodes {
+			res.FetchMeasure[i] = append(res.FetchMeasure[i], node.fetchMeasure)
+		}
+	}
 	if len(res.ServerCPUUsPerNode) > 0 {
 		res.LeaderCPUUsPerOp = res.ServerCPUUsPerNode[0]
 	}

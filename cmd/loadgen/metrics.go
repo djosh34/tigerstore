@@ -24,8 +24,9 @@ var (
 // nodeMetrics is what one node's /metrics says at one moment: the bytes it
 // has sent to its peers so far, and whether it leads.
 type nodeMetrics struct {
-	peerSent float64
-	leader   bool
+	fetchMeasure map[string]float64
+	peerSent     float64
+	leader       bool
 }
 
 // windowMetrics reads every endpoint's /metrics at the start and at the
@@ -117,6 +118,17 @@ func parseMetrics(r io.Reader) (nodeMetrics, error) {
 			continue
 		}
 		name, _, _ = strings.Cut(name, "{")
+		if strings.HasPrefix(name, "tigerstore_fetch_measure_") {
+			v, err := strconv.ParseFloat(rest[strings.LastIndexByte(rest, ' ')+1:], 64)
+			if err != nil {
+				return m, err
+			}
+			if m.fetchMeasure == nil {
+				m.fetchMeasure = make(map[string]float64)
+			}
+			m.fetchMeasure[name] = v
+			continue
+		}
 		if name != "etcd_network_peer_sent_bytes_total" && name != "etcd_server_is_leader" {
 			continue
 		}

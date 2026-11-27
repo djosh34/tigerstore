@@ -103,6 +103,10 @@ on:
         description: Separate PR897 option-A relative gate; five pairs, each throughput >=0.98 and baseline-MAD p95 noise; leaves the absolute diagnostic unchanged
         type: boolean
         default: false
+      fetch_resident:
+        description: Named range-1k resident 3-GiB control, fixed load, never-populated fetch-cache proof, PR897 option A
+        type: boolean
+        default: false
 
 jobs:
   fetch-original:
@@ -205,8 +209,50 @@ jobs:
           name: fetch-pr897-race${{ inputs.fetch_race }}-sync${{ inputs.fetch_fsync_ms }}
           path: ${{ runner.temp }}/fetch-pr897-evidence
           retention-days: 30
+  fetch-resident:
+    if: ${{ inputs.fetch_resident && !inputs.fetch_measure && !inputs.fetch_pr897 }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      FETCH_MEASURE_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Safe isolated disk and runner record
+        run: |
+          sudo mount -o remount,barrier=1 /
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          { uname -a; lscpu; free -b; go version; findmnt -T "$RUNNER_TEMP"; } > "$RUNNER_TEMP/resident-runner.txt"
+      - name: Install the standard pinned etcdctl for cluster control
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+      - name: Five alternating qualified resident-control pairs
+        env:
+          BASELINE: ${{ inputs.baseline }}
+          CANDIDATE: ${{ inputs.candidate }}
+          FETCH_ETCDCTL: ${{ runner.temp }}/etcd-v3.7.2-linux-arm64/etcdctl
+        run: python3 -B scripts/fetch-resident-measure.py --baseline "$BASELINE" --candidate "$CANDIDATE" --out "$RUNNER_TEMP/resident-evidence"
+      - name: Preserve raw qualified or incomplete evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/resident-evidence"
+          rm -rf "$RUNNER_TEMP/resident-evidence/bins" "$RUNNER_TEMP/resident-evidence/certs"
+          cp "$RUNNER_TEMP/resident-runner.txt" "$RUNNER_TEMP/resident-evidence/runner.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fetch-resident-range-1k
+          path: ${{ runner.temp }}/resident-evidence
+          retention-days: 30
   plan:
-    if: ${{ !inputs.fetch_measure && !inputs.fetch_pr897 }}
+    if: ${{ !inputs.fetch_measure && !inputs.fetch_pr897 && !inputs.fetch_resident }}
     runs-on: ubuntu-24.04-arm
     outputs:
       jobs: ${{ steps.plan.outputs.jobs }}

@@ -90,6 +90,7 @@ type latency struct {
 	Mean  float64 `json:"mean"`
 	P50   float64 `json:"p50"`
 	P90   float64 `json:"p90"`
+	P95   float64 `json:"p95"`
 	P99   float64 `json:"p99"`
 	P999  float64 `json:"p999"`
 	Max   float64 `json:"max"`
@@ -101,6 +102,7 @@ func (h *hist) summary() latency {
 		Count: h.n,
 		P50:   us(h.quantile(0.5)),
 		P90:   us(h.quantile(0.9)),
+		P95:   us(h.quantile(0.95)),
 		P99:   us(h.quantile(0.99)),
 		P999:  us(h.quantile(0.999)),
 		Max:   us(h.max),
