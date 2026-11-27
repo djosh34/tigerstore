@@ -111,6 +111,9 @@ func eligibilitySearch(t *testing.T, h *history.History, old bool) (string, []el
 	w := newWitness(h, time.Now().Add(time.Minute))
 	w.maxSteps = 2_000_000 // A runaway generated case fails, never compares timeouts.
 	r := newRevisionOrder(w)
+	// This gate isolates #894's eligibility change. The event certificate
+	// has its own independent old-enumeration oracle and trace gate.
+	r.testNoEventCertificate = true
 	w.search = r
 	future := 0
 	if old {
