@@ -172,7 +172,10 @@ func TestWeightedSavedMargins(t *testing.T) {
 			h := budgetHistory(t, tc.name)
 			err := Witnessed(h, FromRevisions, time.Hour, StepsUsed(&used), snapshotOracle(t))
 			// These saved rows remain exact, not merely within the new
-			// general extra-putter bound. Rule-off replays live in other.
+			// general extra-putter bound. Rule-off replays are separate.
+			if (tc.name == "grants-81000" || tc.name == "gaps-256-expiries-4096") && err != nil {
+				t.Fatalf("synthetic production row %s must pass at %d steps: %v", tc.name, used, err)
+			}
 			if used != tc.weighted {
 				t.Fatalf("saved row changed: new %d recorded %d", used, tc.weighted)
 			}

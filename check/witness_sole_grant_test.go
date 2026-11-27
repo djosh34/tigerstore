@@ -26,11 +26,13 @@ type soleNode struct {
 	leases    [][]int64
 	accepted  bool
 	proof     *soleCountProof
-	rejection string
+	rejection soleRejection
 }
 type soleRun struct {
 	err        string
+	publicErr  error
 	timeout    bool
+	stopped    bool
 	steps, at  int64
 	failure    string
 	rejections map[soleRejection]bool
@@ -158,7 +160,7 @@ func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 				out.rejections[soleRejection{rev, err.Error()}] = true
 				if trace {
 					n := soleBoundary(r, "dead", -1)
-					n.rejection = err.Error()
+					n.rejection = soleRejection{rev, err.Error()}
 					out.nodes = append(out.nodes, n)
 				}
 			}
@@ -225,13 +227,14 @@ func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 	if err != nil {
 		out.err = err.Error()
 	}
-	out.timeout = errors.Is(err, ErrWitnessTimeout)
+	out.publicErr = err
+	out.timeout = errors.Is(out.publicErr, ErrWitnessTimeout)
 	if r != nil {
 		out.at = r.at
 		if r.failure != nil {
 			out.failure = r.failure.Error()
 		}
-		out.timeout = out.timeout || r.w.stopped
+		out.stopped = r.w.stopped
 		if trace {
 			out.nodes = append(out.nodes, soleBoundary(r, "done", -1))
 		}
@@ -248,7 +251,7 @@ func soleVerdictCheck(old, got *soleRun) error {
 	if got.oracleErr != nil {
 		return got.oracleErr
 	}
-	if old.timeout || got.timeout {
+	if old.timeout || got.timeout || old.stopped || got.stopped {
 		return errors.New("stopped oracle is inconclusive")
 	}
 	if err := soleStepCheck(old, got); err != nil {
@@ -296,7 +299,10 @@ func soleTraceCheck(old, got *soleRun) (int, error) {
 			return 0, fmt.Errorf("new trace has extra boundary %d", j)
 		}
 		a := old.nodes[i]
-		if !reflect.DeepEqual(a.state, n.state) || !reflect.DeepEqual(a.leases, n.leases) || a.rejection != n.rejection {
+		if a.rejection != n.rejection {
+			return 0, fmt.Errorf("retained dead node %d differs: old (%d, %q), new (%d, %q)", j, a.rejection.rev, a.rejection.text, n.rejection.rev, n.rejection.text)
+		}
+		if !reflect.DeepEqual(a.state, n.state) || !reflect.DeepEqual(a.leases, n.leases) {
 			return 0, fmt.Errorf("retained boundary %d differs: old %s op %d rev %d, new %s op %d rev %d", j, a.state.phase, a.state.op, a.state.searchRev, n.state.phase, n.state.op, n.state.searchRev)
 		}
 		i++

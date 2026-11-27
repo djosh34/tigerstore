@@ -1,6 +1,8 @@
 package check
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/djosh34/tigerstore/history"
@@ -52,6 +54,17 @@ func TestSoleGrantMixedPutterTrace(t *testing.T) {
 	if _, err := soleTraceCheck(old, &bad); err == nil {
 		t.Fatal("oracle accepted the missing mandatory application/dead mutation")
 	}
+	// The rejection's callback revision is semantic, even if its text and
+	// surrounding search state remain identical.
+	bad = *got
+	bad.nodes = append([]soleNode(nil), got.nodes...)
+	if bad.nodes[losingDead].rejection.rev != 4 {
+		t.Fatal("missing revision-4 rejection")
+	}
+	bad.nodes[losingDead].rejection.rev = 3
+	if _, err := soleTraceCheck(old, &bad); err == nil {
+		t.Fatal("oracle accepted a changed retained rejection revision")
+	}
 	// Mimic the former oracle's false confirmation after a spent visit.
 	bad = *got
 	bad.nodes = nil
@@ -98,8 +111,14 @@ func TestSoleGrantExtraVisitStepPins(t *testing.T) {
 			t.Logf("old %d new %d; %d newly charged ordinary putter items, exact step allowance %d", old.steps, got.steps, got.extraUnits/ordinaryUnits, allowance)
 			if tc.name == "Astra" {
 				a, b := runSoleOracle(tc.h, true, false, 13), runSoleOracle(tc.h, false, false, 13)
-				if a.err != "pass" || !b.timeout || a.steps != 13 || b.steps != 14 {
-					t.Fatalf("cap 13 old %s new %s", a.err, b.err)
+				if a.publicErr != nil || !errors.Is(b.publicErr, ErrWitnessTimeout) || a.steps != 13 || b.steps != 14 {
+					t.Fatalf("cap 13 public result: old %v new %v, steps %d/%d", a.publicErr, b.publicErr, a.steps, b.steps)
+				}
+				if !b.stopped {
+					t.Fatal("public timeout did not stop the internal search")
+				}
+				if !strings.Contains(b.publicErr.Error(), "the step budget (13 of 13 weighted steps)") || strings.Contains(b.publicErr.Error(), "no acked op wrote") || strings.Contains(b.publicErr.Error(), "gets ") {
+					t.Fatalf("cap 13 budget diagnostic: %v", b.publicErr)
 				}
 				if err := soleStepCheck(a, b); err != nil {
 					t.Fatal(err)
@@ -200,9 +219,10 @@ func soleReviewCorpus(t *testing.T) (hits, prunes int) {
 	return hits, prunes
 }
 
-// The expensive old-rule replays belong to #903's other partition.
-// Each side is pinned independently to the same full-string/step reference;
-// histories keeps its original single production search per saved input.
+// Recorded rule-off replays stay in other. The shard guard assigns the
+// separate saved-row replay and whole-search oracle to histories for balance.
+// Each side remains pinned to the same full-string/step reference, with
+// no second search added inside the original production-history tests.
 func TestSoleGrantRecordedRuleOff(t *testing.T) {
 	got := map[string]string{}
 	visitDueRecordedHistories(t, func(name string, h *history.History) {
@@ -219,6 +239,9 @@ func TestSoleGrantSavedRuleOff(t *testing.T) {
 	for _, tc := range weightedSavedRows {
 		t.Run(tc.name, func(t *testing.T) {
 			old := runSoleOracle(budgetHistory(t, tc.name), true, false, 2000000)
+			if (tc.name == "grants-81000" || tc.name == "gaps-256-expiries-4096") && (old.publicErr != nil || old.err != "pass") {
+				t.Fatalf("synthetic old-rule row %s must pass at %d steps: %s", tc.name, old.steps, old.err)
+			}
 			if old.timeout || old.oracleErr != nil || old.steps != tc.weighted {
 				t.Fatalf("old saved row %s: %d steps want %d; %v", tc.name, old.steps, tc.weighted, old.oracleErr)
 			}

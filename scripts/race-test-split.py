@@ -15,9 +15,13 @@ import sys
 PREFIX = "github.com/djosh34/tigerstore/"
 CHECK = PREFIX + "check"
 CHECK_PARTS = ("histories", "other")
-# The replay-heavy saved-history gates balance the rest of the package.
+# Balance saved histories plus the saved-row rule-off replay and whole-search
+# oracle against the recorded rule-off replay and remaining tests in other.
+# Keep both partitions below 420 s/package and 630 s/job in CI.
 HISTORIES = {
     "TestWeightedSavedMargins",
+    "TestSoleGrantSavedRuleOff",
+    "TestSoleGrantWholeSearchOracle",
     "TestWitnessHardHistories",
     "TestDueRecordedVerdicts",
     "TestWitnessStartRecordedVerdicts",
