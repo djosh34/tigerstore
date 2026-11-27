@@ -4,8 +4,12 @@ package wl
 // Logical output-reserve quota remains charged, but it cannot encumber
 // the physical input turn: its backing here is independent and irrevocable.
 func (n *node) admitStage(c *client, size int) *replyStage {
+	return n.admitStageQuota(c, size, int64(size))
+}
+
+func (n *node) admitStageQuota(c *client, size int, quota int64) *replyStage {
 	before := c.roomHeld
-	if !n.msgRoom(c, int64(size)) {
+	if !n.msgRoom(c, quota) {
 		return nil
 	}
 	promise := int64(0)
@@ -82,7 +86,7 @@ func (c *client) holdStage(s *stream, stage *replyStage) bool {
 	f.held = append(f.held, held{sid: s.id, stage: stage})
 	f.bytes += int64(stage.size)
 	f.counts[s.id]++
-	if f.counts[s.id] == 1 && f.conn > 0 {
+	if f.counts[s.id] == 1 && (f.conn > 0 || stage.responsePending) {
 		c.drain()
 	}
 	return true
@@ -148,6 +152,16 @@ func (c *client) stageSocket() {
 
 func (c *client) drainStage(h *held) {
 	c.stageSocket()
+	if h.stage.responsePending {
+		if rawSocketRoom(c) < len(respHeaders)+9 {
+			return
+		}
+		b := c.frame(9 + len(respHeaders))
+		putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, h.sid)
+		copy(b[9:], respHeaders)
+		h.stage.responsePending = false
+		c.node.markDirty(&c.sock)
+	}
 	for p := h.stage.front(); len(p) > 0; p = h.stage.front() {
 		// Leave a complete record's growth room so openRec never has to
 		// double this socket for a stage. Framing/crypto stay in c.out.

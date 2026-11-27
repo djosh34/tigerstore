@@ -4,6 +4,9 @@ import (
 	"testing"
 	"unsafe"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -124,54 +127,164 @@ func TestHandshakeLeftoversCannotStealFundedOutput(t *testing.T) {
 	}
 }
 
-// This is a boundary proof, not a successful-fetch test. The round-4
-// scope freezes main's sort handling, while option A exempts only #904's
-// held capture. These scratch arrays are neither capture nor free P.
-func TestMainAdmittedSortScratchExceedsTheUnchangedClientCeiling(t *testing.T) {
-	c, s, st, log, _ := fillRangeFixture(t)
-	n := c.node
-	n.cursorFetch = false
+// #908 excludes only main's unchanged candidate/kvRecs arrays. Observe
+// actual capacities on both paths; no representation or ordering change.
+func TestLegacySortScratchParity908(t *testing.T) {
 	const count = 65536
-	for i := range count {
-		putValue(t, st, log, string([]byte{0, byte(i >> 16), byte(i >> 8), byte(i)}), "v")
+	var mainBytes int64
+	for _, cursor := range []bool{false, true} {
+		c, s, st, log, l := fillRangeFixture(t)
+		n := c.node
+		n.cursorFetch = cursor
+		var scratch int64
+		n.measureSort = func(a, b int) {
+			scratch = max(scratch, int64(a)*int64(unsafe.Sizeof([]byte{}))+int64(b)*int64(unsafe.Sizeof(kvRec{})))
+		}
+		for i := range count {
+			putValue(t, st, log, string([]byte{0, byte(i >> 16), byte(i >> 8), byte(i)}), "v")
+		}
+		if cursor {
+			dropRecords(st)
+		}
+		msg := appendBytesField(nil, 1, []byte{0})
+		msg = appendBytesField(msg, 2, []byte{1})
+		msg = appendVarintField(msg, 3, 1)
+		msg = appendVarintField(msg, 5, sortAscend)
+		msg = appendVarintField(msg, 6, sortByValue)
+		msg = appendVarintField(msg, 8, 1)
+		serveRoomRange(t, c, s, msg)
+		if cursor {
+			for step := 0; n.legacyPending != nil || n.legacyRunning != nil || n.legacyMemo != nil && n.legacyMemo.needed; step++ {
+				if step > count/128+4 {
+					t.Fatal("cold sort did not finish")
+				}
+				n.pumpFills()
+				if n.stageCredits.used+n.stageOther(0) > n.sizes.clientPool || n.fillBook.used > n.fillBook.limit {
+					t.Fatal("#908 exempted new storage")
+				}
+				if n.legacyRunning != nil {
+					awaitFetchResult(t, l)
+					if err := l.runPosts(); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		}
+		var response *pb.RangeResponse
+		if !cursor {
+			response = roomRangeReply(t, c)
+		} else {
+			response = &pb.RangeResponse{}
+			data := fillQueuedBytes(t, c)
+			if len(data) < 5 || proto.Unmarshal(data[5:], response) != nil {
+				t.Fatal("invalid reply")
+			}
+		}
+		minimum := int64(count) * int64(unsafe.Sizeof(kvRec{})+unsafe.Sizeof([]byte{}))
+		if minimum != 7864320 || len(response.Kvs) != 1 || response.Count != count || !response.More || n.mainCaptureCount() != 0 {
+			t.Fatal("main reference or selection changed")
+		}
+		if !cursor {
+			mainBytes = scratch
+			if mainBytes != 8028144 {
+				t.Fatalf("main scratch reference changed: %d", mainBytes)
+			}
+		} else if scratch == 0 || scratch > mainBytes {
+			t.Fatalf("#897 enlarged main scratch: %d > %d", scratch, mainBytes)
+		}
+		t.Logf("cursor=%v scratch=%d main=%d minimum=%d", cursor, scratch, mainBytes, minimum)
 	}
-	msg := appendBytesField(nil, 1, []byte{0})
-	msg = appendBytesField(msg, 2, []byte{1})
-	msg = appendVarintField(msg, 3, 1)
-	msg = appendVarintField(msg, 5, sortAscend)
-	msg = appendVarintField(msg, 6, sortByValue)
-	msg = appendVarintField(msg, 8, 1)
-	serveRoomRange(t, c, s, msg)
-	r := roomRangeReply(t, c)
-	minimum := int64(count) * int64(unsafe.Sizeof(kvRec{})+unsafe.Sizeof([]byte{}))
-	scratch := int64(count)*int64(unsafe.Sizeof(kvRec{})) + int64(cap(n.kvs))*int64(unsafe.Sizeof([]byte{}))
-	if len(r.Kvs) != 1 || r.Count != count || !r.More || minimum <= n.sizes.clientPool+n.sizes.reserve() || n.mainCaptureCount() != 0 {
-		t.Fatal("main sort/capture boundary changed")
-	}
-	t.Logf("UNRESOLVED sort scratch: main admitted; minimum=%d actual capacities=%d P=%d P+R=%d; not #904 capture", minimum, scratch, n.sizes.clientPool, n.sizes.clientPool+n.sizes.reserve())
 }
 
-func TestLegacySortCannotObtainImpossibleScratchCredit(t *testing.T) {
-	c, s, st, log, _ := fillRangeFixture(t)
-	n := c.node
-	const count = 65536
-	for i := range count {
-		putValue(t, st, log, string([]byte{0, byte(i >> 16), byte(i >> 8), byte(i)}), "v")
+func TestOrdinaryRepliesCannotSpendProtectedFillCapacity(t *testing.T) {
+	for _, kind := range []string{"range", "keys-only", "count-only", "put-prev"} {
+		t.Run(kind, func(t *testing.T) {
+			c, _, st, log, l := fillRangeFixture(t)
+			n := c.node
+			putValue(t, st, log, "/hot", string(make([]byte, 16<<10)))
+			other := partClient(t, n, 1)
+			t.Cleanup(other.dropAll)
+			other.flow.conn = 0
+			n.socks, n.gens = []any{c, other}, []uint16{1, 1}
+			n.clients = 2
+			wire := stageRangeBytes(t, 512)
+			for i := range 1024 {
+				stage := n.admitStage(c, len(wire))
+				if stage == nil {
+					break
+				}
+				s := c.newStream(uint32(3+2*i), kRange)
+				stage.append(wire)
+				if !c.holdStage(s, stage) {
+					t.Fatal("commit")
+				}
+			}
+			s := other.newStream(1, kRange)
+			msg := appendBytesField(nil, 1, []byte("/hot"))
+			if kind != "put-prev" {
+				if kind == "keys-only" {
+					msg = appendVarintField(msg, 8, 1)
+				}
+				if kind == "count-only" {
+					msg = appendVarintField(msg, 9, 1)
+				}
+				serveRoomRange(t, other, s, msg)
+			} else {
+				s.kind = kPut
+				msg = appendBytesField(msg, 2, []byte("new"))
+				msg = appendVarintField(msg, 4, 1)
+				if err := n.applyPut(msg, 0, other, s); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if used := n.stageOther(0) + n.stageCredits.used; used > n.sizes.clientPool {
+				t.Fatalf("ordinary %s stole protected P: %d > %d", kind, used, n.sizes.clientPool)
+			}
+			if kind != "put-prev" {
+				if len(n.roomWait) != 1 || len(other.flow.held) != 0 {
+					t.Fatal("unfunded read did not remain unstarted")
+				}
+				c.dropAll()
+				n.roomFreed = true
+				n.serveRoomWait()
+				r := roomRangeReply(t, other)
+				if len(n.roomWait) != 0 || r.Count != 1 {
+					t.Fatal("read did not resume after credit return")
+				}
+				if kind == "count-only" {
+					if len(r.Kvs) != 0 {
+						t.Fatal("count-only returned records")
+					}
+				} else if len(r.Kvs) != 1 || kind == "keys-only" && len(r.Kvs[0].Value) != 0 || kind == "range" && len(r.Kvs[0].Value) != 16<<10 {
+					t.Fatal("funding changed the read's projection")
+				}
+			} else {
+				if len(n.heldReplies) != 1 || st.rev != 3 {
+					t.Fatal("write was not applied then held")
+				}
+				c.dropAll()
+				n.roomFreed = true
+				for step := 0; len(n.heldReplies) > 0; step++ {
+					if step > 16 {
+						t.Fatal("applied write did not resume with returned P")
+					}
+					n.serveHeld()
+					n.pumpFills()
+					if n.legacyRunning != nil {
+						awaitFetchResult(t, l)
+						if err := l.runPosts(); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				var response pb.PutResponse
+				data := fillQueuedBytes(t, other)
+				if len(data) < 5 || proto.Unmarshal(data[5:], &response) != nil || response.PrevKv == nil || len(response.PrevKv.Value) != 16<<10 || st.rev != 3 {
+					t.Fatal("funding changed applied write/previous value")
+				}
+			}
+		})
 	}
-	dropRecords(st)
-	msg := appendBytesField(nil, 1, []byte{0})
-	msg = appendBytesField(msg, 2, []byte{1})
-	msg = appendVarintField(msg, 3, 1)
-	msg = appendVarintField(msg, 5, sortAscend)
-	msg = appendVarintField(msg, 6, sortByValue)
-	msg = appendVarintField(msg, 8, 1)
-	serveRoomRange(t, c, s, msg)
-	n.pumpFills()
-	b := n.legacyPending
-	if b == nil || b.prepared || !n.legacyWaitP || n.legacyRunning != nil || n.legacyFinishBound(b) <= n.sizes.clientPool+n.sizes.reserve() {
-		t.Fatal("impossible sort scratch was allocated or the boundary changed")
-	}
-	t.Logf("UNRESOLVED liveness: main-admitted cold sort needs %d finish bytes before dispatch; P=%d", n.legacyFinishBound(b), n.sizes.clientPool)
 }
 
 // A physical sizing hint reuses the existing body word, not a larger

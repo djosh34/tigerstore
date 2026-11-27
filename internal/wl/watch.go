@@ -535,7 +535,7 @@ func (n *node) flushEvents() {
 		for e := first; e >= 0; e = w.events[e].next {
 			size += sizeBytesField(11, n.eventSize(x, &w.events[e]))
 		}
-		if c.slow() || !n.msgRoom(c, int64(5+size)) {
+		if n.cursorFetch || c.slow() || !n.msgRoom(c, int64(5+size)) {
 			// Its client takes nothing now, or the reserve has no room
 			// for what passes its share: the watch catches up from these
 			// events once it does.

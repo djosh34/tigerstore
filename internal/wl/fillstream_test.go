@@ -10,6 +10,101 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestProtectedMetadataStreamsPreserveMainProjection(t *testing.T) {
+	for _, mode := range []struct{ countOnly, sorted bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		countOnly := mode.countOnly
+		name := "keys-only"
+		if countOnly {
+			name = "count-only"
+		}
+		if mode.sorted {
+			name += "-value-sort"
+		}
+		t.Run(name, func(t *testing.T) {
+			var want []byte
+			for _, cursor := range []bool{false, true} {
+				c, s, st, log, l := fillRangeFixture(t)
+				n := c.node
+				n.cursorFetch = cursor
+				s.kind = kRangeStream
+				for i := range 40 {
+					putValue(t, st, log, fmt.Sprintf("/meta/%02d", i), "value")
+				}
+				if cursor {
+					stage := n.admitStage(c, 512)
+					if stage == nil {
+						t.Fatal("protect stage")
+					}
+					stage.append(stageRangeBytes(t, 512))
+					other := c.newStream(7, kRange)
+					if !c.holdStage(other, stage) {
+						t.Fatal("commit")
+					}
+				}
+				msg := appendBytesField(nil, 1, []byte("/meta/"))
+				msg = appendBytesField(msg, 2, []byte("/metb/"))
+				msg = appendVarintField(msg, 3, 35)
+				if mode.sorted {
+					msg = appendVarintField(msg, 5, sortDescend)
+					msg = appendVarintField(msg, 6, sortByValue)
+				}
+				if countOnly {
+					msg = appendVarintField(msg, 9, 1)
+				} else {
+					msg = appendVarintField(msg, 8, 1)
+				}
+				serveRoomRange(t, c, s, msg)
+				runFillWork(t, n, l)
+				var data []byte
+				for _, h := range c.flow.held {
+					if h.sid != s.id {
+						continue
+					}
+					if h.stage != nil {
+						staged := h.stage
+						for at := staged.read; at < staged.size; {
+							p := staged.page(at)
+							take := min(staged.size-at, stagePayload-at%stagePayload)
+							data = append(data, p[stageHead+at%stagePayload:stageHead+at%stagePayload+take]...)
+							at += take
+						}
+					} else {
+						data = append(data, h.data...)
+					}
+				}
+				if cursor {
+					if !bytes.Equal(data, want) {
+						t.Fatalf("metadata stream changed main wire projection or count: want=%x got=%x", want, data)
+					}
+				} else {
+					want = data
+				}
+				parts := decodeFillStream(t, data)
+				last := parts[len(parts)-1]
+				if last.Count != 40 {
+					t.Fatal("final count changed")
+				}
+				if countOnly {
+					if len(parts) != 1 || len(last.Kvs) != 0 {
+						t.Fatal("count-only returned records")
+					}
+				} else {
+					if len(parts) != 3 || len(last.Kvs) != 5 {
+						t.Fatal("keys-only chunk boundary changed")
+					}
+					for _, part := range parts {
+						for _, kv := range part.Kvs {
+							if len(kv.Value) > 0 || kv.Lease != 0 {
+								t.Fatal("keys-only projection leaked a field")
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestStreamCursorChunkAdaptationTracksTheTarget(t *testing.T) {
 	for _, tt := range []struct {
 		target int

@@ -2,10 +2,7 @@ package wl
 
 import (
 	"bytes"
-	"encoding/binary"
 )
-
-const materialPrefix = 8
 
 // walkMaterial follows the unchanged range input/size policy. It holds
 // no record plan; the caller retains only a scalar cursor and immutable
@@ -43,7 +40,7 @@ func (b *legacyBatch) walkMaterial(visit func(uint32, ckptState) bool, before fu
 
 // convertLegacyMaterial uses the consumer's canonical materialization,
 // charged in its existing client allocation. No payload is also retained
-// in W and no per-record cache/index is built alongside that storage.
+// in W. Its existing eight-byte transport entries are separately in W.
 func (n *node) convertLegacyMaterial(b *legacyBatch) bool {
 	payload, canonical := int64(0), int64(0)
 	count := 0
@@ -51,7 +48,7 @@ func (n *node) convertLegacyMaterial(b *legacyBatch) bool {
 	b.walkMaterial(func(id uint32, ks ckptState) bool {
 		size := kvSize(int(b.st.keys[id].klen), int(ks.vlen), ks.create, ks.mod, ks.ver, ks.lease)
 		canonical += int64(size)
-		payload += materialPrefix + int64(size)
+		payload += int64(size)
 		count++
 		return true
 	}, func() bool {
@@ -83,6 +80,7 @@ func (n *node) convertLegacyMaterial(b *legacyBatch) bool {
 	b.n = count
 	b.payload = payload
 	b.capacity, b.pages = 0, 0
+	b.materialW = fetchCoreWork+stageUnit+roundedFetch(int64(b.materialWords())*8)+roundedFetch(b.payload) <= n.fillBook.limit
 	return true
 }
 
@@ -98,18 +96,15 @@ func (b *legacyBatch) canonicalRecord(id uint32, mod int64) ([]byte, error, bool
 	}
 	key := b.st.key(id)
 	for pass := range 2 {
-		idx, at := b.lookupIndex, b.lookupOffset
+		idx := b.lookupIndex
 		if pass == 1 {
-			idx, at = 0, 0
+			idx = 0
 		}
 		for ; idx < b.n; idx++ {
-			size := int64(binary.LittleEndian.Uint32(b.data[at:at+4]) &^ legacyRecordReady)
-			start := at + materialPrefix
-			rec := b.data[start : start+size]
+			rec := b.materialRecord(idx)
 			p := parseKV(rec)
-			at = start + size
 			if p.mod == mod && bytes.Equal(p.key, key) {
-				b.lookupIndex, b.lookupOffset = idx+1, at
+				b.lookupIndex = idx + 1
 				return rec, nil, true
 			}
 		}
@@ -146,18 +141,17 @@ func (st *store) promoteCanonical(rec []byte) {
 }
 
 func (b *legacyBatch) initMaterialData() {
-	at := 0
+	at, index := 0, 0
 	b.walkMaterial(func(id uint32, ks ckptState) bool {
 		key := b.st.key(id)
 		size := kvSize(len(key), int(ks.vlen), ks.create, ks.mod, ks.ver, ks.lease)
-		begin := at
-		binary.LittleEndian.PutUint32(b.data[at:], uint32(size))
-		at += materialPrefix
+		b.initMaterialSlot(index, at, false)
 		k := &b.st.keys[id]
 		if k.mod == ks.mod && k.rec != 0 {
 			copy(b.data[at:at+size], b.st.slab.bytes(k.rec, int(k.rlen)))
 			at += size
-			binary.LittleEndian.PutUint32(b.data[begin:], uint32(size)|legacyRecordReady)
+			*b.materialWord(index) |= materialReady
+			index++
 			return true
 		}
 		p := appendFillLen(b.data[at:at], 1, len(key))
@@ -180,6 +174,7 @@ func (b *legacyBatch) initMaterialData() {
 			p = appendVarintField(b.data[at:at], 6, uint64(ks.lease))
 			at += len(p)
 		}
+		index++
 		return true
 	}, nil)
 }

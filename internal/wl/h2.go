@@ -223,11 +223,12 @@ type client struct {
 	// many of its messages wait for room (reserve.go).
 	roomHeld      int64
 	roomWaiters   int
-	roomWake      bool  // queued in node.roomClients
-	coveredRoom   int64 // output quota backed by the client pool, not input reserve
-	stagePending  int64 // unpublished wire bytes, including worker quarantine
-	stagePromise  int64 // protected socket/finish capacity
-	socketPromise int64 // stagePromise consumed by actual socket backing
+	roomWake      bool        // queued in node.roomClients
+	coveredRoom   int64       // output quota backed by the client pool, not input reserve
+	stagePending  int64       // unpublished wire bytes, including worker quarantine
+	replyStage    *replyStage // non-yielding ordinary response serialization
+	stagePromise  int64       // protected socket/finish capacity
+	socketPromise int64       // stagePromise consumed by actual socket backing
 	stages        int
 	stageOrphan   bool
 	fillOwners    int
@@ -467,6 +468,7 @@ func (c *client) giveBufs() {
 
 // dropAll takes what a closed client held out of the client pool.
 func (c *client) dropAll() {
+	c.node.dropReplyStage(c)
 	if c.in != nil {
 		c.node.active--
 		c.node.headerSpare -= c.headerSlack()

@@ -391,7 +391,7 @@ func (n *node) applyPut(req []byte, voff int64, c *client, s *stream) error {
 			prev = nil
 		}
 		// A reply the reserve has no room for waits, unbuilt (reserve.go).
-		if size := n.putReplySize(rev, prev); n.msgRoom(c, int64(5+size)) {
+		if size := n.putReplySize(rev, prev); n.replyRoom(c, s, int64(5+size)) {
 			n.writePutReply(c, s, size, rev, prev)
 		} else {
 			n.holdPut(c, s, prev)
@@ -454,7 +454,7 @@ func (n *node) applyDel(req []byte, c *client, s *stream) error {
 		return nil
 	}
 	if c != nil {
-		if size := n.delReplySize(n.st.rev, deleted, kvs); n.msgRoom(c, int64(5+size)) {
+		if size := n.delReplySize(n.st.rev, deleted, kvs); n.replyRoom(c, s, int64(5+size)) {
 			n.writeDelReply(c, s, size, n.st.rev, deleted, kvs)
 		} else {
 			n.holdDel(c, s, deleted, kvs)
@@ -902,7 +902,7 @@ var opField = map[uint8]int{kRange: 1, kPut: 2, kDel: 3, kTxn: 4}
 // for it (reserve.go).
 func (n *node) replyTxn(c *client, s *stream, ok bool, res []opRes, r0, r1 int, kvs [][]byte) {
 	rev := n.st.rev
-	if size := n.txnReplySize(rev, ok, res, r0, r1, kvs); n.msgRoom(c, int64(5+size)) {
+	if size := n.txnReplySize(rev, ok, res, r0, r1, kvs); n.replyRoom(c, s, int64(5+size)) {
 		n.writeTxnReply(c, s, size, rev, ok, res, r0, r1, kvs)
 	} else {
 		n.holdTxn(c, s, ok, res, r0, r1, kvs)

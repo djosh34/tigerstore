@@ -50,11 +50,15 @@ type legacyOwner struct {
 // The first index, owner, source plan and completion state fit in the
 // same 8-KiB root. Metadata pages, payload and retained roots all spend W.
 type legacyBatch struct {
-	index legacyIndex
-	owner legacyOwner
-	st    *store
-	lease *fetchWorkLease
-	data  []byte
+	index               legacyIndex
+	owner               legacyOwner
+	st                  *store
+	lease               *fetchWorkLease
+	data                []byte
+	materialIndex       []uint64
+	materialIndexCharge int64
+	materialNeed        int64
+	materialW           bool
 	fetchSources
 	plan                                                      [128]legacySpan
 	n, capacity, pages, planN                                 int

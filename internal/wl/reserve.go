@@ -477,9 +477,10 @@ func (n *node) stepHeld(hr *heldReply) bool {
 		return true
 	}
 	size := sizeBytesField(1, n.hdrSizeAt(hr.hdrRev)) + hr.body
-	if !n.msgRoom(c, int64(5+size)) {
+	if !n.replyRoom(c, s, int64(5+size)) {
 		return true
 	}
+	defer n.dropReplyStage(c)
 	st := hr.st
 	recs := n.kvs[:0]
 	if n.cursorFetch {

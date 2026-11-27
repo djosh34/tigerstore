@@ -306,11 +306,17 @@ func testFetchedValuesStayWithinTheirShare(t *testing.T, cursor bool) {
 	}
 	t.Logf("the %d puts took %v", keys, time.Since(started).Round(time.Millisecond))
 	l := loopOf(tc.ids[0])
-	if cursor {
-		ready := make(chan struct{})
-		l.post(func() error { l.n.cursorFetch = true; close(ready); return nil })
-		<-ready
-	}
+	ready := make(chan struct{})
+	l.post(func() error {
+		l.n.cursorFetch = cursor
+		// Readahead can make later cursor pieces NOWAIT-resident after a
+		// single fadvise. Use the supported refused-NOWAIT condition for
+		// deterministic cold-worker coverage; retain every assertion.
+		l.n.fetchNoWaitRefused = cursor
+		close(ready)
+		return nil
+	})
+	<-ready
 	fetched := func() (bytes int64, n int) {
 		got := make(chan [2]int64, 1)
 		l.post(func() error {

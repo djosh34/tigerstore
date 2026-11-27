@@ -6,19 +6,15 @@ import (
 	"unsafe"
 )
 
-const (
-	materialEnd     = ^uint64(0)
-	materialLinkEnd = uint64(1)<<43 - 1
-)
+const materialEnd = ^uint64(0)
 
 // materialReply transfers a COMPLETE immutable main materialization to
 // ordered output. It is not a large history hold: no source, store or
-// history dependency survives the queue commit. In-place next links use
-// the materialization's already charged eight-byte record prefixes.
+// history dependency survives the queue commit. The transport index is
+// explicitly W-funded through output retirement; canonical bytes stay P.
 type materialReply struct {
 	batch                                                      *legacyBatch
 	first, slot                                                uint64
-	offsetLinks                                                bool
 	selected, count, sent, limit, chunk, packetLeft, nextChunk int64
 	stream, keysOnly, more, last                               bool
 	responsePending                                            bool
@@ -39,42 +35,9 @@ func materialVarint(p []byte, field int, value uint64) []byte {
 	return appendVarintField(p, field, value)
 }
 
-func (m *materialReply) record(slot uint64) []byte {
-	at := int(slot)
-	size := int(binary.LittleEndian.Uint64(m.batch.data[at:at+8]) & legacyLenMask)
-	return m.batch.data[at+materialPrefix : at+materialPrefix+size]
-}
-
-func (m *materialReply) ordinal(slot uint64) uint64 {
-	var at uint64
-	for ordinal := uint64(0); ; ordinal++ {
-		if at == slot {
-			return ordinal
-		}
-		at += materialPrefix + uint64(len(m.record(at)))
-	}
-}
-
-func (m *materialReply) next(slot uint64) uint64 {
-	next := binary.LittleEndian.Uint64(m.batch.data[int(slot):int(slot)+8]) >> legacyLenBits
-	if next == materialLinkEnd {
-		return materialEnd
-	}
-	if m.offsetLinks {
-		return next
-	}
-	var at uint64
-	for range next {
-		at += materialPrefix + uint64(len(m.record(at)))
-	}
-	return at
-}
-
-func (m *materialReply) link(slot, next uint64) {
-	at := int(slot)
-	size := binary.LittleEndian.Uint64(m.batch.data[at:at+8]) & legacyLenMask
-	binary.LittleEndian.PutUint64(m.batch.data[at:at+8], size|next<<legacyLenBits)
-}
+func (m *materialReply) record(slot uint64) []byte { return m.batch.materialRecord(int(slot)) }
+func (m *materialReply) next(slot uint64) uint64   { return m.batch.materialNext(int(slot)) }
+func (m *materialReply) link(slot, next uint64)    { m.batch.setMaterialNext(int(slot), next) }
 
 func projectedRecord(rec []byte, keysOnly bool) (size, cut0, cut1 int) {
 	if !keysOnly {
@@ -221,7 +184,7 @@ func (m *materialReply) front() []byte {
 func (m *materialReply) consume(n int) { m.pos += n; m.remaining -= int64(n) }
 
 func (n *node) newMaterialReply(b *legacyBatch, s *stream, r *rangeReq, kvs [][]byte, count int64, more bool) *materialReply {
-	m := &materialReply{batch: b, first: materialEnd, selected: int64(len(kvs)), count: count, limit: r.limit, stream: s.kind == kRangeStream, keysOnly: r.keysOnly, more: more, offsetLinks: uint64(len(b.data)) < materialLinkEnd}
+	m := &materialReply{batch: b, first: materialEnd, selected: int64(len(kvs)), count: count, limit: r.limit, stream: s.kind == kRangeStream, keysOnly: r.keysOnly, more: more}
 	if m.limit <= 0 {
 		m.limit = math.MaxInt64
 	}
@@ -229,14 +192,15 @@ func (n *node) newMaterialReply(b *legacyBatch, s *stream, r *rangeReq, kvs [][]
 	previous := materialEnd
 	for _, kv := range kvs {
 		ptr := uintptr(unsafe.Pointer(unsafe.SliceData(kv)))
-		if ptr < base+materialPrefix || ptr-base+uintptr(len(kv)) > uintptr(len(b.data)) {
+		if ptr < base || ptr-base+uintptr(len(kv)) > uintptr(len(b.data)) {
 			return nil
 		}
-		slot := uint64(ptr - base - materialPrefix)
-		next := slot
-		if !m.offsetLinks {
-			next = m.ordinal(slot)
+		ordinal := b.materialSlot(uint64(ptr - base))
+		if ordinal < 0 {
+			return nil
 		}
+		slot := uint64(ordinal)
+		next := slot
 		if previous == materialEnd {
 			m.first = slot
 		} else {
@@ -245,7 +209,7 @@ func (n *node) newMaterialReply(b *legacyBatch, s *stream, r *rangeReq, kvs [][]
 		previous = slot
 	}
 	if previous != materialEnd {
-		m.link(previous, materialLinkEnd)
+		m.link(previous, materialEnd)
 	}
 	p := appendFillLen(m.responseHeader[:0], 1, n.hdrSizeTerm(b.owner.header, b.owner.term))
 	p = materialVarint(p, 1, n.clusterID)
@@ -284,17 +248,7 @@ func (n *node) publishMaterialRange(b *legacyBatch, c *client, s *stream, r *ran
 		n.abortBig(c, s)
 		return
 	}
-	admission := int64(5 + m.responseN + sizeVarintField(4, uint64(count)))
-	if more {
-		admission += 2
-	}
-	for _, kv := range kvs {
-		size, _, _ := projectedRecord(kv, r.keysOnly)
-		admission += int64(sizeBytesField(2, size))
-	}
-	if m.stream {
-		admission += 32 * (int64(len(kvs))/initialStreamChunk + 1)
-	}
+	admission := materialAdmission(m, kvs, count, more)
 	if n.cannotFit(admission) {
 		n.startBig(c, s, b.owner.msg)
 		return
@@ -375,7 +329,9 @@ func (c *client) releaseMaterial(h *held) {
 	c.growOut(-int(b.materialCharge) - stageUnit)
 	b.materialCharge = 0
 	b.data = nil
+	b.materialIndex = nil
 	h.material = nil
+	b.lease.release()
 	c.stages--
 	if c.stages == 0 {
 		c.node.stagePromises -= c.stagePromise

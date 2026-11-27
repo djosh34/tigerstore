@@ -44,15 +44,16 @@ func (b *stageCredit) give(n int64) bool {
 // No page has an exterior slice header. read is a message offset, not
 // a position in a resliced allocation whose prefix still stays live.
 type replyStage struct {
-	root    stageRoot
-	credit  *stageCredit
-	owner   *client
-	size    int
-	written int
-	read    int
-	charged int64
-	loans   uint32
-	flags   uint32
+	root            stageRoot
+	credit          *stageCredit
+	owner           *client
+	size            int
+	written         int
+	read            int
+	charged         int64
+	loans           uint32
+	flags           uint32
+	responsePending bool
 }
 
 const (

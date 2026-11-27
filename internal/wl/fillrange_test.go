@@ -386,8 +386,14 @@ func TestUncommittedCursorRestartsAfterSameRevisionStoreReplacement(t *testing.T
 	if r := roomRangeReply(t, c); len(r.Kvs) != 1 || string(r.Kvs[0].Value) != "installed" || r.Header.Revision != next.rev {
 		t.Fatalf("replacement stranded or mixed the old view: %v", r)
 	}
-	if n.stageCredits.used != 0 || n.fillActive != nil || len(n.fills) != 0 {
-		t.Fatal("old fill retained ownership")
+	queued := int64(0)
+	for _, h := range c.flow.held {
+		if h.stage != nil {
+			queued += h.stage.charged
+		}
+	}
+	if n.stageCredits.used != queued || n.fillActive != nil || len(n.fills) != 0 {
+		t.Fatal("old fill retained ownership beyond the new completed destination")
 	}
 }
 

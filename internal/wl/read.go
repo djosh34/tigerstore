@@ -252,9 +252,25 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		return
 	}
 	if err == nil && n.legacyRetry != nil && n.legacyRetry.material {
-		defer func() { clear(kvs); n.kvs = nil }()
-		n.publishMaterialRange(n.legacyRetry, c, s, r, kvs, count, more)
-		return
+		b := n.legacyRetry
+		if b.materialW {
+			defer func() { clear(kvs); n.kvs = nil }()
+			n.copyMaterialRange(b, c, s, r, kvs, count, more)
+			return
+		}
+		// Small selected output has a funded copy in the finish guard.
+		// Retire the all-input W index rather than pinning it to DATA.
+		wire := 5 + sizeBytesField(1, n.hdrSizeTerm(header, term)) + sizeVarintField(4, uint64(count)) + 2
+		for _, kv := range kvs {
+			size, _, _ := projectedRecord(kv, r.keysOnly)
+			wire += sizeBytesField(2, size)
+		}
+		if s.kind != kRange || wire > 512 || c.waiting() != 0 {
+			defer func() { clear(kvs); n.kvs = nil }()
+			n.publishMaterialRange(b, c, s, r, kvs, count, more)
+			return
+		}
+		c.stageSocket()
 	}
 	if err == nil && r.keysOnly {
 		for i, kv := range kvs {
@@ -272,7 +288,12 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		// Its chunks' own fields: a few bytes each, of at least 10 keys.
 		body += 32 * (len(kvs)/initialStreamChunk + 1)
 	}
-	if err == nil && !n.msgRoom(c, int64(5+body)) {
+	wire := 5 + body
+	if s.kind == kRangeStream && n.cursorFetch && n.legacyRetry == nil {
+		wire = n.residentStreamWire(r, kvs, count, more, header, term)
+	}
+	defer n.dropReplyStage(c)
+	if err == nil && !n.replyRoom(c, s, int64(wire), int64(5+body)) {
 		clear(kvs)
 		n.kvs = kvs[:0]
 		if n.cannotFit(int64(5 + body)) {
@@ -321,9 +342,12 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 // --max-request-bytes, each a RangeStreamResponse; the last has the
 // header, more and the count. count and more are the whole range's.
 func (n *node) streamRange(c *client, s *stream, r *rangeReq, kvs [][]byte, count int64, more bool) {
-	n.openStream(c, s)
+	if c.replyStage == nil {
+		n.openStream(c, s)
+	}
 	if r.countOnly {
 		n.rangeChunk(c, s, nil, true, false, count)
+		n.commitReplyStage(c, s)
 		n.stats.replies++
 		n.callEnded(s, 0)
 		n.endStreamOK(c, s)
@@ -362,6 +386,7 @@ func (n *node) streamRange(c *client, s *stream, r *rangeReq, kvs [][]byte, coun
 		limit = nextChunk(limit, size, maxRequestBytes)
 		limit = min(limit, total-sent)
 	}
+	n.commitReplyStage(c, s)
 	n.stats.replies++
 	n.callEnded(s, 0)
 	n.endStreamOK(c, s)
@@ -448,7 +473,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 		}
 		if noValue {
 			if rec := st.keyAt(id, rev); rec != nil {
-				return shapeKVs(append(kvs, rec), k0, r), 1, false, nil
+				return n.shapeKVs(append(kvs, rec), k0, r), 1, false, nil
 			}
 			return kvs, 0, false, nil
 		}
@@ -457,7 +482,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 			return kvs, 0, false, err
 		}
 		if !r.countOnly {
-			kvs = shapeKVs(append(kvs, rec), k0, r)
+			kvs = n.shapeKVs(append(kvs, rec), k0, r)
 		}
 		return kvs, 1, false, nil
 	}
@@ -528,7 +553,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 	if r.countOnly || err != nil {
 		return kvs, count, false, err
 	}
-	kvs = shapeKVs(kvs, k0, r)
+	kvs = n.shapeKVs(kvs, k0, r)
 	more := false
 	if r.limit > 0 && int64(len(kvs)-k0) > r.limit {
 		clear(kvs[k0+int(r.limit):])
@@ -577,13 +602,26 @@ const (
 // shapeKVs filters kvs[k0:] by r's revision filters and sorts them as
 // etcd does, with the same sort, so that keys that tie come out in the
 // same order. A range that does neither keeps them as they are.
-func shapeKVs(kvs [][]byte, k0 int, r *rangeReq) [][]byte {
+func (n *node) shapeKVs(kvs [][]byte, k0 int, r *rangeReq) [][]byte {
+	if n.measureSort == nil {
+		return shapeKVs(kvs, k0, r)
+	}
+	return shapeKVsMeasured(kvs, k0, r, n.measureSort)
+}
+
+func shapeKVs(kvs [][]byte, k0 int, r *rangeReq) [][]byte { return shapeKVsMeasured(kvs, k0, r, nil) }
+
+// Optional observation changes no storage, selection or sort operation.
+func shapeKVsMeasured(kvs [][]byte, k0 int, r *rangeReq, observe func(int, int)) [][]byte {
 	order := r.order()
 	sorts := order != sortNone && (r.sortTarget != sortByKey || order != sortAscend)
 	if !sorts && !r.filters() {
 		return kvs
 	}
 	recs := make(kvRecs, 0, len(kvs)-k0)
+	if observe != nil {
+		observe(cap(kvs), cap(recs))
+	}
 	for _, rec := range kvs[k0:] {
 		kv := parseKV(rec)
 		switch {

@@ -150,12 +150,21 @@ func (n *node) planLegacyHeld(b *legacyBatch) error {
 	at := b.recordOffset
 	prefix := int64(4)
 	if b.material {
-		prefix = materialPrefix
+		prefix = 0
 	}
 	idx, pos := b.cursor, b.valuePos
 	for idx < b.n && b.planN < len(b.plan) {
-		word := binary.LittleEndian.Uint32(b.data[at : at+4])
-		size := int64(word &^ legacyRecordReady)
+		var word uint32
+		var size int64
+		if b.material {
+			size = int64(len(b.materialRecord(idx)))
+			if *b.materialWord(idx)&materialReady != 0 {
+				word = legacyRecordReady
+			}
+		} else {
+			word = binary.LittleEndian.Uint32(b.data[at : at+4])
+			size = int64(word &^ legacyRecordReady)
+		}
 		start := at + prefix
 		p := parseKV(b.data[start : start+size])
 		var r recRef

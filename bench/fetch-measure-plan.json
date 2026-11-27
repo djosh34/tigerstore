@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "status": "BLOCKED_NOT_RUN",
+  "purpose": "Predeclared seeds and immutable trace inventory; not measurement evidence",
+  "blocker": "https://github.com/djosh34/tigerstore/issues/912",
+  "trace_hashes_and_seed_files_verified": true,
+  "seed_generator_ref": "a3cf2694d5b2fbc082438341e8c5713288b51f2e",
+  "baseline_ref": "0feb445bcf01710c04513e8d3697fe170ceb0203",
+  "candidate_ref": null,
+  "pairs": {
+    "initial": 5,
+    "borderline_extra": 5,
+    "orders": ["AB", "BA", "AB", "BA", "AB", "BA", "AB", "BA", "AB", "BA"]
+  },
+  "rtt_ms": [0, 2, 10],
+  "cache_modes": ["past-ram-560m", "tmpfs-nowait-refused", "evicted-cache", "resident-3g"],
+  "reuse_delay_ms": [0, 100, 500],
+  "reuse_clients": [10, 20],
+  "reuse_value_bytes": [65536, 262144, 1048576],
+  "measurements": [],
+  "shapes": {
+    "small": {
+      "trace": "bench/recordings/small.trace.gz",
+      "trace_sha256": "df36c4c5eefa8883ecf6a816b0665f04326a44bdf9ef9459dac139b888adf540",
+      "seeds": [94125874, 22869534, 984200268, 859845941, 342979148, 621127579, 159425443, 594042030, 613206478, 838187507]
+    },
+    "medium-crds": {
+      "trace": "bench/recordings/medium-crds.trace.gz",
+      "trace_sha256": "bf284b7eca3a33b756b1f4f0ce375d081ecd0b1f3ec89eae8115de8454357fea",
+      "seeds": [101772342, 257079799, 437993985, 925221383, 214828818, 11437860, 612301197, 395390600, 836653180, 738547848]
+    },
+    "large": {
+      "trace": "bench/recordings/large.trace.gz",
+      "trace_sha256": "5c556ab0a515380126184ad0f529c207f88fef2c333c49617db956d1c31c52c2",
+      "seeds": [136331296, 923274296, 349831291, 672769812, 809877211, 898479108, 618248136, 499755609, 843679393, 705841958]
+    },
+    "crd-heavy": {
+      "trace": "bench/recordings/crd-heavy.trace.gz",
+      "trace_sha256": "258789ec60de3f2b8b541c79d7734397769e811905e05550981b3e14a7335273",
+      "seeds": [323217637, 220444270, 389923620, 514832047, 12973832, 808870559, 95820685, 649234659, 44290263, 810679110]
+    },
+    "many-namespaces": {
+      "trace": "bench/recordings/many-namespaces.trace.gz",
+      "trace_sha256": "e1238a5f706094ff571f9414dd6a052468b86a1f1f0c51eb3fa89cd0a197fe36",
+      "seeds": [880232582, 797147640, 839401819, 921584244, 537870903, 367792711, 886601058, 355749132, 684318781, 153600267]
+    }
+  }
+}

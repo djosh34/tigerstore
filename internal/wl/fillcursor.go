@@ -111,6 +111,17 @@ func (a *fetchSources) read(source int, p []byte, off int64, nowait bool) error 
 	}
 }
 
+func (n *node) tryFillNowait(a *fillArena) bool {
+	if n.fetchNoWaitRefused {
+		for i := range a.n {
+			if a.spans[i].flags&fillReady == 0 {
+				return false
+			}
+		}
+	}
+	return a.tryNowait()
+}
+
 func (a *fillArena) tryNowait() bool {
 	ready := true
 	for i := range a.n {
@@ -362,6 +373,28 @@ func (n *node) planFill(q *replyFill, a *fillArena) error {
 				r.phase = 5
 				continue
 			}
+			if a == nil {
+				k := &q.st.keys[r.id]
+				if k.mod != s.mod || k.rec == 0 {
+					return errAway
+				}
+				value := parseKV(q.st.slab.bytes(k.rec, int(k.rlen))).value
+				if len(value) != int(s.vlen) {
+					return &ReadBackError{Err: ErrBadValue, Off: s.voff, Len: int(s.vlen)}
+				}
+				dst := q.stage.span(q.stage.written, min(int(s.vlen)-r.valuePos, q.stage.size-q.stage.written))
+				if len(dst) == 0 {
+					return errLogCut
+				}
+				copy(dst, value[r.valuePos:r.valuePos+len(dst)])
+				r.crc = crc32.Update(r.crc, castagnoli, dst)
+				r.valuePos += len(dst)
+				q.stage.written += len(dst)
+				if r.valuePos == int(s.vlen) && r.crc != s.vsum {
+					return &ReadBackError{Err: ErrBadValue, Off: s.voff, Len: int(s.vlen)}
+				}
+				continue
+			}
 			if a.n == len(a.spans) {
 				return nil
 			}
@@ -587,9 +620,9 @@ func (n *node) pumpFills() {
 		return
 	}
 	// Planning and immediately pre-dispatch each try NOWAIT.
-	ready := q.arena.tryNowait()
+	ready := n.tryFillNowait(q.arena)
 	if !ready {
-		ready = q.arena.tryNowait()
+		ready = n.tryFillNowait(q.arena)
 	}
 	if ready {
 		err = q.arena.execute()

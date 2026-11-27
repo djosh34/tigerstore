@@ -58,7 +58,8 @@ type loop struct {
 	// resumed are the paused clients a flush resumes (flush).
 	resumed []*client
 	// waitScratch is serveWaiting's.
-	waitScratch []*client
+	waitScratch    []*client
+	handoffWaiting bool // deferred leftovers also request normal buffer rotation
 
 	ctx      context.Context
 	mu       sync.Mutex
@@ -168,6 +169,9 @@ func run(ctx context.Context, cfg Config) error {
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
 		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
+		// TestWatchControlCannotSpendProtectedFetchCapacity is still a
+		// mandatory failing global gate; do not activate production yet.
+		cursorFetch: false,
 	}
 	if cfg.TraceLargePuts {
 		n.putTimings = &putTimings{pending: make(map[uint64][]*putTiming)}
@@ -896,6 +900,7 @@ func (l *loop) takeHandoffs() {
 			l.input(idx, false)
 		}
 	}
+	l.handoffWaiting = len(deferred) > 0
 	l.turnHandoffs += len(hs) - len(deferred)
 	clear(hs[len(deferred):])
 	if len(deferred) > 0 {
@@ -1218,7 +1223,7 @@ func (l *loop) run() error {
 		if n.cursorFetch {
 			l.takeHandoffs()
 		}
-		if len(n.waiting) > 0 {
+		if len(n.waiting) > 0 || l.handoffWaiting {
 			l.serveWaiting()
 		}
 		t4 := time.Now()
@@ -1394,13 +1399,18 @@ func (l *loop) clientTick() {
 func (l *loop) serveWaiting() {
 	n := l.n
 	l.endTurn()
-	if len(n.waiting) == 0 {
+	if len(n.waiting) == 0 && !l.handoffWaiting {
 		return
 	}
 	for _, x := range n.socks {
 		if c, ok := x.(*client); ok && !c.dead && c.in != nil && c.busy < l.tick && c.idle() {
 			c.giveBufs()
 		}
+	}
+	// An unregistered handshake is still an input waiter: without this
+	// opportunity, busy registered clients can retake every freed buffer.
+	if l.handoffWaiting {
+		l.takeHandoffs()
 	}
 	// A client served reads on and may wait again: it goes back in line
 	// behind those that wait still (pass), and its place before is let

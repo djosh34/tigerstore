@@ -1,6 +1,6 @@
 # Fetch cursor accounting and activation gate
 
-Part of #833. Production routing is **not enabled**: the sort-scratch gate below is unresolved. This document describes the implemented accounting and the tested cases, not a completed global budget proof.
+Part of #833. Production routing is **not enabled**: the ordinary watch-control allocation gate below fails (#912). The #908 sort ruling has been implemented. This document records demonstrated gates, not a completed global proof or qualifying performance campaign.
 
 ## Allocation inventory
 
@@ -11,11 +11,14 @@ Part of #833. Production routing is **not enabled**: the sort-scratch gate below
 | P: normal reads | The full existing read-half entitlement is withheld from output, not merely currently allocated input. Only actual active-input-turn debt belongs to the independent R reserve. |
 | P: CONTINUATION | Bounded 64-KiB backing, including unmaterialized backing for clients that normal read admission can activate. Explicit bounded allocation prevents append-capacity overshoot. Reclamation restores the entitlement. |
 | P: connection handoff | A new connection/handshake-leftover copy cannot bypass ordinary input/connection funding. It waits in the existing handoff until funding exists; peers are not held behind it. No new request refusal or input-turn timeout is introduced. |
+| P: ordinary ready replies | Protected within-share reads and applied Put/Delete/Txn replies cannot consume another fill's backing. They either use an already-funded non-growing socket, obtain a complete staged destination, or follow existing wait/held-write handling. No new applied-write refusal/capture format is introduced. |
 | P: parked size hints | Physical framed-size hints reuse the existing body word. `roomRead` is back to main's 80-byte footprint, rather than growing its high-water container to 112 bytes. |
 | W: shared core | One 80-KiB worker-stack/control reservation, one persistent worker and one running I/O operation. |
 | W: cursor plan | The other 304 KiB of the 384-KiB cursor reservation includes the fixed 2,048 x 64-byte descriptors, bounded read/coalescing scratch, source/control rounding and completion ownership. Arena credit survives its arena-bearing callback frame. |
 | W: legacy | Charged 8-KiB roots, full paged index capacity, rounded payload and retained needed results. No second B/32, uncharged map, or TTL eviction of a needed dependency. |
-| P: materialized legacy fallback | Canonical materialization, in-place output links, ordered-message ownership, and temporary retry storage. Main's old sort scratch must also be funded: omitting it was an accounting defect, not a permitted exemption. |
+| W/P: canonical legacy adapter | Canonical protobuf bytes use W when the complete input fits; otherwise they use P. The existing transport/order entries are explicitly W-funded (8 bytes each, wide form 16), not uncharged per-record padding. W-backed input transfers to a pre-funded complete P destination before retirement. Large P-backed output retains its charged W index until DATA/reset; tiny selected output has a funded copy and retires the all-input view immediately. Main's sort representation is unchanged. |
+| P: canonical retry copies | Exact-capacity record construction avoids append-growth overlap. Raw retry promises include canonical/projection allocation bounds; a structurally non-fitting raw finish uses the canonical adapter instead of waiting indefinitely. |
+| Open: ordinary controls/containers | #912 demonstrates ordinary watch controls bypassing physical funding. Added held-entry fields/capacity are not exempt. This row prevents a global-proof/activation claim. |
 
 All physical source leases survive through I/O acknowledgement. Completion cannot publish to a replacement client/store/watcher, and cannot clear a newer operation. WAL generations and checkpoint inodes are independent of logical record offsets. Normal validated current values can promote to the ordinary store slab; originating fulfillment is not reported as distinct-request reuse.
 
@@ -35,13 +38,13 @@ Maximum observed funding ledgers across both admission orders and cancellation c
 | 137 MiB | 4,046,848 / 4,489,216 | 5,668,864 / 8,978,432 | Fitting reservations coexist. |
 | 191 MiB | 4,046,848 / 6,258,688 | 6,684,672 / 12,517,376 | Fitting reservations coexist. |
 
-These are real mixed-consumer cases, including high-water metadata and held-reply retry. They are **not** a proof that every valid legacy sort can finish: the structural case below remains a failing gate.
+These are real mixed-consumer cases, including high-water metadata and held-reply retry. They are not the global proof: ordinary control output remains unresolved below.
 
 ## Option A / #904
 
-`TestMainHeldCaptureParityAndBoundedMaterialization904` unconditionally asserts identical main/cursor-mode `hr.counted`, client `heldCounted`, and capture `growOut` delta: **8,388,608 bytes** at 83 MiB. Only that unchanged inherited capture debit is outside this proof. Materialization, the 1,343,244-byte reply, retained results, work structures and output/copy ownership are not exempt. All 65,536 previous values are decoded and partial output cannot return live backing.
+`TestMainHeldCaptureParityAndBoundedMaterialization904` unconditionally asserts identical main/cursor-mode `hr.counted`, client `heldCounted`, and capture `growOut` delta: **8,388,608 bytes** at 83 MiB. That regression excludes exactly the unchanged inherited capture debit; the separate #908 ruling below applies only to main's unchanged sort arrays. Materialization, the 1,343,244-byte reply, retained results, work structures and output/copy ownership are not exempt. All 65,536 previous values are decoded and partial output cannot return live backing.
 
-## Concrete activation blocker: unchanged sort scratch
+## Option A / #908: unchanged main sort scratch
 
 A pristine-main reproducer at `2e1d1e1a796c5c926802d26b789b23bada57d15e` successfully serves a value sort over 65,536 four-byte keys with one-byte values, `limit=1`, and `keys_only=true`.
 
@@ -53,12 +56,22 @@ The unchanged `shapeKVs` holds its candidate `[][]byte` backing while allocating
 - Existing P: **5,439,488 bytes**. Even P+R is only **7,536,640 bytes**.
 - No held-write capture exists in this state. It is not #904.
 
-The old materialized fallback omitted this scratch and falsely appeared bounded. Its promise now includes scratch and candidate growth/high-water backing. Consequently `TestLegacyDenseMetadataUsesBoundedMaterializationLookup` honestly fails its progress gate: its 115,000-record case needs **24,141,824 bytes** before dispatch against P of **5,439,488 bytes**. The 65,536-record cold proof likewise cannot start. Waiting indefinitely is not an implementation success.
+The manager's option-A ruling excludes those unchanged arrays. `TestLegacySortScratchParity908` observes real main/cursor capacities and asserts the exact 65,536-key reference, with no capture. `TestLegacyDenseMetadataUsesBoundedMaterializationLookup` now completes the real 115,000-record sort and asserts scratch **14,472,432 bytes on both paths**, bounded lookup, finite progress, correct selection, P/W ceilings and final retirement. Only main's candidate/parsed-record arrays are excluded; new transport indices, canonical data, copies and output remain charged. #908 is referenced, not repaired.
 
-Round 4 freezes main's sort handling and excludes the sort/permutation redesign. No scratch exemption, increased minimum, changed sort admission, or cap error has been chosen. A ruling on changing the temporary sort representation while preserving main's admission/comparator/ordering algorithm is required before this gate can be completed safely.
+`TestLegacyTinyInputsWithOversizedLastRecordComplete` additionally preserves main's valid pre-next-record overshoot: 100,000 tiny inputs followed by a final 1,280-KiB value. Its deterministic red was the added transport-prefix debit, not #908. Separating that explicitly charged W metadata from canonical bytes makes it finish without changing main's admission, comparator, sorting algorithm or selected set.
+
+## Remaining global blocker / #912
+
+Pristine main `0cd3dd28c5550cea1e2ea4f5dddd264687820f74` accepts 250,000 progress requests on a DATA-window-blocked watch stream. Their 1,750,000 gRPC input bytes fit one normal 2-MiB input turn. Already-counted P reaches **5,909,630 > 5,439,488 bytes**. The separate main `[]held` capacity is **294,180 x 56 = 16,474,080 bytes**, alone larger than P+R. No keys, writes, capture, sort, expiry or sleeps are involved. The exact standalone reproducer is published on #912.
+
+`TestWatchControlCannotSpendProtectedFetchCapacity` opens/funds the other stream's headers first, fills protected destinations, then uses real `node.request` progress messages. It honestly fails after **372** requests at **5,439,510 > 5,439,488 bytes**. No control/container exemption, timeout, skip or newly refused watch message has been assumed. The added held-entry footprint (80 versus main's 56 bytes) also remains an in-scope funding obligation. A ruling on inherited watch-control queuing/backpressure/admission is needed under the frozen main/input-turn policy before activation.
+
+## Activation-trial corrections
+
+An active-routing broad race trial exposed deferred-handshake starvation, plus two storage-shape assumptions in unit tests. `TestDeferredHandshakeAlsoRequestsBufferRotation` deterministically fails before the fairness correction and passes after it: deferred leftovers participate in ordinary idle-buffer rotation. The unchanged 60-client integration case then completes with zero refusals. Resident/metadata fills can finish during planning without borrowing a worker arena; whole-reply assertions accept either valid complete backing, and replacement checks distinguish new queued output from leaked old owners.
 
 ## Measurement state
 
-The active original workload passes local diagnostics, including an expanded component race run with an 80-range phase of 2.479 s. This is not the five-run campaign or the qualifying paired measurement gate.
+Local original-workload diagnostics passed: both legacy control and cursor tests retain every value, retry, deadline and budget assertion. The cursor cold-worker test explicitly uses the supported refused-NOWAIT condition, because kernel readahead can otherwise warm later pieces after one fadvise. Its race 80-range phase was 2.267 s. This is not an equal-cache paired comparison or a qualifying campaign.
 
-Qualifying active-routing Actions measurements have **not** been run: the mandatory budget/liveness gate above fails. Measuring the production-gated binary would not establish #833. Required named range/list/watch, Kubernetes profiles, qualifying memory/cache modes, reuse, tails/refusals, paired AB/BA runs and the throughput ruling thresholds remain prerequisites, not implied successes.
+The offline `scripts/fetch-measure-gate.py` checks named/reuse evidence and thresholds, but explicitly does **not** certify the separate original-workload gate. `bench/fetch-measure-plan.json` has verified trace hashes and ten predeclared fresh seeds for each Kubernetes shape; candidate is null, measurements empty and status `BLOCKED_NOT_RUN`. The Actions artifact adapter, actual routing/cache/reuse evidence, original/5-ms campaigns and qualifying paired Actions measurements remain unperformed. No result from the disabled production binary is presented as #833 evidence.

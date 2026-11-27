@@ -2,10 +2,15 @@ package wl
 
 import (
 	"bytes"
+	"errors"
 )
 
 func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool {
-	if !n.cursorFetch || (s.kind != kRange && s.kind != kRangeStream) || r.keysOnly || r.countOnly || r.sortsOther() {
+	if !n.cursorFetch || (s.kind != kRange && s.kind != kRangeStream) || r.sortsOther() {
+		return false
+	}
+	protected := n.stageCredits.used > 0 || n.stagePromises > 0 || n.legacyPromises > 0
+	if r.countOnly && !protected {
 		return false
 	}
 	n.stats.rangeFillScans++
@@ -18,6 +23,9 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 	bytesOut := 0
 	cold, big := false, false
 	read := r.readLimit()
+	if r.countOnly {
+		read = 0
+	}
 	walk := func(id uint32) bool {
 		if raw > n.oneShot() {
 			big = true
@@ -32,8 +40,19 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 			return true
 		}
 		taken++
-		size := kvSize(int(st.keys[id].klen), int(ks.vlen), ks.create, ks.mod, ks.ver, ks.lease)
-		raw += int64(size)
+		k := &st.keys[id]
+		size := kvSize(int(k.klen), int(ks.vlen), ks.create, ks.mod, ks.ver, ks.lease)
+		rawSize := size
+		if r.keysOnly {
+			// Preserve keyAt's residency-dependent before-next-key operand;
+			// only the returned projection omits value and lease.
+			rawSize = kvSize(int(k.klen), 0, ks.create, ks.mod, ks.ver, ks.lease)
+			if k.rec != 0 && k.mod <= view {
+				rawSize = int(k.rlen)
+			}
+			size = kvSize(int(k.klen), 0, ks.create, ks.mod, ks.ver, 0)
+		}
+		raw += int64(rawSize)
 		if !r.passes(&ks) {
 			return true
 		}
@@ -42,8 +61,7 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 			return true
 		}
 		bytesOut += sizeBytesField(2, size)
-		k := &st.keys[id]
-		cold = cold || ks.vlen > 0 && (k.rec == 0 || k.mod != ks.mod)
+		cold = cold || !r.keysOnly && ks.vlen > 0 && (k.rec == 0 || k.mod != ks.mod)
 		return true
 	}
 	if len(r.end) == 0 {
@@ -84,7 +102,7 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 	}
 	// Resident values may use the ordinary within-share fast path. A
 	// logical output loan still needs P backing even without disk I/O.
-	if !cold && n.roomNeeded(c, int64(wire)) == 0 {
+	if !cold && !protected && n.roomNeeded(c, int64(wire)) == 0 {
 		return false
 	}
 	meta := stageUnit + int((int64(len(msg))+stageUnit-1)/stageUnit)*stageUnit
@@ -95,7 +113,7 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 		return true
 	}
 	c.growOut(meta)
-	stage := n.admitStage(c, wire)
+	stage := n.admitStageQuota(c, wire, int64(admission))
 	if stage == nil {
 		c.growOut(-meta)
 		n.stageCredits.give(int64(meta))
@@ -120,6 +138,24 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 		q.varint(2, n.id)
 		q.varint(3, uint64(q.header))
 		q.varint(4, n.term)
+	}
+	if !cold {
+		err := n.planFill(q, nil)
+		if err != nil && !errors.Is(err, errAway) {
+			if n.st.bad == nil {
+				n.st.bad = err
+			}
+			q.stage.discard()
+			n.releaseFillRead(q)
+			q.freeMeta(n)
+			n.replyError(c, s.id, codeInternal, err.Error())
+			return true
+		}
+		if q.ready && n.publishFill(q) {
+			n.releaseFillRead(q)
+			q.freeMeta(n)
+			return true
+		}
 	}
 	n.fills = append(n.fills, q)
 	return true
@@ -152,6 +188,10 @@ func (n *node) nextFillRange(q *replyFill) bool {
 			return true
 		}
 		q.last, q.hasLast = id, true
+		if q.req.keysOnly {
+			ks.vlen = 0
+			ks.lease = 0
+		}
 		q.record = fillRecord{active: true, field: 2, id: id, state: ks, size: kvSize(int(st.keys[id].klen), int(ks.vlen), ks.create, ks.mod, ks.ver, ks.lease)}
 		return false
 	}

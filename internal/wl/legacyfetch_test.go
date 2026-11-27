@@ -98,7 +98,7 @@ func TestLegacyOvershootUsesItsFundedMaterializationView(t *testing.T) {
 	serveRoomRange(t, c, s, msg)
 	n := c.node
 	b := n.legacyPending
-	if b == nil || !b.material || !b.prepared || b.materialCharge == 0 || n.fillBook.used != fetchCoreWork+stageUnit {
+	if b == nil || !b.material || !b.prepared || b.materialCharge == 0 || n.fillBook.used != fetchCoreWork+stageUnit+b.materialIndexCharge {
 		t.Fatal("overshoot was not a single funded materialization view")
 	}
 	n.pumpFills()
@@ -115,8 +115,8 @@ func TestLegacyOvershootUsesItsFundedMaterializationView(t *testing.T) {
 	if len(data) < 5 || proto.Unmarshal(data[5:], &response) != nil || len(response.Kvs) != 1 || string(response.Kvs[0].Key) != "/a" || len(response.Kvs[0].Value) != 0 || response.Header.Revision != view {
 		t.Fatal("materialized sort changed its admitted ordering/view")
 	}
-	if b.data == nil || b.materialCharge == 0 || !b.linked || st.heldReads() != 0 || n.fillBook.used != fetchCoreWork {
-		t.Fatal("materialization ownership was not transferred out of W into ordinary output")
+	if b.data != nil || b.materialCharge != 0 || b.materialIndex != nil || st.heldReads() != 0 || n.fillBook.used != fetchCoreWork || n.stageCredits.used+n.stageOther(0) > n.sizes.clientPool {
+		t.Fatal("small selected result was not funded/copied before retiring the all-input view")
 	}
 	id, _ := st.find([]byte("/b"))
 	if st.keys[id].rec == 0 {
@@ -161,7 +161,7 @@ func TestWholeLegacyMaterializationCommitsWithoutCopyOverlap(t *testing.T) {
 						}
 					}
 				}
-				if c.waiting() != 0 || len(c.flow.held) == 0 || c.flow.held[0].material == nil || st.heldReads() != 0 || n.fillBook.used != fetchCoreWork {
+				if c.waiting() != 0 || len(c.flow.held) == 0 || c.flow.held[0].material == nil || st.heldReads() != 0 || n.fillBook.used != fetchCoreWork+c.flow.held[0].material.batch.materialIndexCharge {
 					t.Fatal("complete reply was not independently queued before DATA")
 				}
 				// Destroy its former store before any DATA publication. Queue
@@ -173,10 +173,11 @@ func TestWholeLegacyMaterializationCommitsWithoutCopyOverlap(t *testing.T) {
 					t.Fatal(err)
 				}
 				beforePhysical, beforeSocket := n.cout, cap(c.out)
+				beforeW := n.fillBook.used
 				c.flow.conn = 1
 				c.flow.streams[s.id] = 1
 				c.drain()
-				if n.cout-beforePhysical != int64(cap(c.out)-beforeSocket) {
+				if n.cout-beforePhysical != int64(cap(c.out)-beforeSocket) || n.fillBook.used != beforeW {
 					t.Fatal("partial scatter drain freed live materialization")
 				}
 				var wire []byte
@@ -222,7 +223,7 @@ func TestWholeLegacyMaterializationCommitsWithoutCopyOverlap(t *testing.T) {
 					}
 				}
 				last := replies[len(replies)-1]
-				if seen != 3 || last.Header.Revision != header || last.Count != 3 || last.More || n.stagePromises != 0 || c.stages != 0 {
+				if seen != 3 || last.Header.Revision != header || last.Count != 3 || last.More || n.stagePromises != 0 || c.stages != 0 || n.fillBook.used != fetchCoreWork {
 					t.Fatal("materialized wire/header/count/ownership changed")
 				}
 			})
@@ -319,11 +320,17 @@ func TestLegacyUnstartedRetryUsesReplacementStoreToken(t *testing.T) {
 }
 
 func TestLegacyDenseMetadataUsesBoundedMaterializationLookup(t *testing.T) {
+	const value = "v"
+	// #908 excludes only main's two scratch arrays, with an actual
+	// same-state reference. All materialization/lookup/output still counts.
+	baseline := mainDenseSortScratch(t, value)
 	c, s, st, log, l := fillRangeFixture(t)
+	var scratch int64
+	c.node.measureSort = func(a, b int) { scratch = max(scratch, int64(a)*24+int64(b)*96) }
 	const count = 115000
 	for i := range count {
 		key := []byte{byte(i >> 16), byte(i >> 8), byte(i)}
-		putValue(t, st, log, string(key), "v")
+		putValue(t, st, log, string(key), value)
 	}
 	for i := range st.keys[:st.nkeys] {
 		st.keys[i].rec = 0
@@ -336,9 +343,6 @@ func TestLegacyDenseMetadataUsesBoundedMaterializationLookup(t *testing.T) {
 	msg = appendVarintField(msg, 8, 1)
 	serveRoomRange(t, c, s, msg)
 	n := c.node
-	if b := n.legacyPending; b != nil && n.legacyFinishBound(b) > n.sizes.clientPool {
-		t.Fatalf("UNRESOLVED dense-sort budget: unchanged materialization/scratch needs %d bytes before dispatch; P=%d; main sort admission/handling is frozen", n.legacyFinishBound(b), n.sizes.clientPool)
-	}
 	for step := 0; n.legacyPending != nil || n.legacyRunning != nil || n.legacyMemo != nil && n.legacyMemo.needed; step++ {
 		if step > 1200 {
 			t.Fatal("dense view did not make finite progress")
@@ -347,7 +351,7 @@ func TestLegacyDenseMetadataUsesBoundedMaterializationLookup(t *testing.T) {
 		if n.fillBook.used > n.fillBook.limit {
 			t.Fatal("dense view exceeded W")
 		}
-		if n.cpool+n.cout+n.legacyPromises+n.stagePromises+int64(n.clients)*idleConn > n.sizes.clientPool+n.sizes.reserve() {
+		if n.cpool+n.cout+n.legacyPromises+n.stagePromises+int64(n.clients)*idleConn > n.sizes.clientPool+n.sizes.reserve() || n.stageCredits.used+n.stageOther(0) > n.sizes.clientPool {
 			t.Fatal("dense materialization exceeded client credit")
 		}
 		if n.legacyRunning != nil {
@@ -364,10 +368,38 @@ func TestLegacyDenseMetadataUsesBoundedMaterializationLookup(t *testing.T) {
 	if len(data) < 5 || proto.Unmarshal(data[5:], &response) != nil || len(response.Kvs) != 1 || response.Count != count || len(response.Kvs[0].Value) != 0 {
 		t.Fatal("dense legacy lookup changed main's admitted result")
 	}
+	if scratch == 0 || scratch > baseline {
+		t.Fatalf("#897 enlarged #908 scratch: %d > %d", scratch, baseline)
+	}
+	t.Logf("scratch=%d main=%d; all new storage independently funded", scratch, baseline)
 	n.pumpFills()
 	if n.fillBook.used != fetchCoreWork || len(st.fetched) > 0 || len(st.away) > 0 {
 		t.Fatal("dense view leaked metadata or built another cache")
 	}
+}
+
+func mainDenseSortScratch(t *testing.T, value string) int64 {
+	t.Helper()
+	c, s, st, log, _ := fillRangeFixture(t)
+	c.node.cursorFetch = false
+	st.log = log
+	var scratch int64
+	c.node.measureSort = func(a, b int) { scratch = max(scratch, int64(a)*24+int64(b)*96) }
+	for i := range 115000 {
+		putValue(t, st, log, string([]byte{byte(i >> 16), byte(i >> 8), byte(i)}), value)
+	}
+	msg := appendBytesField(nil, 1, []byte{0})
+	msg = appendBytesField(msg, 2, []byte{2})
+	msg = appendVarintField(msg, 3, 1)
+	msg = appendVarintField(msg, 5, 1)
+	msg = appendVarintField(msg, 6, sortByValue)
+	msg = appendVarintField(msg, 8, 1)
+	serveRoomRange(t, c, s, msg)
+	r := roomRangeReply(t, c)
+	if r.Count != 115000 || len(r.Kvs) != 1 {
+		t.Fatal("main dense reference selection")
+	}
+	return scratch
 }
 
 func TestSharedLegacyCursorRuntimeBudgetMatrix(t *testing.T) {

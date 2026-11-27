@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
-	"unsafe"
 )
 
 func roundedFetch(n int64) int64 { return (n + stageUnit - 1) &^ (stageUnit - 1) }
@@ -175,38 +174,44 @@ func (n *node) legacyOutputBound(b *legacyBatch) int {
 	return b.owner.wire
 }
 
-func (n *node) legacySortScratch(b *legacyBatch) int64 {
-	if b.owner.hr != nil {
+// Exact-size record construction avoids append growth/copy peaks. Small
+// Go classes are bounded by the next power of two; large objects by 8 KiB.
+func recordHeapBound(n int) int64 {
+	if n <= 0 {
 		return 0
 	}
-	count := b.owner.candidates
-	// The unchanged append-based candidate array can grow while its old
-	// backing is live. Retained high-water capacity is not free either.
-	need := roundedFetch(max(4*count, int64(cap(n.kvs))) * int64(unsafe.Sizeof([]byte{})))
-	if b.owner.req.sortsOther() || b.owner.req.filters() {
-		need += roundedFetch(count * int64(unsafe.Sizeof(kvRec{})))
+	if n > 32<<10 {
+		return roundedFetch(int64(n))
 	}
-	return need
+	size := 16
+	for size < n {
+		size *= 2
+	}
+	return int64(size)
 }
 
 func (n *node) legacyFinishBound(b *legacyBatch) int64 {
 	wire := n.legacyOutputBound(b)
-	scratch := n.legacySortScratch(b)
+	// #908: only main's unchanged candidate/kvRecs scratch is outside
+	// this proof. Canonical data, indices, retry/output and copies stay funded.
 	if b.material {
-		return roundedFetch(b.payload) + (64 << 10) + 2*stageUnit + scratch
+		if b.materialW {
+			return stageCapacity(wire) + (64 << 10) + 2*stageUnit
+		}
+		return roundedFetch(b.payload) + (64 << 10) + 2*stageUnit
 	}
 	material := int64(0)
-	if b.material {
-		material = b.payload
-	} else if b.owner.hr == nil {
-		for i := range b.n {
-			e := b.entry(i)
-			ks, ok := b.st.putStateAt(e.key, e.mod)
-			if !ok {
-				continue
-			}
-			material += int64(kvSize(int(b.st.keys[e.key].klen), int(ks.vlen), ks.create, ks.mod, ks.ver, ks.lease))
+	if b.owner.hr == nil {
+		if b.materialNeed == 0 {
+			b.walkMaterial(func(id uint32, ks ckptState) bool {
+				b.materialNeed += recordHeapBound(kvSize(int(b.st.keys[id].klen), int(ks.vlen), ks.create, ks.mod, ks.ver, ks.lease))
+				if b.owner.req.keysOnly {
+					b.materialNeed += recordHeapBound(kvSize(int(b.st.keys[id].klen), 0, ks.create, ks.mod, ks.ver, 0))
+				}
+				return true
+			}, nil)
 		}
+		material = b.materialNeed
 	}
 	candidates := int64(b.n)
 	if b.owner.hr == nil {
@@ -222,7 +227,7 @@ func (n *node) legacyFinishBound(b *legacyBatch) int64 {
 	// The old socket is still counted while its replacement is copied.
 	need := f + (f/maxFrame+2)*9 + (f/maxPlain+2)*(recOverhead+8) + maxPlain + recOverhead + 8
 	out := max(64<<10, max(roundedFetch(f), roundedFetch(int64(len(b.owner.c.out))+need)))
-	return roundedFetch(material) + out + (64 << 10) + stageUnit + scratch
+	return roundedFetch(material) + out + (64 << 10) + stageUnit
 }
 
 func (n *node) prepareLegacy(b *legacyBatch) bool {
@@ -238,23 +243,38 @@ func (n *node) prepareLegacy(b *legacyBatch) bool {
 		}
 	}
 	need := n.legacyFinishBound(b)
+	if !b.material && b.owner.hr == nil {
+		floor := n.sizes.clientInBufs()
+		headers := max(1, int(floor/int64(clientInBuf+clientPtBuf+slotBytes)))
+		if need+floor+int64(headers)*maxHeaderBlock+idleConn > n.sizes.clientPool {
+			if !n.convertLegacyMaterial(b) {
+				return false
+			}
+			return n.prepareLegacy(b)
+		}
+	}
 	physical := n.stageCredits.used + n.stageOther(0)
 	if physical+need > n.sizes.clientPool {
 		n.legacyWaitP = true
 		return false
 	}
 	payload := roundedFetch(b.payload)
-	if !b.material && !b.lease.grow(payload) {
+	work := payload
+	if b.material {
+		work = roundedFetch(int64(b.materialWords()) * 8)
+		if b.materialW {
+			work += payload
+		}
+	}
+	if !b.lease.grow(work) {
 		return false
 	}
 	wire := n.legacyOutputBound(b)
 	if !n.msgRoom(b.owner.c, int64(wire)) {
 		// The payload has not been allocated. Return only this new
 		// reservation; high-water metadata remains owned and counted.
-		if !b.material {
-			b.lease.book.used -= payload
-			b.lease.bytes -= payload
-		}
+		b.lease.book.used -= work
+		b.lease.bytes -= work
 		n.legacyWaitP = true
 		return false
 	}
@@ -272,7 +292,7 @@ func (n *node) prepareLegacy(b *legacyBatch) bool {
 		b.st.holdRead(b.owner.view)
 		b.readHeld = true
 	}
-	if b.material {
+	if b.material && !b.materialW {
 		b.materialCharge = payload
 		local, total := c.promiseLocal, c.promiseTotal
 		c.promiseLocal, c.promiseTotal = &b.promise, &n.legacyPromises
@@ -280,6 +300,10 @@ func (n *node) prepareLegacy(b *legacyBatch) bool {
 		c.promiseLocal, c.promiseTotal = local, total
 	} else {
 		b.payloadCharge = payload
+	}
+	if b.material {
+		b.materialIndexCharge = roundedFetch(int64(b.materialWords()) * 8)
+		b.materialIndex = make([]uint64, b.materialWords())
 	}
 	b.data = make([]byte, int(payload))
 	b.prepared = true
@@ -349,7 +373,17 @@ func (n *node) retryLegacyOwner(b *legacyBatch) {
 		b.owner.msgCharge = 0
 		b.owner.req = rangeReq{}
 		b.st = nil
-		b.lease.release()
+		// P-backed material output still owns its W-funded transport
+		// index until DATA/reset; W-backed material is copied at commit.
+		if !b.material || b.materialW {
+			b.materialIndex = nil
+			b.lease.release()
+		} else {
+			// The output's charged P metadata root now owns b/m/lease.
+			// Only the separately allocated transport index stays in W.
+			b.lease.book.used -= stageUnit
+			b.lease.bytes -= stageUnit
+		}
 	}
 }
 
@@ -365,18 +399,18 @@ func (n *node) finishLegacyPiece(b *legacyBatch, token fillToken, err error) err
 	n.legacyRunning = nil
 	n.releaseFetchSources(&b.fetchSources)
 	if err == nil {
-		if b.held || b.material {
-			prefix := int64(4)
-			if b.material {
-				prefix = materialPrefix
+		if b.material {
+			for i := b.cursor; i < b.resultCursor; i++ {
+				rec := b.materialRecord(i)
+				if !b.cancelled && b.st == n.st {
+					b.st.promoteCanonical(rec)
+				}
+				b.recordOffset += int64(len(rec))
 			}
+		} else if b.held {
 			for i := b.cursor; i < b.resultCursor; i++ {
 				size := int64(binary.LittleEndian.Uint32(b.data[b.recordOffset:b.recordOffset+4]) &^ legacyRecordReady)
-				if b.material && !b.cancelled && b.st == n.st {
-					start := b.recordOffset + prefix
-					b.st.promoteCanonical(b.data[start : start+size])
-				}
-				b.recordOffset += prefix + size
+				b.recordOffset += 4 + size
 			}
 		}
 		b.cursor, b.valuePos, b.crc = b.resultCursor, b.resultPos, b.resultCRC
@@ -553,6 +587,7 @@ func (n *node) dropLegacyBatch(b *legacyBatch) {
 		index = next
 	}
 	b.data = nil
+	b.materialIndex = nil
 	b.st = nil
 	b.owner = legacyOwner{}
 	b.lease.release()

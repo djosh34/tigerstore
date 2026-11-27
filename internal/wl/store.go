@@ -734,6 +734,9 @@ func kvSize(klen, vlen int, create, mod, ver, lease int64) int {
 }
 
 func appendKV(b []byte, key, value []byte, create, mod, ver, lease int64) []byte {
+	if b == nil {
+		b = make([]byte, 0, kvSize(len(key), len(value), create, mod, ver, lease))
+	}
 	b = appendBytesField(b, 1, key)
 	if create != 0 {
 		b = appendVarintField(b, 2, uint64(create))

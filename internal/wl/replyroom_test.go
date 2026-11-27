@@ -39,11 +39,26 @@ func serveRoomRange(t *testing.T, c *client, s *stream, msg []byte) {
 
 func roomRangeReply(t *testing.T, c *client) *pb.RangeResponse {
 	t.Helper()
-	if len(c.flow.held) == 0 || len(c.flow.held[0].data) < 5 {
+	if len(c.flow.held) == 0 {
+		t.Fatal("the range sent no whole reply")
+	}
+	data := c.flow.held[0].data
+	if stage := c.flow.held[0].stage; stage != nil {
+		if stage.written != stage.size || stage.read != 0 {
+			t.Fatal("the range queued an incomplete reply")
+		}
+		for at := 0; at < stage.size; {
+			page := stage.page(at)
+			take := min(stage.size-at, stagePayload-at%stagePayload)
+			data = append(data, page[stageHead+at%stagePayload:stageHead+at%stagePayload+take]...)
+			at += take
+		}
+	}
+	if len(data) < 5 {
 		t.Fatal("the range sent no whole reply")
 	}
 	var reply pb.RangeResponse
-	if err := proto.Unmarshal(c.flow.held[0].data[5:], &reply); err != nil {
+	if err := proto.Unmarshal(data[5:], &reply); err != nil {
 		t.Fatal(err)
 	}
 	return &reply

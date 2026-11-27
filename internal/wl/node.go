@@ -145,10 +145,13 @@ type node struct {
 	// the values fetches read (fetch.go).
 	awayReads []awayRead
 	fetching  map[int64]bool
-	// Production remains disabled because unchanged legacy sort scratch
-	// can exceed P+R on main-admitted input; bounding it prevents progress.
-	// See TestMainAdmittedSortScratchExceedsTheUnchangedClientCeiling.
-	// Do not enable by exempting that scratch under capture-only #904.
+	// Test-only refused-NOWAIT condition; production always uses the real
+	// planning and pre-dispatch attempts. It never forces resident I/O.
+	fetchNoWaitRefused bool
+	measureSort        func(candidateCapacity, parsedCapacity int)
+
+	// Production stays gated by the ordinary watch-control allocation
+	// regression. #908's unchanged sort arrays are excluded, not that output.
 	cursorFetch                                                          bool
 	fills                                                                []*replyFill
 	fillActive                                                           *replyFill
@@ -644,9 +647,11 @@ func (n *node) writeHdrTerm(w *msgW, rev int64, term uint64) {
 // beginReply writes the response headers of s and starts its one message
 // of size bytes.
 func (n *node) beginReply(c *client, s *stream, w *msgW, size int) {
-	b := c.frame(9 + len(respHeaders))
-	putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, s.id)
-	copy(b[9:], respHeaders)
+	if c.replyStage == nil {
+		b := c.frame(9 + len(respHeaders))
+		putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, s.id)
+		copy(b[9:], respHeaders)
+	}
 	w.begin(c, s, size)
 }
 
@@ -655,6 +660,7 @@ func (n *node) endReply(c *client, s *stream, w *msgW) {
 	n.stats.replies++
 	n.callEnded(s, 0)
 	w.end()
+	n.commitReplyStage(c, s)
 	n.endStreamOK(c, s)
 }
 

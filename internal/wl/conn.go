@@ -504,6 +504,7 @@ func (s *sock) writeFrame(typ, flags byte, p []byte) {
 // msgW writes one gRPC message of a known length as DATA frames of a
 // stream, straight into the records.
 type msgW struct {
+	stage     *replyStage
 	s         *sock
 	sid       uint32
 	left      int // message bytes still to write, the 5-byte prefix included
@@ -522,9 +523,12 @@ func (w *msgW) begin(c *client, s *stream, n int) {
 		g.gs.calls[s.kind].sent++
 		g.gs.sentBytes += int64(n)
 	}
-	if !c.take(s, 5+n) {
+	switch {
+	case c.replyStage != nil:
+		w.stage = c.replyStage
+	case !c.take(s, 5+n):
 		w.c, w.st, w.held = c, s, make([]byte, 0, 5+n)
-	} else if n >= growMsg {
+	case n >= growMsg:
 		c.growFor(5 + n)
 	}
 	var p [5]byte
@@ -553,6 +557,11 @@ func (w *msgW) newFrame() bool {
 }
 
 func (w *msgW) write(p []byte) {
+	if w.stage != nil {
+		w.stage.append(p)
+		w.left -= len(p)
+		return
+	}
 	if w.c != nil {
 		w.held = append(w.held, p...)
 		w.left -= len(p)

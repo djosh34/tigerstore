@@ -40,6 +40,9 @@ func (n *node) fillStreamFrame(q *replyFill, chunk int64) fillStreamFrame {
 		meta.taken++
 	}
 	count := q.taken + take + max(rest-take, 0)*b2i(more)
+	if q.req.countOnly {
+		count = q.count
+	}
 	body := recs
 	if last {
 		body += sizeBytesField(1, n.hdrSizeTerm(q.header, q.headerTerm)) + sizeVarintField(4, uint64(count))
@@ -102,6 +105,13 @@ func (n *node) nextFillStream(q *replyFill) bool {
 		s.more = f.more
 		s.count = int64(f.count)
 		s.frames++
+		if s.records == 0 && s.last {
+			if s.more {
+				q.varint(3, 1)
+			}
+			q.varint(4, uint64(s.count))
+			return false
+		}
 	}
 	return n.nextFillRange(q)
 }
