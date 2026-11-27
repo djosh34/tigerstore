@@ -175,6 +175,9 @@ func (s *Sim) callObserved(n *node, req proto.Message, timeout int64, transport 
 		return nil, errConnLost
 	}
 	if p == nil {
+		if transport.header.Load() {
+			return nil, errRetriedConnRefused
+		}
 		return nil, errConnRefused
 	}
 	ctx, cancel := context.WithCancel(p.ctx)
@@ -289,10 +292,24 @@ type unsentDialError struct{ error }
 func (e *unsentDialError) Unwrap() error              { return e.error }
 func (e *unsentDialError) GRPCStatus() *status.Status { return status.Convert(e.error) }
 
+// Equal proof-bearing statuses must be equal both ways for recordLog's
+// error interning, without equating a bare status to a transport proof.
+func (e *unsentDialError) Is(target error) bool {
+	other, ok := target.(*unsentDialError)
+	return ok && other != nil && errors.Is(e.error, other.error)
+}
+
+// A bare refusal after a received attempt retains its text and unwrap
+// chain, but not a first-attempt refusal's definite classification. Keep
+// one marker so recordLog interns these refusals too.
+var errRetriedConnRefused = fmt.Errorf("%w", errConnRefused)
+
 // ambiguous reports whether a failed call may still have taken effect.
 func ambiguous(err error) bool {
 	var unsent *unsentDialError
 	switch {
+	case errors.Is(err, errRetriedConnRefused):
+		return true
 	case errors.As(err, &unsent):
 		return false
 	case errors.Is(err, errConnRefused),

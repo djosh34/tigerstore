@@ -15,6 +15,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
@@ -244,14 +245,36 @@ func TestDialStatusAfterStream(t *testing.T) {
 					return status.Error(codes.Unavailable, refusedDialMessage)
 				}})
 				go func() { _ = srv.Serve(lis) }()
-				conn := dialTestConn(t, func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) })
+				var dials atomic.Int32
+				retries := new(dialRetryStats)
+				conn := dialTestConn(t, func(ctx context.Context, _ string) (net.Conn, error) {
+					if dials.Add(1) > 1 {
+						return nil, errConnRefused
+					}
+					return lis.DialContext(ctx)
+				}, grpc.WithStatsHandler(retries))
+				retries.beforeRetry = func(ctx context.Context) { waitForFailedDial(ctx, conn) }
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
 				ctx, transport := observeCallTransport(ctx)
-				_, err := pb.NewKVClient(conn).Put(ctx, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")})
+				req := &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}
+				_, err := pb.NewKVClient(conn).Put(ctx, req)
+				if disconnect {
+					if status.Code(err) != codes.Unavailable || !applied.Load() {
+						t.Fatalf("the received write's connection did not fail: %v", err)
+					}
+					// A processed Put is not transparently retried. Make an
+					// explicit second attempt in the same logical context,
+					// after a real refused redial, so EOF alone cannot pass.
+					waitForFailedDial(ctx, conn)
+					_, err = pb.NewKVClient(conn).Put(ctx, req)
+				}
 				err = transport.finish(err)
-				if !applied.Load() || !transport.header.Load() || status.Code(err) != codes.Unavailable || !ambiguous(err) {
+				if !applied.Load() || !transport.header.Load() || status.Code(err) != codes.Unavailable || status.Convert(err).Message() != refusedDialMessage || !ambiguous(err) {
 					t.Fatalf("applied %v, header %v, error %v, ambiguous %v", applied.Load(), transport.header.Load(), err, ambiguous(err))
+				}
+				if disconnect && (retries.attempts.Load() != 2 || retries.transparent.Load() != 0 || dials.Load() < 2) {
+					t.Fatalf("call attempts %d, transparent retries %d, dials %d", retries.attempts.Load(), retries.transparent.Load(), dials.Load())
 				}
 			})
 		})
@@ -307,14 +330,33 @@ func TestDialFailureAfterClientV3Retry(t *testing.T) {
 
 type dialRetryStats struct {
 	retryPause
+	attempts    atomic.Int32
 	transparent atomic.Int32
+	beforeRetry func(context.Context)
 }
 
 func (s *dialRetryStats) HandleRPC(ctx context.Context, event stats.RPCStats) {
-	if b, ok := event.(*stats.Begin); ok && b.IsTransparentRetryAttempt {
-		s.transparent.Add(1)
+	if b, ok := event.(*stats.Begin); ok {
+		if b.IsTransparentRetryAttempt {
+			s.transparent.Add(1)
+		}
+		if s.attempts.Add(1) > 1 && s.beforeRetry != nil {
+			s.beforeRetry(ctx)
+		}
 	}
 	s.retryPause.HandleRPC(ctx, event)
+}
+
+// Synchronize the retry with transport teardown and an actual refused
+// redial, rather than accepting EOF or a stale closing transport. This
+// runs in Begin, before the retry picks its transport.
+func waitForFailedDial(ctx context.Context, cc *grpc.ClientConn) {
+	for state := cc.GetState(); state != connectivity.TransientFailure; state = cc.GetState() {
+		cc.Connect()
+		if !cc.WaitForStateChange(ctx, state) {
+			return
+		}
+	}
 }
 
 // Actual HTTP/2 refusals and GOAWAY exercise gRPC's transparent retry.
@@ -357,12 +399,13 @@ func TestDialFailureAfterUnprocessedStream(t *testing.T) {
 					}()
 					return client, nil
 				}, grpc.WithStatsHandler(retries))
+				retries.beforeRetry = func(ctx context.Context) { waitForFailedDial(ctx, conn) }
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
 				ctx, transport := observeCallTransport(ctx)
 				_, err := pb.NewKVClient(conn).DeleteRange(ctx, &pb.DeleteRangeRequest{Key: []byte("k")})
 				err = transport.finish(err)
-				if retries.transparent.Load() == 0 || status.Code(err) != codes.Unavailable || !transport.header.Load() || !ambiguous(err) {
+				if retries.transparent.Load() == 0 || dials.Load() < 2 || status.Code(err) != codes.Unavailable || status.Convert(err).Message() != refusedDialMessage || !transport.header.Load() || !ambiguous(err) {
 					t.Fatalf("retries %d, dials %d, header %v, error %v, ambiguous %v", retries.transparent.Load(), dials.Load(), transport.header.Load(), err, ambiguous(err))
 				}
 			})
@@ -375,8 +418,12 @@ func TestDialFailureAfterUnprocessedStream(t *testing.T) {
 // gRPC's internal attempts.
 func TestDialSimulatorCallUsesEvidence(t *testing.T) {
 	simrun.Bubble(t, func(t *testing.T) {
-		conn := dialTestConn(t, func(context.Context, string) (net.Conn, error) { return nil, errConnRefused })
 		s := &Sim{t0: time.Now(), rng: rand.New(rand.NewPCG(1, 2))}
+		// The simulator network itself refuses this absent listener;
+		// do not substitute a dialer that just returns the sentinel.
+		conn := dialTestConn(t, func(ctx context.Context, addr string) (net.Conn, error) {
+			return s.net.dial(ctx, s, nil, addr)
+		})
 		n := &node{proc: &proc{ctx: t.Context(), wl: &wlProc{conn: conn}}}
 		req := &pb.DeleteRangeRequest{Key: []byte("k")}
 		_, err := s.call(n, req, Second)
@@ -389,6 +436,64 @@ func TestDialSimulatorCallUsesEvidence(t *testing.T) {
 		_, err = s.callObserved(n, req, Second, transport)
 		if status.Convert(err).Message() != refusedDialMessage || !ambiguous(err) {
 			t.Fatalf("the retried call: %v, ambiguous %v", err, ambiguous(err))
+		}
+	})
+}
+
+// A received write can be followed by a bare simulator refusal when
+// the node disappears before the retry snapshots n.proc. The shared
+// evidence must survive that early return too (#900 review).
+func TestDialDirectRetryAfterReceivedWrite(t *testing.T) {
+	simrun.Bubble(t, func(t *testing.T) {
+		lis := bufconn.Listen(1 << 16)
+		srv := grpc.NewServer()
+		defer srv.Stop()
+		var received atomic.Int32
+		pb.RegisterKVServer(srv, dialTestKV{put: func(context.Context) error {
+			received.Add(1)
+			return rpctypes.ErrGRPCLeaderChanged
+		}})
+		go func() { _ = srv.Serve(lis) }()
+		conn := dialTestConn(t, func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) })
+		s := &Sim{t0: time.Now(), rng: rand.New(rand.NewPCG(1, 2))}
+		n := &node{proc: &proc{ctx: t.Context(), wl: &wlProc{conn: conn}}}
+		transport := new(callTransport)
+		req := &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}
+		_, err := s.callObserved(n, req, Second, transport)
+		if !errors.Is(err, rpctypes.ErrGRPCLeaderChanged) || received.Load() != 1 || !transport.header.Load() {
+			t.Fatalf("received %d, headers %v, first error %v", received.Load(), transport.header.Load(), err)
+		}
+		s.mu.Lock()
+		n.proc = nil
+		s.mu.Unlock()
+		l, err := newRecordLog()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 8 {
+			_, err := s.callObserved(n, req, Second, transport)
+			if !errors.Is(err, errConnRefused) || err.Error() != errConnRefused.Error() || !ambiguous(err) || received.Load() != 1 {
+				t.Fatalf("received %d, retry error %v, ambiguous %v", received.Load(), err, ambiguous(err))
+			}
+			if err := l.add(&Record{req: req, Err: err, Ambiguous: ambiguous(err)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(l.errs) != 1 {
+			t.Fatalf("retried refusals occupy %d entries, want 1", len(l.errs))
+		}
+		recs, err := l.records()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range recs {
+			if !r.Ambiguous || !ambiguous(r.Err) {
+				t.Fatalf("recording lost earlier receipt evidence: %+v", r)
+			}
+		}
+		_, err = s.call(n, req, Second)
+		if !errors.Is(err, errConnRefused) || ambiguous(err) {
+			t.Fatalf("a first-attempt raw refusal: %v, ambiguous %v", err, ambiguous(err))
 		}
 	})
 }
