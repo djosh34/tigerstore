@@ -1,0 +1,31 @@
+package main
+
+import (
+ "fmt"
+ "os"
+ "path/filepath"
+ "runtime/pprof"
+ "time"
+)
+
+// Diagnostic scratch overlay only: closed 20-second CPU chunks survive a
+// fatal SIGQUIT. The real rolling test and all its deadlines are untouched.
+func diagnosticCPU() func() {
+ dir := os.Getenv("ROLLING_PROFILE_DIR")
+ if dir == "" { return func() {} }
+ stop, done := make(chan struct{}), make(chan struct{})
+ go func() {
+  defer close(done)
+  for i:=0;;i++ {
+   path:=filepath.Join(dir,fmt.Sprintf("%s-pid%d-%03d.pprof",filepath.Base(os.Args[0]),os.Getpid(),i))
+   f,err:=os.Create(path); if err!=nil { panic(err) }
+   if err=pprof.StartCPUProfile(f);err!=nil { panic(err) }
+   ending:=false
+   select { case <-stop: ending=true; case <-time.After(20*time.Second): }
+   pprof.StopCPUProfile()
+   if err=f.Close();err!=nil { panic(err) }
+   if ending { return }
+  }
+ }()
+ return func(){close(stop); <-done}
+}

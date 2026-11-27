@@ -2,6 +2,11 @@ name: rolling-upgrade
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic_174:
+        description: Matched main and PR race diagnosis, isolated 174 and original 148/174 sequence, with CPU chunks
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
@@ -15,7 +20,42 @@ env:
   ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
 
 jobs:
+  diagnostic174:
+    if: inputs.diagnostic_174
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: main
+            ref: 55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4
+          - label: candidate
+            ref: 2f61154a8a95a8ce56b71e8bbd02775ce4c1ea2f
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Record runner
+        run: |
+          { uname -a; lscpu; free -b; go version; } > "$RUNNER_TEMP/rolling-runner.txt"
+      - name: Race reproduction and CPU diagnosis, never a gate waiver
+        env:
+          NODE_REF: ${{ matrix.ref }}
+        run: python3 -B scripts/rolling174-diagnostic.py --ref "$NODE_REF" --out "$RUNNER_TEMP/rolling-diagnostic"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: rolling174-diagnostic-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/rolling-diagnostic
+            ${{ runner.temp }}/rolling-runner.txt
+          retention-days: 30
   rolling:
+    if: ${{ !inputs.diagnostic_174 }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     strategy:
