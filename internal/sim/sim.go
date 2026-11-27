@@ -1043,6 +1043,9 @@ func Run(cfg Config) (*Result, error) { return runInspect(cfg, nil) }
 
 // runInspect runs cfg, then calls inspect, if set, while the nodes still
 // hold still for the checks.
+// Scratch-only post-load diagnostics, never to merge.
+var dial876SimulationHook func(*Sim)
+
 func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	var f *Sim
 	if cfg.from != nil {
@@ -1108,6 +1111,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		d.FailedSyncs += c.FailedSyncs
 		d.BadReads += c.BadReads
 		d.Misreads += c.Misreads
+	}
+	if dial876SimulationHook != nil {
+		dial876SimulationHook(s)
 	}
 	var history []*Record
 	var herr error

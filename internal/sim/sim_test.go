@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -69,6 +70,7 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	// An hour more than the run's length, which a run of hours needs.
 	simrun.BubbleFor(t, time.Duration(cfg.length())+time.Hour, func(*testing.T) { res, err = runInspect(cfg, inspect) })
 	if simrun.InGosim && res != nil {
+		dial876Line("runInspect complete; hashes begin")
 		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, runHashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
 		// The driver's double runs keep both runs' files, for when they
@@ -795,7 +797,9 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 	if res.long {
 		runHashes(res)
 	}
+	dial876Line("checkable conversion begins")
 	h, err := res.checkable(res.long)
+	dial876Line("checkable conversion ends")
 	if err != nil {
 		return err
 	}
@@ -810,6 +814,7 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
+		dial876Line(fmt.Sprintf("witness mode %v begins; ops %d", mode, len(h.Ops)))
 		var steps int64
 		var cpuFrom time.Duration
 		var wallFrom int64
@@ -820,8 +825,13 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 			wallFrom = wallclock.Now()
 		}
 		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
+		dial876Line(fmt.Sprintf("witness mode %v ends; steps %d; failed %v", mode, steps, err != nil))
 		if measure {
-			simrun.Artifact("sim-out/dial-evidence/gaps.json", check.Dial876Measurements())
+			gapEvidence := check.Dial876Measurements()
+			simrun.Artifact("sim-out/dial-evidence/gaps.json", gapEvidence)
+			var compact bytes.Buffer
+			_ = json.Compact(&compact, gapEvidence)
+			dial876Line("gaps " + compact.String())
 			// Timing is diagnostic: a failed counter must not change a
 			// check's verdict. Zero means the counter was unavailable.
 			var elapsed time.Duration
@@ -839,6 +849,9 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 				CPU, Wall, Verdict string
 			}{steps, budget, elapsed.String(), wall.String(), verdict}, "", "  ")
 			simrun.Artifact("sim-out/dial-evidence/witness.json", b)
+			compact.Reset()
+			_ = json.Compact(&compact, b)
+			dial876Line("witness " + compact.String())
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
