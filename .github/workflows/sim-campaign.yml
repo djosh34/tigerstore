@@ -33,6 +33,10 @@ on:
         description: The first seed
         required: true
         default: "1"
+      whole_run_memory:
+        description: Dedicated 12-GiB command-tree scope; record kernel memory.peak and stop above 11,264 MiB
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -91,7 +95,16 @@ jobs:
           PROCESSES: ${{ toJSON(matrix.processes) }}
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
-        run: bash scripts/sim-campaign.sh
+          WHOLE_RUN_MEMORY: ${{ inputs.whole_run_memory }}
+        run: |
+          if [ "$WHOLE_RUN_MEMORY" = true ]; then
+            sudo systemd-run --scope --quiet -p MemoryAccounting=yes -p MemoryMax=12G -p MemorySwapMax=0 \
+              env PATH="$PATH" HOME="$HOME" GITHUB_WORKSPACE="$GITHUB_WORKSPACE" RUNNER_TEMP="$RUNNER_TEMP" \
+              TEST="$TEST" PROCESSES="$PROCESSES" SHARD="$SHARD" SIM_OUT="$SIM_OUT" \
+              python3 scripts/run-with-memory-peak.py --out "$RUNNER_TEMP/whole-run-memory" --threshold-mib 11264 -- bash scripts/sim-campaign.sh
+          else
+            bash scripts/sim-campaign.sh
+          fi
       # Even successful seeds retain hashes for replay. A dead runner may
       # upload nothing: the summary must still account for its seeds.
       - if: always()
@@ -101,6 +114,7 @@ jobs:
           path: |
             ${{ runner.temp }}/seeds-*.log
             ${{ runner.temp }}/memory.log
+            ${{ runner.temp }}/whole-run-memory/
       - if: always()
         uses: actions/upload-artifact@v6
         with:
