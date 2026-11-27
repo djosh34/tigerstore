@@ -226,19 +226,39 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.replyError(c, s.id, codeOutOfRange, msgFuture)
 		return
 	}
-	if n.tryFillRange(c, s, r, msg) {
-		return
+	var kvs [][]byte
+	var count int64
+	var more bool
+	var err error
+	// A current resident point lookup needs exactly main's selection, not
+	// a cursor metadata walk followed by the same lookup again. There is
+	// no source read, retained fetch owner or additional index here. The
+	// ordinary replyRoom below still funds any logical output loan in P.
+	residentPoint := false
+	if n.cursorFetch && n.legacyRetry == nil && st.legacyView == nil &&
+		s.kind == kRange && len(r.end) == 0 && !r.sortsOther() &&
+		n.stageCredits.used == 0 && n.stagePromises == 0 && n.legacyPromises == 0 {
+		id, found := st.find(r.key)
+		if !found || st.keys[id].rec != 0 && (r.rev <= 0 || st.keys[id].mod <= r.rev) {
+			kvs, count, more, err = n.keyRangeKVs(r, n.kvs[:0], id, found)
+			residentPoint = true
+		}
 	}
-	if n.cursorFetch {
-		n.beginLegacyRange(c, s, r, msg)
-		defer func() { n.legacyReading = legacyOwner{}; n.dropCollectingLegacy() }()
+	if !residentPoint {
+		if n.tryFillRange(c, s, r, msg) {
+			return
+		}
+		if n.cursorFetch {
+			n.beginLegacyRange(c, s, r, msg)
+			defer func() { n.legacyReading = legacyOwner{}; n.dropCollectingLegacy() }()
+		}
+		if n.legacyRetry != nil {
+			defer func() { clear(n.kvs); n.kvs = nil }()
+		}
+		st.noWait = true
+		kvs, count, more, err = n.rangeKVs(r, n.kvs[:0], n.oneShot())
+		st.noWait = false
 	}
-	if n.legacyRetry != nil {
-		defer func() { clear(n.kvs); n.kvs = nil }()
-	}
-	st.noWait = true
-	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0], n.oneShot())
-	st.noWait = false
 	if errors.Is(err, errBig) {
 		clear(kvs)
 		n.kvs = kvs[:0]
@@ -465,26 +485,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 	noValue := r.keysOnly && r.sortTarget != sortByValue
 	if len(r.end) == 0 {
 		id, ok := st.find(r.key)
-		if !ok {
-			return kvs, 0, false, nil
-		}
-		if r.countOnly {
-			return kvs, b2i(st.liveAt(id, rev)), false, nil
-		}
-		if noValue {
-			if rec := st.keyAt(id, rev); rec != nil {
-				return n.shapeKVs(append(kvs, rec), k0, r), 1, false, nil
-			}
-			return kvs, 0, false, nil
-		}
-		rec, err := st.at(id, rev)
-		if err != nil || rec == nil {
-			return kvs, 0, false, err
-		}
-		if !r.countOnly {
-			kvs = n.shapeKVs(append(kvs, rec), k0, r)
-		}
-		return kvs, 1, false, nil
+		return n.keyRangeKVs(r, kvs, id, ok)
 	}
 	end := r.end
 	if len(end) == 1 && end[0] == 0 {
@@ -560,6 +561,33 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 		kvs, more = kvs[:k0+int(r.limit)], true
 	}
 	return kvs, count, more, nil
+}
+
+// keyRangeKVs is the unchanged single-key selection shared with the
+// resident point fast path. In particular count, revision filters, projection
+// and sorting still follow shapeKVs; no alternate temporary representation.
+func (n *node) keyRangeKVs(r *rangeReq, kvs [][]byte, id uint32, found bool) ([][]byte, int64, bool, error) {
+	if !found {
+		return kvs, 0, false, nil
+	}
+	st, k0, rev := n.st, len(kvs), max(r.rev, 0)
+	if r.countOnly {
+		return kvs, b2i(st.liveAt(id, rev)), false, nil
+	}
+	if r.keysOnly && r.sortTarget != sortByValue {
+		if rec := st.keyAt(id, rev); rec != nil {
+			return n.shapeKVs(append(kvs, rec), k0, r), 1, false, nil
+		}
+		return kvs, 0, false, nil
+	}
+	rec, err := st.at(id, rev)
+	if err != nil || rec == nil {
+		return kvs, 0, false, err
+	}
+	if !r.countOnly {
+		kvs = n.shapeKVs(append(kvs, rec), k0, r)
+	}
+	return kvs, 1, false, nil
 }
 
 // readLimit is how many of its keys, in key order, range r reads, as

@@ -75,6 +75,28 @@ An active-routing broad race trial exposed deferred-handshake starvation, plus t
 
 The first active-routing Actions run (`46022298611`, head `925582f3`) failed simulator/replay cases. `TestSeeds/1` reproduced locally without races: a completed descriptor for one version of a key seeded a newly selected, zero-byte version of the same key when a source/descriptor boundary ended the piece. ACK matching now requires matching byte progress, length and checksum, not merely key ID. `TestWatchFillChecksumDoesNotCrossVersionAtDescriptorBoundary` decodes all 2,050 same-key versions, fails before the fix and passes after it. The original simulator `TestSeeds/1` passes after the fix; no simulator assertion or expected failure is changed.
 
+## Resident point-range CPU regression
+
+The manager classified the resident `range-1k` 0.938 pair as a regression.
+Matched leader CPU profiles (same 3-GiB / RTT0 / 6×256 settings) at main
+55b32bb9 and runtime 2f61154a are retained in Actions run
+https://github.com/djosh34/tigerstore/actions/runs/46054606792 . These are
+**diagnostics, not gate pairs**. The candidate spends 1.56 s / 15.66% of its
+sampled leader CPU under `tryFillRange`, then calls the legacy range selector;
+the preflight repeats the single-key lookup and metadata sizing before a
+resident reply that never fetches. It also enters a legacy fetch context.
+
+Resident point ranges now reuse main's unchanged single-key selector directly
+when the selected record is already live in the slab (or the key is absent),
+with no active fetch/materialization/protected-P context. Cold or genuinely
+historical values still use the cursor path. There is no new persistent cache,
+index, representation, or budget exemption. `replyRoom` still funds any logical
+output loan, and all whole-or-refuse limits remain unchanged. The regression
+is red with the shortcut disabled and green with it enabled; byte-for-byte
+main parity covers filters/count/projection/revisions/missing keys, with a P
+loan test and a cold historical-version test. Fresh unprofiled five-pair
+measurement is still required; the two original pairs stay recorded.
+
 ## Measurement state
 
 Local original-workload diagnostics passed: both legacy control and cursor tests retain every value, retry, deadline and budget assertion. The cursor cold-worker test explicitly uses the supported refused-NOWAIT condition, because kernel readahead can otherwise warm later pieces after one fadvise. Its race 80-range phase was 2.267 s. This is not an equal-cache paired comparison or a qualifying campaign.
