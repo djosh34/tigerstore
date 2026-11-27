@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 )
 
 // scanKeys returns the live keys in [start, end) as the tree orders them.
@@ -108,15 +107,49 @@ func TestTreeKeepsOrderAcrossChunks(t *testing.T) {
 	}
 }
 
+// boundTreeWork checks each mutation, not elapsed time: a slow runner or
+// -race must not change the result. At 200,000 keys, a split may copy and
+// shift a few chunks' worth of entries, move a few hundred chunk headers,
+// and binary-search the index. Four chunks leave room for that, but not
+// for shifting a directory-sized array on every scattered insert/delete.
+func boundTreeWork(t *testing.T, tr *tree) func() {
+	t.Helper()
+	work, total := 0, 0
+	tr.testWork = func(n int) {
+		work += n
+		total += n
+	}
+	t.Cleanup(func() {
+		tr.testWork = nil
+		if total == 0 {
+			t.Error("no tree work measured")
+		}
+	})
+	return func() {
+		t.Helper()
+		if work > 4*chunkMax {
+			t.Fatalf("one tree mutation did %d units of work, want at most %d", work, 4*chunkMax)
+		}
+		work = 0
+	}
+}
+
 func TestInsertsIntoALargeDirectoryStayCheap(t *testing.T) {
 	st, l := newTestStore(t)
 	const n = 200000
-	start := time.Now()
+	checkWork := boundTreeWork(t, &st.tree)
 	for i := range n {
 		putValue(t, st, l, fmt.Sprintf("/big/%07d", (i*104729)%n), "")
+		checkWork()
 	}
-	if d := time.Since(start); d > 5*time.Second {
-		t.Fatalf("%d inserts into one directory took %v", n, d)
+	got := scanKeys(st, "/big/", "/big0")
+	if len(got) != n {
+		t.Fatalf("%d keys after inserts, want %d", len(got), n)
+	}
+	for i, key := range got {
+		if want := fmt.Sprintf("/big/%07d", i); key != want {
+			t.Fatalf("key %d is %q, want %q", i, key, want)
+		}
 	}
 }
 
@@ -126,7 +159,6 @@ func TestDeletesFromALargeDirectoryStayCheap(t *testing.T) {
 	for i := range n {
 		putValue(t, st, l, fmt.Sprintf("/big/%07d", i), "")
 	}
-	start := time.Now()
 	for i := range n / 4 {
 		id, _ := st.find(fmt.Appendf(nil, "/big/%07d", 4*i))
 		st.rev++
@@ -135,11 +167,19 @@ func TestDeletesFromALargeDirectoryStayCheap(t *testing.T) {
 		}
 	}
 	st.endApply()
-	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("%d deletes from a directory of %d took %v", n/4, n, d)
-	}
 	if got := len(scanKeys(st, "/big/", "/big0")); got != n-n/4 {
 		t.Fatalf("%d keys left, want %d", got, n-n/4)
+	}
+	// del leaves tombstones in the tree for historical reads. Measure
+	// the actual removals during compaction, one key's trim at a time.
+	checkWork := boundTreeWork(t, &st.tree)
+	st.compact(st.rev)
+	for st.trimming {
+		st.trimSteps(1)
+		checkWork()
+	}
+	if got := len(scanIDs(st, "/big/", "/big0")); got != n-n/4 {
+		t.Fatalf("%d tree keys after compaction, want %d", got, n-n/4)
 	}
 }
 
