@@ -2,6 +2,7 @@ package sim
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -83,11 +84,89 @@ func longSeedBudget(wallLimit time.Duration) int64 {
 // verdict, so Actions records the full check's count (or its limit).
 func longCheckers(t *testing.T, res *Result, budget int64) {
 	t.Helper()
+	// Scratch-only: count after the simulation, without decoding another
+	// multi-million-operation history or drawing from the run's RNG.
+	measureDialClassification(t, res)
 	if err := independentWithSteps(res, func(steps int64, cpu time.Duration) {
 		t.Logf("revision witness used %d weighted steps (budget %d, native CPU %s)", steps, budget, cpu)
 	}, budget); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Scratch-only #876 evidence, never to merge. Compare classifications on
+// these exact recorded calls, not against a different simulation schedule.
+func measureDialClassification(t *testing.T, res *Result) {
+	t.Helper()
+	type counts struct {
+		Total, Successful, OldAmbiguous, NewAmbiguous int64
+		BecameDefinite, BecameAmbiguous               int64
+		StayedAmbiguous, StayedDefinite               int64
+	}
+	var out struct {
+		Base          string
+		FinalRevision int64
+		Stats         Stats
+		Total         counts
+		Direct        counts
+		ClientV3      counts
+	}
+	out.Base, out.FinalRevision, out.Stats = "af5c06a9", res.FinalRev, res.Stats
+	simrun.Aside(func() {
+		old := make([]bool, len(res.records.errs))
+		for i, err := range res.records.errs {
+			for {
+				switch e := err.(type) {
+				case *unsentDialError:
+					err = e.error
+				case *ambiguousCallError:
+					err = e.error
+				default:
+					old[i] = ambiguous(err)
+					goto classified
+				}
+			}
+		classified:
+		}
+		for _, r := range res.records.recs {
+			path := &out.Direct
+			if r.isV3 {
+				path = &out.ClientV3
+			}
+			for _, c := range []*counts{&out.Total, path} {
+				c.Total++
+				if r.err < 0 {
+					c.Successful++
+					continue
+				}
+				was := old[r.err]
+				if was {
+					c.OldAmbiguous++
+				}
+				if r.ambiguous {
+					c.NewAmbiguous++
+				}
+				switch {
+				case was && !r.ambiguous:
+					c.BecameDefinite++
+				case !was && r.ambiguous:
+					c.BecameAmbiguous++
+				case was && r.ambiguous:
+					c.StayedAmbiguous++
+				default:
+					c.StayedDefinite++
+				}
+			}
+		}
+	})
+	var b []byte
+	var err error
+	simrun.Aside(func() { b, err = json.MarshalIndent(out, "", "  ") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	simrun.Artifact("sim-out/dial-evidence/classification.json", b)
+	t.Logf("dial classification: %+v; direct %+v; clientv3 %+v", out.Total, out.Direct, out.ClientV3)
 }
 
 // TestHostErrorComesFirst checks that a run whose pages on the runner's

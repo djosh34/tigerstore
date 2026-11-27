@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -804,8 +805,18 @@ func independentWithSteps(res *Result, report func(int64, time.Duration), budget
 		if measure {
 			cpuFrom, cpuErr = simrun.CPUTime()
 		}
+		var profile strings.Builder
+		var profileErr error
+		if measure {
+			profileErr = pprof.StartCPUProfile(&profile)
+		}
 		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
 		if measure {
+			if profileErr == nil {
+				pprof.StopCPUProfile()
+				simrun.Artifact("sim-out/dial-evidence/revision.pprof", []byte(profile.String()))
+			}
+			simrun.Artifact("sim-out/dial-evidence/gaps.json", check.Dial876Measurements())
 			// Timing is diagnostic: a failed counter must not change a
 			// check's verdict. Zero means the counter was unavailable.
 			var elapsed time.Duration
@@ -813,6 +824,15 @@ func independentWithSteps(res *Result, report func(int64, time.Duration), budget
 				elapsed = max(0, cpuTo-cpuFrom)
 			}
 			report(steps, elapsed)
+			verdict := "pass"
+			if err != nil {
+				verdict = err.Error()
+			}
+			b, _ := json.MarshalIndent(struct {
+				Steps, Budget int64
+				CPU, Verdict  string
+			}{steps, budget, elapsed.String(), verdict}, "", "  ")
+			simrun.Artifact("sim-out/dial-evidence/witness.json", b)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))
