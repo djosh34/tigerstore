@@ -1,0 +1,25 @@
+package wl
+
+// Measurement-only scrape. No branch/counter is added to a cache lookup or RPC.
+// Targets are two immutable historical records, never the current slab record.
+func fetchMeasureCacheNode(n *node) []float64 {
+	route := 0.0
+	FETCH_ROUTE
+	io := fetchMeasureIOSnapshot()
+	out := []float64{float64(n.id), float64(n.st.budget), route, float64(n.stats.fetches), float64(n.stats.fetched), float64(n.st.loads), float64(len(n.st.fetched)), float64(io.Reads), float64(io.Bytes), float64(io.NoWait), float64(io.NoWaitBytes), float64(io.Refused), float64(n.st.liveBytes), float64(n.st.slab.used)}
+	for _, key := range []string{"/reuse/a", "/reuse/b"} {
+		values := [8]float64{}
+		if id, ok := n.st.find([]byte(key)); ok && n.st.keys[id].hist != 0 {
+			h := n.st.hist[n.st.keys[id].hist]
+			values[0], values[1] = float64(uint64(h.voff)>>32), float64(uint64(h.voff)&0xffffffff)
+			values[2], values[3], values[4] = float64(h.mod), float64(h.vlen), float64(h.vsum)
+			if f, ok := n.st.fetched[h.voff]; ok && f.err == nil && len(f.val) == int(h.vlen) {
+				values[5] = 1
+				values[6] = float64(f.at.Unix())
+				values[7] = float64(f.at.Nanosecond())
+			}
+		}
+		out = append(out, values[:]...)
+	}
+	return out
+}

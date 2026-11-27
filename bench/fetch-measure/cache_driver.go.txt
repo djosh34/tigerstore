@@ -1,0 +1,429 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"google.golang.org/protobuf/proto"
+	"math"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+type sample map[string]float64
+type outcome struct {
+	ID      int     `json:"request_id"`
+	MS      float64 `json:"latency_ms"`
+	Retries int     `json:"busy_retries"`
+	Error   string  `json:"error,omitempty"`
+}
+type probe struct {
+	Case                                               string `json:"case"`
+	Size, Clients, Delay                               int
+	Revision, HeaderRevision                           int64
+	ClientCores                                        float64
+	WatchValidated                                     bool
+	OriginBefore, OriginAfter, ReuseBefore, ReuseAfter sample
+	OriginMS                                           float64
+	OriginRetries                                      int
+	Results                                            []outcome
+	Throughput                                         float64
+	WallMS                                             float64
+	Latency                                            map[string]float64
+	Refusals                                           map[string]int
+	ElapsedCacheMS                                     float64
+	FinishedUnixNano                                   int64
+	DeviceReadBefore, DeviceReadAfter                  map[string]uint64
+	Error                                              string `json:"error,omitempty"`
+}
+
+func snapshot(url string) (sample, error) {
+	c := http.Client{Timeout: 5 * time.Second}
+	r, e := c.Get(url + "/metrics")
+	if e != nil {
+		return nil, e
+	}
+	defer r.Body.Close()
+	var b strings.Builder
+	buf := make([]byte, 8192)
+	for {
+		n, e := r.Body.Read(buf)
+		b.Write(buf[:n])
+		if e != nil {
+			break
+		}
+	}
+	s := sample{}
+	for _, l := range strings.Split(b.String(), "\n") {
+		f := strings.Fields(l)
+		if len(f) == 2 && strings.HasPrefix(f[0], "tigerstore_fetch_probe_") {
+			v, e := strconv.ParseFloat(f[1], 64)
+			if e != nil {
+				return nil, e
+			}
+			s[strings.TrimPrefix(f[0], "tigerstore_fetch_probe_")] = v
+		}
+	}
+	if len(s) != 30 {
+		return nil, fmt.Errorf("probe has %d fields, want30", len(s))
+	}
+	return s, nil
+}
+func evict(dir string) error {
+	return filepath.WalkDir(dir, func(p string, d os.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		if d.IsDir() || !strings.HasSuffix(p, ".seg") {
+			return nil
+		}
+		f, e := os.Open(p)
+		if e != nil {
+			return e
+		}
+		defer f.Close()
+		if e = unix.Fsync(int(f.Fd())); e != nil {
+			return e
+		}
+		return unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_DONTNEED)
+	})
+}
+func call(f func(context.Context) error) (float64, int, error) {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	retries := 0
+	for {
+		e := f(ctx)
+		if status.Code(e) != codes.ResourceExhausted {
+			return float64(time.Since(start)) / float64(time.Millisecond), retries, e
+		}
+		retries++
+		select {
+		case <-ctx.Done():
+			return float64(time.Since(start)) / float64(time.Millisecond), retries, ctx.Err()
+		case <-time.After(2 * time.Millisecond):
+		}
+	}
+}
+func deviceReads(pids string) (map[string]uint64, error) {
+	out := map[string]uint64{}
+	for _, pid := range strings.Split(pids, ",") {
+		b, e := os.ReadFile("/proc/" + pid + "/io")
+		if e != nil {
+			return nil, e
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			f := strings.Fields(line)
+			if len(f) == 2 && f[0] == "read_bytes:" {
+				v, e := strconv.ParseUint(f[1], 10, 64)
+				if e != nil {
+					return nil, e
+				}
+				out[pid] = v
+			}
+		}
+	}
+	return out, nil
+}
+
+func main() {
+	pids := flag.String("pids", "", "member PIDs for physical read bytes")
+	endpoint := flag.String("endpoint", "http://127.0.0.1:20100", "")
+	all := flag.String("endpoints", "", "")
+	dir := flag.String("data", "", "")
+	out := flag.String("out", "", "")
+	cohort := flag.String("cohort", "get-get", "")
+	preload := flag.Int("preload-keys", 16384, "")
+	mode := flag.String("cache", "past-ram-560m", "")
+	flag.Parse()
+	result := map[string]any{"cache": *mode, "cohort": *cohort, "preload_keys": *preload, "preload_value_bytes": 65536, "endpoint": *endpoint, "all_endpoints": *all, "probes": []probe{}}
+	save := func() {
+		b, e := json.MarshalIndent(result, "", "  ")
+		if e != nil {
+			panic(e)
+		}
+		if e = os.WriteFile(*out, append(b, '\n'), 0600); e != nil {
+			panic(e)
+		}
+	}
+	fail := func(e error) { result["error"] = e.Error(); save(); fmt.Fprintln(os.Stderr, e); os.Exit(1) }
+	cfg := clientv3.Config{Endpoints: []string{*endpoint}, DialTimeout: 5 * time.Second, MaxCallRecvMsgSize: 16 << 20, MaxCallSendMsgSize: 4 << 20}
+	origin, e := clientv3.New(cfg)
+	if e != nil {
+		fail(e)
+	}
+	defer origin.Close()
+	clients := make([]*clientv3.Client, 20)
+	for i := range clients {
+		clients[i], e = clientv3.New(cfg)
+		if e != nil {
+			fail(e)
+		}
+		defer clients[i].Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, e = clients[i].Get(ctx, "/connection-ready")
+		cancel()
+		if e != nil {
+			fail(e)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	val := strings.Repeat("p", 65536)
+	datasetHash := sha256.New()
+	for i := 0; i < *preload; i += 32 {
+		ops := []clientv3.Op{}
+		for j := i; j < min(i+32, *preload); j++ {
+			key := fmt.Sprintf("/population/%08d", j)
+			_, _ = datasetHash.Write([]byte(key))
+			_, _ = datasetHash.Write([]byte(val))
+			ops = append(ops, clientv3.OpPut(key, val))
+		}
+		if _, e = origin.Txn(ctx).Then(ops...).Commit(); e != nil {
+			cancel()
+			fail(e)
+		}
+	}
+	cancel()
+	initial, e := snapshot(*endpoint)
+	if e != nil {
+		fail(e)
+	}
+	result["population_snapshot"] = initial
+	result["dataset_sha256"] = fmt.Sprintf("%x", datasetHash.Sum(nil))
+	save()
+	probes := []probe{}
+	for _, size := range []int{65536, 262144, 1048576} {
+		for _, count := range []int{10, 20} {
+			for _, delay := range []int{0, 100, 500} {
+				p := probe{Case: *cohort, Size: size, Clients: count, Delay: delay}
+				old := strings.Repeat("v", size)
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				if _, e = origin.Put(ctx, "/reuse/a", old); e != nil {
+					cancel()
+					fail(e)
+				}
+				put, e := origin.Put(ctx, "/reuse/b", old)
+				if e != nil {
+					cancel()
+					fail(e)
+				}
+				p.Revision = put.Header.Revision
+				expected, e := origin.Get(ctx, "/reuse/", clientv3.WithPrefix(), clientv3.WithRev(p.Revision))
+				if e != nil || len(expected.Kvs) != 2 {
+					cancel()
+					fail(fmt.Errorf("target preparation: %v", e))
+				}
+				for _, key := range []string{"/reuse/a", "/reuse/b"} {
+					r, err := origin.Put(ctx, key, "replacement")
+					if err != nil {
+						cancel()
+						fail(err)
+					}
+					p.HeaderRevision = r.Header.Revision
+				}
+				cancel()
+				// Natural cache expiry, not an altered cache policy or a disabled slab.
+				time.Sleep(1100 * time.Millisecond)
+				if *mode != "tmpfs-nowait-refused" {
+					if e = evict(*dir); e != nil {
+						fail(e)
+					}
+				}
+				p.DeviceReadBefore, e = deviceReads(*pids)
+				if e != nil {
+					fail(e)
+				}
+				p.OriginBefore, e = snapshot(*endpoint)
+				if e != nil {
+					fail(e)
+				}
+				get := func(c *clientv3.Client, list bool) func(context.Context) error {
+					return func(ctx context.Context) error {
+						opts := []clientv3.OpOption{clientv3.WithRev(p.Revision)}
+						key := "/reuse/a"
+						if list {
+							key = "/reuse/"
+							opts = append(opts, clientv3.WithPrefix())
+						}
+						r, e := c.Get(ctx, key, opts...)
+						if e != nil {
+							return e
+						}
+						want := 1
+						if list {
+							want = 2
+						}
+						if len(r.Kvs) != want || r.Count != int64(want) || r.More || r.Header.Revision != p.HeaderRevision {
+							return fmt.Errorf("range header/count/values/more differs: header%d count%d/%d more%v", r.Header.Revision, len(r.Kvs), r.Count, r.More)
+						}
+						for i, kv := range r.Kvs {
+							want := expected.Kvs[0]
+							if list {
+								want = expected.Kvs[i]
+							}
+							if !proto.Equal(kv, want) {
+								return fmt.Errorf("key/value/create/mod/version/lease mismatch")
+							}
+						}
+						return nil
+					}
+				}
+				originList := *cohort == "list-get" || *cohort == "overlapping-list"
+				p.OriginMS, p.OriginRetries, e = call(get(origin, originList))
+				if e != nil {
+					fail(e)
+				}
+				p.OriginAfter, e = snapshot(*endpoint)
+				if e != nil {
+					fail(e)
+				}
+				originDone := time.Now()
+				// The failed-CAS is an additional distinct consumer of the primed version.
+				if *cohort == "failed-cas-get" {
+					_, _, e = call(func(ctx context.Context) error {
+						r, e := clients[0].Txn(ctx).If(clientv3.Compare(clientv3.Version("/reuse/a"), "=", int64(-1))).Then(clientv3.OpPut("/unexpected-cas", "bad")).Else(clientv3.OpGet("/reuse/a", clientv3.WithRev(p.Revision))).Commit()
+						if e != nil {
+							return e
+						}
+						if r.Succeeded || len(r.Responses) != 1 || len(r.Responses[0].GetResponseRange().Kvs) != 1 || !proto.Equal(r.Responses[0].GetResponseRange().Kvs[0], expected.Kvs[0]) || r.Responses[0].GetResponseRange().More || r.Responses[0].GetResponseRange().Count != 1 || r.Header.Revision != p.HeaderRevision {
+							return fmt.Errorf("failed CAS result differs")
+						}
+						return nil
+					})
+					if e != nil {
+						fail(e)
+					}
+				}
+				var watchCancel context.CancelFunc
+				var watchDone chan error
+				if *cohort == "overlapping-prev-kv" {
+					ctx, cn := context.WithCancel(context.Background())
+					watchCancel = cn
+					watchDone = make(chan error, 1)
+					ch := clients[0].Watch(ctx, "/reuse/", clientv3.WithPrefix(), clientv3.WithRev(p.Revision+1), clientv3.WithPrevKV())
+					go func() {
+						seen := map[string]bool{}
+						for wr := range ch {
+							if wr.Err() != nil {
+								watchDone <- wr.Err()
+								return
+							}
+							for _, ev := range wr.Events {
+								key := string(ev.Kv.Key)
+								if (key != "/reuse/a" && key != "/reuse/b") || seen[key] || string(ev.Kv.Value) != "replacement" || ev.PrevKv == nil || string(ev.PrevKv.Value) != old || ev.Kv.ModRevision <= p.Revision {
+									watchDone <- fmt.Errorf("prev_kv catchup value/version/order differs")
+									return
+								}
+								seen[key] = true
+							}
+							if len(seen) == 2 {
+								watchDone <- nil
+								return
+							}
+						}
+						watchDone <- fmt.Errorf("watch ended before two events")
+					}()
+				}
+				if *mode == "evicted-cache" {
+					if e = evict(*dir); e != nil {
+						fail(e)
+					}
+				}
+				time.Sleep(time.Duration(delay) * time.Millisecond)
+				p.ReuseBefore, e = snapshot(*endpoint)
+				if e != nil {
+					fail(e)
+				}
+				var cpuBefore, cpuAfter syscall.Rusage
+				if e = syscall.Getrusage(syscall.RUSAGE_SELF, &cpuBefore); e != nil {
+					fail(e)
+				}
+				start := time.Now()
+				p.Results = make([]outcome, count)
+				var wg sync.WaitGroup
+				for i := 0; i < count; i++ {
+					wg.Add(1)
+					go func(i int) {
+						defer wg.Done()
+						ms, retries, e := call(get(clients[i], *cohort == "overlapping-list"))
+						p.Results[i] = outcome{ID: i + 1, MS: ms, Retries: retries}
+						if e != nil {
+							p.Results[i].Error = e.Error()
+						}
+					}(i)
+				}
+				wg.Wait()
+				p.WallMS = float64(time.Since(start)) / float64(time.Millisecond)
+				p.Throughput = float64(count) / (p.WallMS / 1000)
+				p.ElapsedCacheMS = float64(time.Since(originDone)) / float64(time.Millisecond)
+				p.FinishedUnixNano = time.Now().UnixNano()
+				if e = syscall.Getrusage(syscall.RUSAGE_SELF, &cpuAfter); e != nil {
+					fail(e)
+				}
+				cpu := func(v syscall.Timeval) float64 { return float64(v.Sec) + float64(v.Usec)/1e6 }
+				p.ClientCores = (cpu(cpuAfter.Utime) + cpu(cpuAfter.Stime) - cpu(cpuBefore.Utime) - cpu(cpuBefore.Stime)) / (p.WallMS / 1000)
+				p.DeviceReadAfter, e = deviceReads(*pids)
+				if e != nil {
+					fail(e)
+				}
+				p.ReuseAfter, e = snapshot(*endpoint)
+				if e != nil {
+					fail(e)
+				}
+				if watchDone != nil {
+					select {
+					case err := <-watchDone:
+						if err != nil {
+							watchCancel()
+							fail(err)
+						}
+						p.WatchValidated = true
+					case <-time.After(5 * time.Second):
+						watchCancel()
+						fail(fmt.Errorf("watch catchup deadline"))
+					}
+					watchCancel()
+				}
+				durations := make([]float64, count)
+				total, maxRetry := 0, 0
+				for i, r := range p.Results {
+					durations[i] = r.MS
+					total += r.Retries
+					maxRetry = max(maxRetry, r.Retries)
+					if r.Error != "" {
+						p.Error = r.Error
+					}
+				}
+				sort.Float64s(durations)
+				quantile := func(q float64) float64 {
+					return durations[min(len(durations)-1, int(math.Ceil(float64(len(durations))*q))-1)]
+				}
+				p.Latency = map[string]float64{"p95": quantile(.95), "p99": quantile(.99), "max": durations[len(durations)-1]}
+				p.Refusals = map[string]int{"total": total, "max_per_range": maxRetry}
+				probes = append(probes, p)
+				result["probes"] = probes
+				save()
+				if p.Error != "" {
+					fail(fmt.Errorf("%s", p.Error))
+				}
+			}
+		}
+	}
+	result["complete"] = true
+	save()
+}
