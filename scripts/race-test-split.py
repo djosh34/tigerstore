@@ -14,8 +14,14 @@ import sys
 
 PREFIX = "github.com/djosh34/tigerstore/"
 CHECK = PREFIX + "check"
-CHECK_PARTS = ("saved-margins", "other")
-SAVED_MARGINS = {"TestWeightedSavedMargins"}
+CHECK_PARTS = ("histories", "other")
+# The replay-heavy saved-history gates balance the rest of the package.
+HISTORIES = {
+    "TestWeightedSavedMargins",
+    "TestWitnessHardHistories",
+    "TestDueRecordedVerdicts",
+    "TestWitnessStartRecordedVerdicts",
+}
 
 
 def go_lines(*args):
@@ -43,11 +49,11 @@ def packages():
 def check_pattern(part):
     listed = go_lines("test", "-race", "-list", ".", "./check")
     tests = [name for name in listed if name.startswith(("Test", "Fuzz", "Example"))]
-    if not SAVED_MARGINS <= set(tests):
-        raise ValueError(f"stale checker test names: {SAVED_MARGINS - set(tests)}")
+    if not HISTORIES <= set(tests):
+        raise ValueError(f"stale checker test names: {HISTORIES - set(tests)}")
     selections = {
-        "saved-margins": [name for name in tests if name in SAVED_MARGINS],
-        "other": [name for name in tests if name not in SAVED_MARGINS],
+        "histories": [name for name in tests if name in HISTORIES],
+        "other": [name for name in tests if name not in HISTORIES],
     }
     # Go identifiers have no regexp metacharacters. Anchoring the top-level
     # names runs all their subtests, and cannot match another entry's test.
@@ -65,7 +71,7 @@ def main():
     elif len(sys.argv) == 3 and sys.argv[1] == "check-pattern" and sys.argv[2] in CHECK_PARTS:
         print(check_pattern(sys.argv[2]))
     else:
-        raise ValueError("usage: race-test-split.py packages | check-pattern {saved-margins,other}")
+        raise ValueError("usage: race-test-split.py packages | check-pattern {histories,other}")
 
 
 if __name__ == "__main__":

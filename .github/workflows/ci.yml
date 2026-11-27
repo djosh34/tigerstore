@@ -110,14 +110,14 @@ jobs:
           retention-days: 30
 
   # check took 467-490 s under -race on main, above 70% of Go's 600 s
-  # package timeout. Split the saved-margin histories from the other tests,
+  # package timeout. Split the replay-heavy histories from the other tests,
   # without increasing either the package timeout or test's job timeout.
   # The guard enumerates race-built tests and requires exactly one owner.
   test-check:
     strategy:
       fail-fast: false
       matrix:
-        part: [saved-margins, other]
+        part: [histories, other]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
