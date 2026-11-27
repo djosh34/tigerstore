@@ -84,6 +84,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		defer func() { *o.stepsUsed = w.steps }()
 	}
 	w.maxSteps, w.stop, w.slow = o.steps, o.stop, o.slow
+	w.testRevision = o.testRevision
 	var err error
 	switch mode {
 	case FromLog:
@@ -172,6 +173,7 @@ type witness struct {
 	// of a timeout.
 	observed, toObserve int
 	search              *revisionOrder
+	testRevision        func(*revisionOrder)
 	// stop, if set, stops the check as its deadline does (StopWhen).
 	stop    func() bool
 	stopped bool

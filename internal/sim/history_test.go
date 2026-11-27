@@ -1,9 +1,11 @@
 package sim
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -211,6 +213,61 @@ func TestRotStop(t *testing.T) {
 	} {
 		if got := rotStop(n, tc.err); got != tc.want {
 			t.Errorf("rotStop(%v) = %v, want %v", tc.err, got, tc.want)
+		}
+	}
+}
+
+// Decoded watch protobufs are not retained after long-run conversion.
+// Encoded references reconstruct identical checker input, hashes and
+// report files, including after a conversion error.
+func TestReleasedWatchResponsesReconstructExactly(t *testing.T) {
+	for _, broken := range []bool{false, true} {
+		l, err := newRecordLog()
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := &pb.WatchResponse{Header: &pb.ResponseHeader{Revision: 2}, WatchId: 17, Events: []*mvccpb.Event{{
+			Kv: &mvccpb.KeyValue{Key: []byte("a"), Value: []byte("value"), CreateRevision: 2, ModRevision: 2, Version: 1},
+		}}}
+		msg, err := l.encode(response)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := &Result{
+			records: l, long: true, logged: true, FinalRev: 2,
+			Watches:   []WatchResult{{Key: []byte("a"), PrevKV: true, Start: 2, Responses: []WatchRecord{{Time: 11, Resp: response}}}},
+			watchRefs: [][]loggedWatch{{{at: 11, msg: msg}}},
+		}
+		var before, after bytes.Buffer
+		writeHistory(&before, r)
+		want, err := r.Checkable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		files := runFilesWithin("/sim", "replay", r, true, &saveRoom{left: 1 << 20})
+		if broken {
+			r.History = []*Record{{req: &pb.RangeRequest{Key: []byte("a"), SortOrder: pb.RangeRequest_ASCEND}}}
+		}
+		got, err := r.checkable(true)
+		if broken != (err != nil) {
+			t.Fatalf("broken=%v conversion error %v", broken, err)
+		}
+		if r.History != nil || r.Watches[0].Responses != nil {
+			t.Fatal("conversion retained a decoded client/watch response root")
+		}
+		if !broken && !reflect.DeepEqual(got, want) {
+			t.Fatal("release changed the checker history")
+		}
+		writeHistory(&after, r)
+		if !bytes.Equal(before.Bytes(), after.Bytes()) || r.Watches[0].Responses != nil {
+			t.Fatal("streamed reconstruction changed the hash bytes or re-pinned decoded watches")
+		}
+		again, err := r.Checkable()
+		if err != nil || !reflect.DeepEqual(again, want) {
+			t.Fatalf("checker input reconstruction differs: %v", err)
+		}
+		if gotFiles := runFilesWithin("/sim", "replay", r, true, &saveRoom{left: 1 << 20}); !reflect.DeepEqual(gotFiles, files) {
+			t.Fatal("reconstructed failure report differs byte-for-byte")
 		}
 	}
 }

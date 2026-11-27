@@ -166,8 +166,13 @@ func TestWeightedSavedMargins(t *testing.T) {
 		{"gaps-256-expiries-4096", 13271},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var used int64
-			err := Witnessed(budgetHistory(t, tc.name), FromRevisions, time.Hour, StepsUsed(&used))
+			var used, oldUsed int64
+			h := budgetHistory(t, tc.name)
+			err := Witnessed(h, FromRevisions, time.Hour, StepsUsed(&used))
+			oldErr := Witnessed(h, FromRevisions, time.Hour, StepsUsed(&oldUsed), func(o *options) { o.testRevision = legacyUsedSnapshots })
+			if used != oldUsed || fmt.Sprint(err) != fmt.Sprint(oldErr) {
+				t.Fatalf("snapshot representation changed ratio row: packed %d/%v, old %d/%v", used, err, oldUsed, oldErr)
+			}
 			if errors.Is(err, ErrWitnessTimeout) || used <= 0 || used*50_000_000 > tc.base*350_000_000 {
 				t.Fatalf("lost margin: %d weighted steps, base %d, ratio floor 350M/50M; %v", used, tc.base, err)
 			}

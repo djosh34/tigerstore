@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"slices"
 	"sort"
 	"strings"
@@ -28,6 +29,9 @@ import (
 func (w *witness) fromRevisions() error {
 	r := newRevisionOrder(w)
 	w.search = r
+	if w.testRevision != nil {
+		w.testRevision(r)
+	}
 	if err := r.index(); err != nil {
 		return err
 	}
@@ -170,8 +174,10 @@ type revisionOrder struct {
 	indexLeft    uint8
 	// Tests can substitute the pre-eligibility query and record every search
 	// turn, candidate, application and restore. Both are nil in normal runs.
-	testDueQuery func(call, rev, from int64, yield func(optional) bool)
-	testTrace    func(phase string, op int)
+	testDueQuery    func(call, rev, from int64, yield func(optional) bool)
+	testTrace       func(phase string, op int)
+	testSaveUsed    func(*mark)
+	testRestoreUsed func(mark)
 	// The certificate oracle replays an isolated witness with independent
 	// pre-certificate enumeration, never the fused candidate slice.
 	testCandidates         func(int64) []int
@@ -1635,7 +1641,7 @@ func leasesOfWithStep(req history.Request, stop func() bool) []int64 {
 type mark struct {
 	events, appended, placed int
 	live                     *state
-	used                     []bool
+	used                     []uint64
 }
 
 // frame is a gap of the search: its revision, the candidates to write it,
@@ -1649,7 +1655,11 @@ type frame struct {
 
 func (r *revisionOrder) save() mark {
 	m := r.saveOrder()
-	m.used = slices.Clone(r.used)
+	if r.testSaveUsed != nil {
+		r.testSaveUsed(&m)
+	} else {
+		m.used = packedUsed(r.used)
+	}
 	return m
 }
 
@@ -1672,10 +1682,41 @@ func (r *revisionOrder) restore(m mark) {
 		}
 	}
 	clear(r.ready)
-	r.used = slices.Clone(m.used)
+	if r.testRestoreUsed != nil {
+		r.testRestoreUsed(m)
+	} else {
+		restoreUsed(r.used, m.used)
+	}
 	r.placedPrefix, r.dues, r.revokePrefix = 0, nil, 0
 	if r.dueWork != nil {
 		r.dueWork.valid = false
+	}
+}
+
+// packedUsed is a value snapshot, one bit per operation identity. The
+// previous slices.Clone had no accounting/poll calls; neither does this
+// representation change. Model/search charges stay at their old sites.
+func packedUsed(used []bool) []uint64 {
+	out := make([]uint64, (len(used)+63)/64)
+	for i, set := range used {
+		if set {
+			out[i/64] |= uint64(1) << uint(i%64)
+		}
+	}
+	return out
+}
+
+// restoreUsed reuses the order's full working array, not a fresh copy per
+// restore. It runs only after restore's existing charged scan completes,
+// preserving the stop boundary and the snapshot's immutable ownership.
+func restoreUsed(used []bool, saved []uint64) {
+	clear(used)
+	for j, word := range saved {
+		for word != 0 {
+			i := j*64 + bits.TrailingZeros64(word)
+			used[i] = true
+			word &= word - 1
+		}
 	}
 }
 

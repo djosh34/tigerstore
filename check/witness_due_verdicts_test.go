@@ -26,6 +26,7 @@ func TestDueRecordedVerdicts(t *testing.T) {
 		for i := range h.Ops {
 			h.Ops[i].Effect = nil
 		}
+		compareUsedSnapshots(t, h)
 		err := Witnessed(h, FromRevisions, time.Minute)
 		got[name] = "pass"
 		if err != nil {

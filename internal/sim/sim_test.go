@@ -182,9 +182,14 @@ func writeHistory(w io.Writer, res *Result) {
 		marshal(r.req)
 		marshal(r.Resp)
 	}
-	for _, wr := range res.Watches {
+	for i, wr := range res.Watches {
 		writef(w, "watch %q %q %v %v %d\n", wr.Key, wr.End, wr.PrevKV, wr.ProgressNotify, wr.Start)
-		for _, r := range wr.Responses {
+		responses, err := res.watchResponses(i)
+		if err != nil {
+			writef(w, "decoding watch responses: %v\n", err)
+			continue
+		}
+		for _, r := range responses {
 			writef(w, "at %d\n", r.Time)
 			marshal(r.Resp)
 		}

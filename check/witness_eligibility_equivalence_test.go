@@ -1,6 +1,7 @@
 package check
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -157,6 +158,91 @@ func eligibilitySearch(t *testing.T, h *history.History, old bool) (string, []el
 	return verdict, trace, future, r.backs
 }
 
+// legacyUsedSnapshots is the pre-#878 representation, independent of
+// packedUsed/restoreUsed. The surrounding charged loops are unchanged.
+func legacyUsedSnapshots(r *revisionOrder) {
+	saved := map[*state][]bool{}
+	r.testSaveUsed = func(m *mark) { saved[m.live] = slices.Clone(r.used) }
+	r.testRestoreUsed = func(m mark) { r.used = slices.Clone(saved[m.live]) }
+}
+
+func compareUsedSnapshots(t *testing.T, h *history.History) {
+	t.Helper()
+	type result struct {
+		verdict string
+		steps   int64
+		trace   [32]byte
+	}
+	run := func(old bool) result {
+		digest := sha256.New()
+		var out result
+		setup := func(r *revisionOrder) {
+			if old {
+				legacyUsedSnapshots(r)
+			}
+			r.testTrace = func(phase string, op int) {
+				_, _ = fmt.Fprintf(digest, "%s %d %d %d %d %d %d\n", phase, op, r.w.steps, r.rev, r.w.live.rev, len(r.stack), len(r.w.events))
+				if phase != "candidate" && phase != "fit" {
+					_, _ = fmt.Fprintf(digest, "%#v %#v\n", r.w.live.kvs, r.w.placed)
+					r.w.live.leases.each(func(id int64) { _, _ = fmt.Fprintf(digest, "lease %d\n", id) })
+				}
+			}
+		}
+		err := Witnessed(h, FromRevisions, time.Minute, StepsUsed(&out.steps), func(o *options) { o.testRevision = setup })
+		out.verdict = "pass"
+		if err != nil {
+			out.verdict = err.Error()
+		}
+		if errors.Is(err, ErrWitnessTimeout) {
+			t.Fatalf("snapshot equivalence must complete: %v", err)
+		}
+		copy(out.trace[:], digest.Sum(nil))
+		return out
+	}
+	old, packed := run(true), run(false)
+	if old != packed {
+		t.Fatalf("snapshot representation changed verdict, weighted steps or trace: old %+v, packed %+v", old, packed)
+	}
+}
+
+func TestPackedUsedRetentionAndRestore(t *testing.T) {
+	for _, n := range []int{64, 0, 1, 63, 65, 4097, 1 << 20} {
+		w := &witness{live: newState(nil, nil), states: make([]summary, 1), at: make([]place, n), deadline: time.Now().Add(time.Hour)}
+		r := &revisionOrder{w: w, used: make([]bool, n)}
+		for i := range r.used {
+			r.used[i] = i%13 == 0 || i == n-1
+		}
+		want := slices.Clone(r.used)
+		m := r.save()
+		bytes := int64(cap(m.used)) * int64(reflect.TypeOf(m.used).Elem().Size())
+		if bytes > int64((n+63)/64)*8 || w.steps != 0 {
+			t.Fatalf("n=%d snapshot retains %d bytes or charges %d steps", n, bytes, w.steps)
+		}
+		var address *bool
+		if n > 0 {
+			address = &r.used[0]
+		}
+		clear(r.used)
+		r.restore(m)
+		wantSteps := int64((n*ordinaryUnits + workUnitsPerStep - 1) / workUnitsPerStep)
+		if w.stopped || !slices.Equal(r.used, want) || w.steps != wantSteps {
+			t.Fatalf("n=%d restore differs or uses %d steps, want %d", n, w.steps, wantSteps)
+		}
+		if n > 0 && &r.used[0] != address {
+			t.Fatal("restore allocated a full working bitmap instead of reusing it")
+		}
+		if n > 4096 {
+			clear(r.used)
+			w.steps, w.maxSteps = 0, 1
+			r.workLeft, r.budgetLeft = 0, 0
+			r.restore(m)
+			if !w.stopped || slices.Contains(r.used, true) {
+				t.Fatal("a stopped charged scan crossed the used-restore boundary")
+			}
+		}
+	}
+}
+
 // eligibilityHistory draws either a lease/compaction-heavy workload or a
 // mutation-heavy one (2/3 of mutations ambiguous, half of those applied).
 // Half start from an image of a random prefix, including live/empty leases
@@ -293,6 +379,7 @@ func TestEligibilityWholeSearchEquivalence(t *testing.T) {
 					if got != public {
 						t.Fatalf("%s: instrumented %q, public %q", label, got, public)
 					}
+					compareUsedSnapshots(t, h)
 					histories++
 					if got != "pass" {
 						failures++
