@@ -3,6 +3,10 @@ name: rolling-upgrade
 on:
   workflow_dispatch:
     inputs:
+      diagnostic_saved_wal:
+        description: Same-VM off-gate main/candidate scans of the original failed node1 WAL
+        type: boolean
+        default: false
       diagnostic_no_profile:
         description: Preserve exact unobserved race binaries and original component-test prelude
         type: boolean
@@ -20,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 # Every node a test starts formats a log ring of 512 MiB, not the 2 GiB a
 # quota's default sizes (#602's ruling: tests format no gigabytes); the
@@ -29,6 +34,27 @@ env:
   ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
 
 jobs:
+  savedWAL:
+    if: inputs.diagnostic_saved_wal
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Same-VM immutable saved-WAL component isolation (not rolling reproduction)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/saved-wal-diagnostic.py --out "$RUNNER_TEMP/saved-wal-diagnostic"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saved-wal-component-DIAGNOSTIC-NOT-GATE
+          path: ${{ runner.temp }}/saved-wal-diagnostic
+          retention-days: 14
   diagnostic174:
     if: inputs.diagnostic_174
     runs-on: ubuntu-24.04-arm
@@ -69,7 +95,7 @@ jobs:
             ${{ runner.temp }}/rolling-runner.txt
           retention-days: 30
   rolling:
-    if: ${{ !inputs.diagnostic_174 }}
+    if: ${{ !inputs.diagnostic_174 && !inputs.diagnostic_saved_wal }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     strategy:
