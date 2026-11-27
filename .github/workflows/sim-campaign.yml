@@ -96,6 +96,7 @@ jobs:
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
           SIM_DIAL_EVIDENCE: ${{ runner.temp }}/dial-progress.log
+          SIM_HEAP360: ${{ runner.temp }}/heap360.pprof
         run: |
           touch "$SIM_DIAL_EVIDENCE"
           tail -F "$SIM_DIAL_EVIDENCE" &
@@ -117,6 +118,11 @@ jobs:
         with:
           name: dial-classification-evidence-${{ matrix.shard }}
           path: ${{ runner.temp }}/sim-out/dial-evidence
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: heap360-${{ matrix.shard }}
+          path: ${{ runner.temp }}/heap360.pprof
       - if: always()
         uses: actions/upload-artifact@v6
         with:

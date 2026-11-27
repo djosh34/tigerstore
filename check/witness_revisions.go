@@ -1931,6 +1931,10 @@ func (r *revisionOrder) write(rev int64) bool {
 		}
 		f = &frame{rev: rev, mark: m, cands: cands}
 		r.stack = append(r.stack, f)
+		if len(r.stack) == 360 && !memory878Profiled && Memory878Profile != nil {
+			memory878Profiled = true
+			Memory878Profile()
+		}
 		if r.testTrace != nil {
 			r.testTrace("gap", -1)
 		}
@@ -2044,6 +2048,9 @@ func (r *revisionOrder) candidates(rev int64) ([]int, eventCertificate) {
 	}, r.step)
 	return append(out, amb...), cert
 }
+
+var Memory878Profile func()
+var memory878Profiled bool
 
 // Scratch-only #876 Actions evidence; never to merge. These fixed-size
 // counters neither scan candidates again nor charge/change search work.

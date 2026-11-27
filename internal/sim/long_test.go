@@ -8,12 +8,15 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"runtime"
+	"runtime/pprof"
 	"slices"
 	"testing"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
+	"github.com/djosh34/tigerstore/check"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -74,6 +77,17 @@ func longSeeds(t *testing.T, config func(seed uint64) Config, wallLimit time.Dur
 		}
 		defer func() { _ = closeOutput() }()
 		dial876Output = w
+		check.Memory878Profile = func() {
+			simrun.Aside(func() {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				out, closeHeap, err := simrun.CreateOutput("heap360")
+				if err == nil {
+					err = errors.Join(pprof.WriteHeapProfile(out), closeHeap())
+				}
+				dial876Line(fmt.Sprintf("heap360: HeapInuse=%d HeapAlloc=%d Sys=%d NumGC=%d error=%v", m.HeapInuse, m.HeapAlloc, m.Sys, m.NumGC, err))
+			})
+		}
 		dial876SimulationHook = func(s *Sim) {
 			measureDialClassification(t, &Result{records: s.records, Stats: s.stats})
 			dial876Line("simulation complete; history decoding begins")
@@ -133,7 +147,7 @@ func measureDialClassification(t *testing.T, res *Result) {
 		Direct        counts
 		ClientV3      counts
 	}
-	out.Base, out.FinalRevision, out.Stats = "3f2c382d", res.FinalRev, res.Stats
+	out.Base, out.FinalRevision, out.Stats = "6dbe1f93", res.FinalRev, res.Stats
 	simrun.Aside(func() {
 		old := make([]bool, len(res.records.errs))
 		for i, err := range res.records.errs {

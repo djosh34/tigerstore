@@ -354,6 +354,9 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 			run := Run{Test: test, Seed: seed, Env: env}
 			if path := os.Getenv("SIM_DIAL_EVIDENCE"); path != "" {
 				run.Outputs = map[string]string{"dial-evidence": path}
+				if heap := os.Getenv("SIM_HEAP360"); heap != "" {
+					run.Outputs["heap360"] = heap
+				}
 			}
 			if opts.wallLimit != nil {
 				run.WallLimit = opts.wallLimit(seed)
