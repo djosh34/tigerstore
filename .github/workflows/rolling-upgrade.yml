@@ -3,6 +3,10 @@ name: rolling-upgrade
 on:
   workflow_dispatch:
     inputs:
+      manager_fixed40:
+        description: Fixed manager option A, exactly20 original rolling race runs on each immutable ref
+        type: boolean
+        default: false
       diagnostic_saved_wal:
         description: Same-VM off-gate main/candidate scans of the original failed node1 WAL
         type: boolean
@@ -34,6 +38,62 @@ env:
   ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
 
 jobs:
+  fixed-rolling:
+    if: inputs.manager_fixed40
+    name: rolling (race, ${{ matrix.side }}, ${{ matrix.run }})
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [main, candidate]
+        run: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: tools
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.side == 'main' && '55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4' || '9fad820b8f02882e47952d17013c6541f62734e7' }}
+          path: source
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: source/go.mod
+          cache-dependency-path: source/go.sum
+      - name: Record runner
+        run: |
+          mkdir -p "$RUNNER_TEMP/rolling40"
+          { uname -a; lscpu; free -b; go version; } > "$RUNNER_TEMP/rolling40/runner.txt"
+      - name: Original full race sequence and component prelude, one of fixed forty runs
+        env:
+          SIDE: ${{ matrix.side }}
+          ORDINAL: ${{ matrix.run }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 -B tools/scripts/rolling40.py run --side "$SIDE" --ordinal "$ORDINAL" --source source --out "$RUNNER_TEMP/rolling40"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: rolling40-${{ matrix.side }}-${{ matrix.run }}
+          path: ${{ runner.temp }}/rolling40
+          retention-days: 30
+  fixed-summary:
+    needs: fixed-rolling
+    if: ${{ always() && inputs.manager_fixed40 }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: rolling40-*
+          path: ${{ runner.temp }}/results
+      - name: Require all twenty per side; report counts without a post-hoc classification
+        run: python3 -B scripts/rolling40.py summary --artifacts "$RUNNER_TEMP/results" --out "$RUNNER_TEMP/rolling40-summary.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: rolling40-summary
+          path: ${{ runner.temp }}/rolling40-summary.json
+          retention-days: 30
   savedWAL:
     if: inputs.diagnostic_saved_wal
     runs-on: ubuntu-24.04-arm
@@ -95,7 +155,7 @@ jobs:
             ${{ runner.temp }}/rolling-runner.txt
           retention-days: 30
   rolling:
-    if: ${{ !inputs.diagnostic_174 && !inputs.diagnostic_saved_wal }}
+    if: ${{ !inputs.diagnostic_174 && !inputs.diagnostic_saved_wal && !inputs.manager_fixed40 }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     strategy:

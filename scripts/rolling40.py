@@ -33,7 +33,8 @@ def save(path,value):path.write_text(json.dumps(value,indent=2)+'\n')
 
 def execute(args):
     if os.environ.get('GITHUB_ACTIONS')!='true':raise ValueError('Actions only')
-    source=args.source.resolve();out=args.out.resolve();out.mkdir(parents=True)
+    source=args.source.resolve();out=args.out.resolve();out.mkdir(parents=True,exist_ok=True)
+    if (out/'result.json').exists():raise ValueError('run output already exists; never overwrite a fixed-count result')
     ref=subprocess.check_output(['git','rev-parse','HEAD'],cwd=source,text=True).strip()
     if ref!=REFS[args.side]:raise ValueError('immutable runtime ref mismatch')
     result=dict(side=args.side,ordinal=args.ordinal,source_ref=ref,expected_per_side=20,run_url=os.environ['RUN_URL'],job_url_hint=os.environ.get('GITHUB_JOB'),components={},startups=[],rolling_returncode=None)
