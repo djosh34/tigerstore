@@ -289,7 +289,7 @@ func TestCallsOnlyReportDoesNotDecodeWatches(t *testing.T) {
 		// chunk to the backing store; the client's message stays readable.
 		last := len(l.data.chunks) - 1
 		chunk := l.data.chunks[last]
-		l.data.chunks[last] = chunk[:len(chunk):len(chunk)]
+		l.data.chunks[last] = slices.Clip(chunk)
 		msg, err := l.encode(&pb.WatchResponse{Header: &pb.ResponseHeader{Revision: 2}})
 		if err != nil {
 			t.Fatal(err)
