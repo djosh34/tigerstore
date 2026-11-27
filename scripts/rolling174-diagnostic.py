@@ -22,11 +22,13 @@ def run(args):
     checkout=Path(os.environ['RUNNER_TEMP'])/'rolling-node-source'
     subprocess.run(['git','worktree','add','--detach',str(checkout),args.ref],check=True)
     (out/'source-ref.txt').write_text(args.ref+'\n')
-    (checkout/'cmd/tigerstore/diagnostic_cpu.go').write_bytes((root/'bench/fetch-measure/rolling_profile.go.txt').read_bytes())
-    replace(checkout/'cmd/tigerstore/main.go','func main() {','func main() {\n defer diagnosticCPU()()')
-    subprocess.run(['gofmt','-w',str(checkout/'cmd/tigerstore/diagnostic_cpu.go'),str(checkout/'cmd/tigerstore/main.go')],check=True)
+    (out/'diagnostic-config.json').write_text(json.dumps(dict(ref=args.ref,no_profile=args.no_profile,repeats=args.repeats,tooling_ref=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()),indent=2)+'\n')
+    if not args.no_profile:
+        (checkout/'cmd/tigerstore/diagnostic_cpu.go').write_bytes((root/'bench/fetch-measure/rolling_profile.go.txt').read_bytes())
+        replace(checkout/'cmd/tigerstore/main.go','func main() {','func main() {\n defer diagnosticCPU()()')
+        subprocess.run(['gofmt','-w',str(checkout/'cmd/tigerstore/diagnostic_cpu.go'),str(checkout/'cmd/tigerstore/main.go')],check=True)
+        (out/'diagnostic_cpu.go').write_bytes((checkout/'cmd/tigerstore/diagnostic_cpu.go').read_bytes())
     (out/'observer.patch').write_bytes(subprocess.check_output(['git','diff','--binary'],cwd=checkout))
-    (out/'diagnostic_cpu.go').write_bytes((checkout/'cmd/tigerstore/diagnostic_cpu.go').read_bytes())
     for name,number in [('old',1),('new',2)]:
         original=checkout/'internal/wl/format.go'
         text=original.read_text();anchor='const maxFormat = 1\n'
@@ -42,10 +44,19 @@ def run(args):
         overlay=out/f'{name}.json';overlay.write_text(json.dumps({'Replace':patches}))
         subprocess.run(['go','build','-race','-overlay',str(overlay),'-o',str(out/f'tigerstore-{name}'),'./cmd/tigerstore'],cwd=checkout,check=True)
     results=[]
-    for label,pattern in [('isolated174','^TestRollingUpgrade$/^174$'),('original-sequence','^TestRollingUpgrade$')]:
+    if args.no_profile:
+        # Reproduce the original race job's build/component-test prelude too,
+        # before the unchanged rolling workload; keep all original assertions.
+        component='Test(TheClusterTakesAFormat|AMemberThatIsDownHoldsTheFormat|AStaleRunsAnnouncement|AMembershipChangeAsksForConfirmations|ACheckpointKeepsTheGate|TheApplyChecksABatchsFormat|EachStartHasALaterRun|EachRunNamesItsBatchesAfresh|ANamedBatchOfAnEarlierRun|TheLogOfAStoppedNodeReadsBack)'
+        for build in ('old','new'):
+            with (out/f'{build}-components.log').open('w') as log:
+                subprocess.run(['go','test','-race','-overlay',str(out/f'{build}.json'),'-count=1','-v','./internal/wl','-run',component],cwd=checkout,stdout=log,stderr=subprocess.STDOUT,check=True)
+    cases=[('isolated174','^TestRollingUpgrade$/^174$')]
+    cases += [(f'original-sequence-{i+1}','^TestRollingUpgrade$') for i in range(args.repeats)]
+    for label,pattern in cases:
         dest=out/label;dest.mkdir();cpu=dest/'cpu';cpu.mkdir()
         env=dict(os.environ,ROLLING_OLD=str(out/'tigerstore-old'),ROLLING_NEW=str(out/'tigerstore-new'),
-                 ROLLING_OUT=str(dest/'rolling'),ROLLING_PROFILE_DIR=str(cpu),ETCD_UNSAFE_LOG_RING_BYTES='536870912')
+                 ROLLING_OUT=str(dest/'rolling'),ROLLING_PROFILE_DIR='' if args.no_profile else str(cpu),ETCD_UNSAFE_LOG_RING_BYTES='536870912')
         with (dest/'result.log').open('w') as log:
             result=subprocess.run(['go','test','-race','-count=1','-timeout','8m','-v','./cmd/chaos','-run',pattern],
                                   env=env,stdout=log,stderr=subprocess.STDOUT,check=False)
@@ -63,6 +74,8 @@ def run(args):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--no-profile',action='store_true')
+    p.add_argument('--repeats',type=int,choices=range(1,5),default=1)
     p.add_argument('--ref',required=True)
     p.add_argument('--out',type=Path,required=True)
     run(p.parse_args())

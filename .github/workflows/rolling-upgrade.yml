@@ -3,6 +3,15 @@ name: rolling-upgrade
 on:
   workflow_dispatch:
     inputs:
+      diagnostic_no_profile:
+        description: Preserve exact unobserved race binaries and original component-test prelude
+        type: boolean
+        default: false
+      diagnostic_repeats:
+        description: Original 148/174 sequence repetitions, all retained
+        type: choice
+        options: ['1', '4']
+        default: '1'
       diagnostic_174:
         description: Matched main and PR race diagnosis, isolated 174 and original 148/174 sequence, with CPU chunks
         type: boolean
@@ -23,7 +32,7 @@ jobs:
   diagnostic174:
     if: inputs.diagnostic_174
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +54,12 @@ jobs:
       - name: Race reproduction and CPU diagnosis, never a gate waiver
         env:
           NODE_REF: ${{ matrix.ref }}
-        run: python3 -B scripts/rolling174-diagnostic.py --ref "$NODE_REF" --out "$RUNNER_TEMP/rolling-diagnostic"
+          NO_PROFILE: ${{ inputs.diagnostic_no_profile }}
+          REPEATS: ${{ inputs.diagnostic_repeats }}
+        run: |
+          args=()
+          if [ "$NO_PROFILE" = true ]; then args+=(--no-profile); fi
+          python3 -B scripts/rolling174-diagnostic.py --ref "$NODE_REF" --out "$RUNNER_TEMP/rolling-diagnostic" --repeats "$REPEATS" "${args[@]}"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
