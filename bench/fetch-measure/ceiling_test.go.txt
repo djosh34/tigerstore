@@ -1,0 +1,86 @@
+package main
+
+import (
+	"encoding/json"
+	"math"
+	"os"
+	"path/filepath"
+	"strconv"
+	"testing"
+)
+
+// Measurement-only bridge to the unchanged #602 first-principles model.
+func TestFetchCeilingMeasurement(t *testing.T) {
+	dir := os.Getenv("FETCH_CEILING_DIR")
+	if dir == "" {
+		t.Skip("Actions measurement only")
+	}
+	var rows runs
+	by := map[string]runs{}
+	for _, side := range []string{"baseline", "candidate"} {
+		paths, err := filepath.Glob(filepath.Join(dir, "*", os.Getenv("FETCH_BENCH"), side+"-max-*.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(paths) != 5 {
+			t.Fatalf("%s has %d raw runs, want5", side, len(paths))
+		}
+		for _, path := range paths {
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var r result
+			if err := json.Unmarshal(b, &r); err != nil {
+				t.Fatal(err)
+			}
+			r.Seed = os.Getenv("FETCH_SEED")
+			rows = append(rows, r)
+			by[side] = append(by[side], r)
+		}
+	}
+	rn, ok, err := readRunner(filepath.Join(dir, "ceiling.json"))
+	if err != nil || !ok {
+		t.Fatalf("missing ceiling: %v", err)
+	}
+	end, ok, err := readRunner(filepath.Join(dir, "ceiling-end.json"))
+	if err != nil || !ok {
+		t.Fatalf("missing ending disk: %v", err)
+	}
+	l := loadOf(rows)
+	lim := limits{disk: math.Inf(1), network: math.Inf(1), cpu: math.Inf(1), chain: math.Inf(1)}
+	if l.Durable > 0 {
+		lim.disk = rn.DiskMiBps * (1 << 20) / (nodes * l.Durable)
+	}
+	if b := loopbackBytes(l); b > 0 {
+		lim.network = rn.Primitives.LoopbackBps / b
+	}
+	lim.cpu = 1e9 / sum(floor(rn.Primitives, l))
+	if rows[0].K8s != nil {
+		chains, err := chainLimits(os.Getenv("FETCH_TRACES"), os.Getenv("FETCH_SEED"), rows[0].K8s.Copies, []string{os.Getenv("FETCH_RTT")}, rn.Primitives.SyncLatencyNs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lim.chain = chains[os.Getenv("FETCH_RTT")]
+	}
+	c, limited := lim.ceiling()
+	share := medianOf(by["candidate"], throughput) / c
+	rtt, err := strconv.Atoi(os.Getenv("FETCH_RTT"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := map[string]any{"ceiling_ops_per_s": c, "limited_by": limited, "candidate_median_ops_per_s": medianOf(by["candidate"], throughput), "candidate_share": share, "required_share": targetShare, "rtt_ms": rtt, "disk_start_mib_s": rn.DiskMiBps, "disk_end_mib_s": end.DiskMiBps, "disk_ratio": end.DiskMiBps / rn.DiskMiBps}
+	b, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ceiling-gate.json"), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if end.DiskMiBps/rn.DiskMiBps < minDiskShare {
+		t.Fatal("disk slowed by more than5%; cell does not count")
+	}
+	if share < targetShare {
+		t.Fatalf("candidate share %.9f < %.2f", share, targetShare)
+	}
+}
