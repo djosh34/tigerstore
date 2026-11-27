@@ -86,12 +86,18 @@ jobs:
       # wl took 490 to 559 s of its 600 here, and a run past it failed
       # (#829's ci).
       # The skip applies to internal/wl alone: a test of one of those
-      # names in another package runs here.
+      # names in another package runs here. check runs in test-check's
+      # two parallel entries; race-test-split.py guards both partitions.
       - shell: bash
         run: |
           slow="^($(paste -sd'|' internal/wl/slow-tests.txt))\$"
           status=0
-          go list ./... | grep -v -e '/internal/sim$' -e '/internal/wl$' | xargs go test -race 2>&1 | tee "$RUNNER_TEMP/test.log" || status=1
+          # The guard's errors go into test.log too, as in test-check.
+          if ! packages=$(python3 scripts/race-test-split.py packages 2>"$RUNNER_TEMP/test.log"); then
+            cat "$RUNNER_TEMP/test.log" >&2
+            exit 1
+          fi
+          printf '%s\n' "$packages" | xargs go test -race 2>&1 | tee -a "$RUNNER_TEMP/test.log" || status=1
           go test -race -skip "$slow" ./internal/wl 2>&1 | tee -a "$RUNNER_TEMP/test.log" || status=1
           exit "$status"
       # wl's nodes on simos and simfs need the simulator's seam, the tag
@@ -104,6 +110,45 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: test-log
+          path: ${{ runner.temp }}/test.log
+          retention-days: 30
+
+  # check took 467-490 s under -race on main, above 70% of Go's 600 s
+  # package timeout. Split the replay-heavy histories from the other tests,
+  # without increasing either the package timeout or test's job timeout.
+  # The guard enumerates race-built tests and requires exactly one owner.
+  test-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [histories, other]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - shell: bash
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          # The guard's errors go into test.log too, so its artifact
+          # shows why a run stopped before any test.
+          if ! tests=$(python3 scripts/race-test-split.py check-pattern "$PART" 2>"$RUNNER_TEMP/test.log"); then
+            cat "$RUNNER_TEMP/test.log" >&2
+            exit 1
+          fi
+          go test -race -timeout 10m -run "$tests" ./check 2>&1 | tee -a "$RUNNER_TEMP/test.log"
+      - if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/test.log" ]; then
+            scripts/replay.sh "$RUNNER_TEMP/test.log" -race
+          fi
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-check-${{ matrix.part }}-log
           path: ${{ runner.temp }}/test.log
           retention-days: 30
 
@@ -692,14 +737,24 @@ jobs:
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, test-wl-slow, stress, determinism-lint, sim, replay, replay-compare, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
+    needs: [lint, build, test, test-check, test-wl-slow, stress, determinism-lint, sim, replay, replay-compare, gosim-hooks, membership, smoke, apiserver, configmaps, difftest, difffuzz, fuzz, coverage, race-sim, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           EVENT: ${{ github.event_name }}
+          TEST_RESULT: ${{ needs.test.result }}
+          CHECK_RESULT: ${{ needs.test-check.result }}
         run: |
+          # These always run, including on PRs. A skipped native race job
+          # must not use the exemption for main/nightly-only jobs below.
+          for result in "$TEST_RESULT" "$CHECK_RESULT"; do
+            if [ "$result" != success ]; then
+              echo "a required native race job ended with: $result"
+              exit 1
+            fi
+          done
           for result in $RESULTS; do
             if [ "$result" = skipped ] && [ "$EVENT" = pull_request ]; then
               continue
