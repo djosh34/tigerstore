@@ -520,7 +520,9 @@ type node struct {
 	// committed.
 	durableLast uint64
 	pending     []pendingJob
-	// corrupted is set when the run damaged the disk on purpose; fenced
+	// corrupted is set for damage other than rot; rotDamaged tracks
+	// rot's contribution separately, so clearing it cannot forget another
+	// kind of damage. damaged reports either. fenced is set
 	// when the node then refused to start and stays down, until an
 	// operator replaces it (replace), after which it joins the cluster
 	// as a new member.
@@ -535,10 +537,12 @@ type node struct {
 	inactive bool
 	// rotted is set when the run flipped a bit of a value of entry
 	// rotEntry, in segment rotSeg, file rotFile, on the disk of this
-	// running node.
-	rotted           bool
-	rotFile          string
-	rotEntry, rotSeg uint64
+	// running node. It stays set even if recovery no longer names that
+	// value: a read of the old byte must still stop (rotStop).
+	// rotDamaged is set only while recovery must notice that rot.
+	rotted, rotDamaged bool
+	rotFile            string
+	rotEntry, rotSeg   uint64
 	// rotOff is where a wl node's log holds the rotted byte (rotWL).
 	rotOff int64
 	// rotStopped is set when it stopped on the rotted value too late for
@@ -1625,7 +1629,7 @@ func (s *Sim) schedule() {
 func (s *Sim) fenceFollower() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.count(func(m *node) bool { return m.corrupted || m.fenced }) > 0 {
+	if s.count(func(m *node) bool { return m.damaged() || m.fenced }) > 0 {
 		return
 	}
 	lead := s.leaderIdx()
@@ -2062,7 +2066,7 @@ func (s *Sim) start(n *node) error {
 	}
 	if n.rotted && !slices.Contains(n.disk.DurableNames(), n.rotFile) {
 		// The damaged value's segment was removed with its other values.
-		n.corrupted, n.rotted = false, false
+		n.rotDamaged, n.rotted = false, false
 	}
 	n.starting = true
 	// A new process: a snapshot that reaches it starts a span of its own.
@@ -2155,7 +2159,7 @@ func (s *Sim) exited(p *proc, err error) {
 		} else {
 			s.stopNodeAfter(n, d)
 		}
-	case n.corrupted && core.FailureOf(err) == core.Reload && errors.Is(err, wal.ErrCorrupt):
+	case n.damaged() && core.FailureOf(err) == core.Reload && errors.Is(err, wal.ErrCorrupt):
 		// It started again from its log after a snapshot install or a
 		// failed fetch, and recovery found the damage and ended the
 		// process, as a start on this disk refuses it. The restart
@@ -2314,7 +2318,7 @@ func (s *Sim) loseQuorum() {
 // a damaged disk's recovery before it can refuse it. The lock is held.
 func (n *node) quorumLossTarget() bool {
 	p := n.proc
-	return p != nil && !n.out() && (!n.mayBeDamaged() || n.rotted && n.corrupted && p.wl.recovered)
+	return p != nil && !n.out() && (!n.mayBeDamaged() || n.rotDamaged && !n.corrupted && p.wl.recovered)
 }
 
 // crashRandom crashes a node that is up and restarts it up to MaxDown
@@ -2437,7 +2441,10 @@ func (s *Sim) loseUnsyncedAs(n *node, img simfs.Image) {
 // may make recovery refuse its log (loseUnsynced), which only its next
 // start finds out. The faults that must leave a quorum whole count such
 // a node as damaged. The lock is held.
-func (n *node) mayBeDamaged() bool { return n.fenced || n.corrupted || n.tornCrash }
+func (n *node) mayBeDamaged() bool { return n.fenced || n.damaged() || n.tornCrash }
+
+// damaged reports whether recovery must notice damage the run applied.
+func (n *node) damaged() bool { return n.corrupted || n.rotDamaged }
 
 // installSpan is a snapshot a node took (#775's rulings): from when it
 // reached the node (its first stream, or else the install's start), the
@@ -2633,7 +2640,7 @@ func (s *Sim) checkRequestedQuorumLoss(atHealing bool) {
 		return
 	}
 	if atHealing && s.count(func(n *node) bool {
-		return n.fenced || n.corrupted && !n.rotted && (n.proc == nil || !n.proc.wl.recovered)
+		return n.fenced || n.corrupted && (n.proc == nil || !n.proc.wl.recovered)
 	}) > s.tolerance() {
 		s.tracef("requested quorum loss: waiting for the damaged disks' pending recoveries")
 		return

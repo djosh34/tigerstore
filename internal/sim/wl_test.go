@@ -1,11 +1,19 @@
 package sim
 
 import (
+	"bytes"
+	"context"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
+	"go.etcd.io/raft/v3/raftpb"
+
 	"github.com/djosh34/tigerstore/internal/simrun"
+	"github.com/djosh34/tigerstore/internal/wl"
 )
 
 // Runs of wl nodes (Config.wl). They need wl's seam for the simulator:
@@ -394,6 +402,120 @@ func TestWLRefusesARottedValue(t *testing.T) {
 		checkers(t, res)
 		return st
 	}, nil)
+}
+
+// TestWLRotCleanupKeepsOtherDamage exercises the bookkeeping, not wl's
+// checksums: the tiny disk has a checkpoint pointer past a rotted value,
+// and a checkpoint on which damageWL can lose a write. Recovered is called
+// directly with the store no longer naming that value, before a later
+// crash loses a write. Another Recovered must still notice that damage;
+// a real start that refuses the checkpoint must fence the node, not fail
+// the run.
+func TestWLRotCleanupKeepsOtherDamage(t *testing.T) {
+	if simrun.Drive(t, 1) {
+		return
+	}
+	for _, secondRecovery := range []bool{false, true} {
+		name := "trim then lost write then start"
+		if secondRecovery {
+			name = "lost write then second recovery"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, err := newSim(CalmConfig(1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			n := s.nodes[0]
+			for _, dir := range []string{"wal", "ckpt"} {
+				if err := n.disk.Mkdir(dir); err != nil {
+					t.Fatal(err)
+				}
+			}
+			put := func(name string, b []byte) {
+				t.Helper()
+				f, err := n.disk.Create(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := f.WriteAt(b, 0); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.Sync(); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// CURRENT's wire format, with an empty hard state. Only this
+			// pointer is decoded by the bookkeeping under test; the value
+			// and checkpoint bytes need no wl records or store encoding.
+			ptr := []byte("tsptr\x00\x00\x02")
+			ptr = binary.AppendUvarint(ptr, 0)
+			ptr = binary.AppendUvarint(ptr, uint64(len("test.ckpt")))
+			ptr = append(ptr, "test.ckpt"...)
+			ptr = binary.AppendUvarint(ptr, 16384)
+			ptr = binary.AppendUvarint(ptr, 0)
+			ptr = binary.AppendUvarint(ptr, 0)
+			ptr = binary.LittleEndian.AppendUint32(ptr, crc32.Checksum(ptr, crc32.MakeTable(crc32.Castagnoli)))
+			put(wlPointerFile, ptr)
+			put(wlSegment(0), bytes.Repeat([]byte{1}, 512))
+			put("ckpt/test.ckpt", bytes.Repeat([]byte{1}, 512))
+			if err := n.disk.SyncDir(); err != nil {
+				t.Fatal(err)
+			}
+			s.rotWL(n, func() []wl.LogValue { return []wl.LogValue{{Off: 0, Len: 512}} })
+			if !n.rotted || !n.mayBeDamaged() {
+				t.Fatal("rot did not mark the disk damaged")
+			}
+			loseWrite := func() {
+				t.Helper()
+				if n.mayBeDamaged() {
+					t.Fatal("cannot inject a lost write while the disk is already damaged")
+				}
+				// No sealed log segments: this draw selects the checkpoint.
+				s.rng = rand.New(rand.NewPCG(0, 0))
+				if !s.damageWL(n, lostWrite) {
+					t.Fatal("lost write found no place")
+				}
+			}
+			recoverNode := func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				p := &proc{n: n, ctx: ctx, cancel: cancel, wl: &wlProc{}}
+				n.proc = p
+				(&wlHooks{s: s, p: p}).Recovered(0, &raftpb.HardState{}, func() []wl.LogValue { return nil })
+				s.down(n)
+			}
+			recoverNode()
+			if s.err != nil || n.mayBeDamaged() || !n.rotted {
+				t.Fatalf("rot recovery: damaged %v, rotted %v, error %v", n.mayBeDamaged(), n.rotted, s.err)
+			}
+			if secondRecovery {
+				loseWrite()
+				recoverNode()
+				if s.err == nil || !strings.Contains(s.err.Error(), "started on a damaged disk without noticing") {
+					t.Fatalf("second recovery forgot the lost write: %v", s.err)
+				}
+				t.Log(s.err)
+				return
+			}
+			if err := n.disk.Remove(n.rotFile); err != nil {
+				t.Fatal(err)
+			}
+			if err := n.disk.SyncDirOf("wal"); err != nil {
+				t.Fatal(err)
+			}
+			loseWrite()
+			if err := s.start(n); err != nil {
+				t.Fatal(err)
+			}
+			s.procs.Wait()
+			if s.err != nil || !n.fenced || s.stats.Fenced != 1 {
+				t.Fatalf("start forgot the lost write: fenced %v, fences %d, error %v", n.fenced, s.stats.Fenced, s.err)
+			}
+			t.Log("lost write survived rot cleanup; node fenced")
+		})
+	}
 }
 
 // The source of a wl node's snapshot stream crashes once the follower

@@ -101,18 +101,19 @@ func TestRequestedQuorumLossMustHappen(t *testing.T) {
 // recovering alone, but restarts a rotted node once it recovered.
 func TestQuorumLossTargets(t *testing.T) {
 	for _, c := range []struct {
-		name                         string
-		corrupted, rotted, recovered bool
-		want                         bool
+		name                             string
+		corrupted, rotDamaged, recovered bool
+		want                             bool
 	}{
 		{"undamaged", false, false, true, true},
 		{"checkpoint damage recovering", true, false, false, false},
 		{"checkpoint damage recovered", true, false, true, false},
-		{"rot recovering", true, true, false, false},
-		{"rot recovered", true, true, true, true},
+		{"rot recovering", false, true, false, false},
+		{"rot recovered", false, true, true, true},
+		{"rot and checkpoint damage recovered", true, true, true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			n := &node{corrupted: c.corrupted, rotted: c.rotted, proc: &proc{wl: &wlProc{recovered: c.recovered}}}
+			n := &node{corrupted: c.corrupted, rotDamaged: c.rotDamaged, rotted: c.rotDamaged, proc: &proc{wl: &wlProc{recovered: c.recovered}}}
 			if got := n.quorumLossTarget(); got != c.want {
 				t.Fatalf("target %v, want %v", got, c.want)
 			}
@@ -129,10 +130,12 @@ func TestQuorumLossWaitsForPendingRecovery(t *testing.T) {
 		name       string
 		running    bool
 		fenceLater bool
+		staleRot   bool
 	}{
-		{"refuses after healing", false, true},
-		{"recovers without fencing", false, false},
-		{"already recovered", true, false},
+		{"refuses after healing", false, true, false},
+		{"refuses after healing with stale rot", false, true, true},
+		{"recovers without fencing", false, false, false},
+		{"already recovered", true, false, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			cfg := DefaultConfig(1)
@@ -146,9 +149,9 @@ func TestQuorumLossWaitsForPendingRecovery(t *testing.T) {
 			s.t0 = s.t0.Add(-time.Second)
 			s.fence(s.nodes[0], "earlier refusal", "earlier refusal")
 			n := s.nodes[1]
-			n.corrupted = true
+			n.corrupted, n.rotted = true, c.staleRot
 			if c.running {
-				n.rotted = true
+				n.corrupted, n.rotDamaged, n.rotted = false, true, true
 				n.proc = &proc{wl: &wlProc{recovered: true}}
 			}
 			s.checkRequestedQuorumLoss(true)
@@ -193,7 +196,7 @@ func TestQuorumLossRemovedRotFailsAtHealing(t *testing.T) {
 	s.t0 = s.t0.Add(-time.Second)
 	s.fence(s.nodes[0], "earlier refusal", "earlier refusal")
 	n := s.nodes[1]
-	n.corrupted, n.rotted, n.rotFile = true, true, "wal/removed.seg"
+	n.rotDamaged, n.rotted, n.rotFile = true, true, "wal/removed.seg"
 	if slices.Contains(n.disk.DurableNames(), n.rotFile) {
 		t.Fatal("the rotted segment has not been removed")
 	}

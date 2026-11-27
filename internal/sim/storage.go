@@ -223,7 +223,7 @@ func (s *Sim) rotWL(n *node, values func() []wl.LogValue) {
 			continue
 		}
 		n.disk.Rot(name, int(at))
-		n.corrupted, n.rotted, n.rotFile, n.rotOff = true, true, name, off
+		n.rotDamaged, n.rotted, n.rotFile, n.rotOff = true, true, name, off
 		s.stats.Rots++
 		s.tracef("node %d: rotted a value at %#x in %s", n.id, off, name)
 		if s.cfg.restartRotted {

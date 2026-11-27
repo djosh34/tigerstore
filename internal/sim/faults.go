@@ -339,7 +339,7 @@ func (s *Sim) maybeCorrupt(n *node) bool {
 	// A node damaged already is not damaged again. n's own torn image,
 	// if it has one, is what this crash just did: only the other nodes'
 	// leave the quorum short.
-	if n.corrupted || s.count(func(m *node) bool { return m.corrupted || m.fenced || m != n && m.mayBeDamaged() }) >= s.spare() {
+	if n.damaged() || s.count(func(m *node) bool { return m.damaged() || m.fenced || m != n && m.mayBeDamaged() }) >= s.spare() {
 		return false
 	}
 	kind := damageKind(s.rng.IntN(numDrawn))
@@ -528,18 +528,19 @@ func (s *Sim) damageWL(n *node, kind damageKind) bool {
 	if len(sealed) > 0 {
 		seg = sealed[s.rng.IntN(len(sealed))]
 	}
+	var damaged bool
 	switch kind {
 	case flippedRoot:
-		n.corrupted = ckpt != "" && d.CorruptFile(s.rng, ckpt)
+		damaged = ckpt != "" && d.CorruptFile(s.rng, ckpt)
 	case misdirected:
-		n.corrupted = seg != "" && d.Misdirect(s.rng, seg)
+		damaged = seg != "" && d.Misdirect(s.rng, seg)
 	case lostWrite:
 		if ckpt != "" && s.rng.IntN(2) == 0 {
 			seg = ckpt
 		}
-		n.corrupted = seg != "" && d.LoseWrite(s.rng, seg)
+		damaged = seg != "" && d.LoseWrite(s.rng, seg)
 	case badSector:
-		n.corrupted = seg != "" && d.BadSector(s.rng, seg)
+		damaged = seg != "" && d.BadSector(s.rng, seg)
 	case misread:
 		n.misread = seg != "" && d.Misread(s.rng, seg)
 		return n.misread
@@ -548,7 +549,8 @@ func (s *Sim) damageWL(n *node, kind damageKind) bool {
 		// never drawn (flipWLRecord).
 		return false
 	}
-	return n.corrupted
+	n.corrupted = n.corrupted || damaged
+	return damaged
 }
 
 // wlPointerFile is a wl node's checkpoint pointer on its disk.
