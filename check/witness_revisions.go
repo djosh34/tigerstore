@@ -180,6 +180,9 @@ type revisionOrder struct {
 	// room bounds the writes the revisions ahead need together
 	// (roomReachable).
 	room *room
+	// survives holds static image-survival deadlines, never branch state.
+	survives      map[string]int64
+	survivalItems int64
 	// top is the highest revision any client saw.
 	top int64
 	// failure is the failure at the highest revision reached, and at its
@@ -203,6 +206,8 @@ type revisionOrder struct {
 	testRestoreUsed func(mark)
 	testKeepPopped  bool
 	testNoSoleGrant bool
+	testNoSurvival  bool
+	testSurvival    func(op int, rev int64, key string)
 	testSoleGrant   func(put, grant int)
 	testRejection   func(rev int64, err error)
 	// Test-only, nil in production: observe completed creator queries and
@@ -572,6 +577,10 @@ func (r *revisionOrder) index() error {
 		r.covered[k] = r.merge(ss)
 	}
 	r.indexCounts()
+	if r.indexStopped {
+		return ErrWitnessTimeout
+	}
+	r.indexSurvival()
 	if r.indexStopped {
 		return ErrWitnessTimeout
 	}
@@ -2209,7 +2218,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		if r.step() {
 			return false
 		}
-		if r.unchanged(e.KV.Key, rev) {
+		if r.unchanged(e.KV.Key, rev) || r.survivalBlocked(i, rev, e.KV.Key) {
 			return false
 		}
 		// A key it changes inside a life a client saw stays in that
