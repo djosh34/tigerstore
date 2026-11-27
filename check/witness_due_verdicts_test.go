@@ -20,17 +20,24 @@ import (
 // WITNESS_RECORD_VERDICTS=testdata/witness-due-verdicts.json.
 func TestDueRecordedVerdicts(t *testing.T) {
 	got := map[string]string{}
-	check := func(name string, h *history.History) {
-		t.Helper()
-		h.Log = nil
-		for i := range h.Ops {
-			h.Ops[i].Effect = nil
-		}
+	visitDueRecordedHistories(t, func(name string, h *history.History) {
 		err := Witnessed(h, FromRevisions, time.Minute, snapshotOracle(t))
 		got[name] = "pass"
 		if err != nil {
 			got[name] = err.Error()
 		}
+	})
+	checkDueRecordedVerdicts(t, got)
+}
+
+func visitDueRecordedHistories(t *testing.T, visit func(string, *history.History)) {
+	t.Helper()
+	check := func(name string, h *history.History) {
+		h.Log = nil
+		for i := range h.Ops {
+			h.Ops[i].Effect = nil
+		}
+		visit(name, h)
 	}
 	for _, name := range []string{
 		"planted-B01a-1.json", "seed-5058843.json", "seed-5068434.json",
@@ -68,6 +75,10 @@ func TestDueRecordedVerdicts(t *testing.T) {
 		}
 		check(fmt.Sprintf("leased-%d", i), leasedHistory(rng))
 	}
+}
+
+func checkDueRecordedVerdicts(t *testing.T, got map[string]string) {
+	t.Helper()
 	if path := os.Getenv("WITNESS_RECORD_VERDICTS"); path != "" {
 		data, err := json.MarshalIndent(got, "", "  ")
 		if err != nil {
