@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -269,6 +270,60 @@ func TestReleasedWatchResponsesReconstructExactly(t *testing.T) {
 		if gotFiles := runFilesWithin("/sim", "replay", r, true, &saveRoom{left: 1 << 20}); !reflect.DeepEqual(gotFiles, files) {
 			t.Fatal("reconstructed failure report differs byte-for-byte")
 		}
+	}
+}
+
+// A calls-only report must not touch watch-only chunks: they may be
+// unreadable, and healthy watches should not be re-pinned either.
+func TestCallsOnlyReportDoesNotDecodeWatches(t *testing.T) {
+	run := func(t *testing.T, broken bool) {
+		l, err := newRecordLog()
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := &pb.PutRequest{Key: []byte("readable-client-put"), Value: []byte("value")}
+		if err := l.add(&Record{req: req, Err: errConnRefused}); err != nil {
+			t.Fatal(err)
+		}
+		// Put the watch in a separate encoded chunk and move only that
+		// chunk to the backing store; the client's message stays readable.
+		last := len(l.data.chunks) - 1
+		chunk := l.data.chunks[last]
+		l.data.chunks[last] = chunk[:len(chunk):len(chunk)]
+		msg, err := l.encode(&pb.WatchResponse{Header: &pb.ResponseHeader{Revision: 2}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		store := &chunkStore{}
+		l.data.store = store
+		at, err := store.Put(nil, l.data.chunks[msg.at.chunk])
+		if err != nil {
+			t.Fatal(err)
+		}
+		l.data.at[msg.at.chunk], l.data.chunks[msg.at.chunk] = at, nil
+		if broken {
+			store.fail = errors.New("unreadable watch-only chunk")
+		}
+		r := &Result{
+			records: l, long: true, logged: true, hashed: "recorded hashes",
+			Log:       []proto.Message{&pb.PutRequest{Key: []byte("log"), Value: make([]byte, 1024)}},
+			Watches:   []WatchResult{{Key: []byte("a"), Start: 1}},
+			watchRefs: [][]loggedWatch{{{msg: msg}}},
+		}
+		callsMax, historyMax := r.saveBounds()
+		if historyMax <= callsMax {
+			t.Fatal("test must admit calls.txt but not history.json")
+		}
+		files := runFilesWithin("/sim", "replay", r, true, &saveRoom{left: callsMax})
+		if !strings.Contains(files["calls.txt"], "readable-client-put") || len(r.History) != 1 {
+			t.Fatalf("broken=%v calls-only report lost readable client calls: %q", broken, files["calls.txt"])
+		}
+		if r.Watches[0].Responses != nil || store.gets != 0 {
+			t.Fatalf("calls-only report read/re-held watches: reads %d, responses %d", store.gets, len(r.Watches[0].Responses))
+		}
+	}
+	for _, broken := range []bool{false, true} {
+		t.Run(fmt.Sprintf("broken=%v", broken), func(t *testing.T) { run(t, broken) })
 	}
 }
 

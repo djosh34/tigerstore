@@ -1016,13 +1016,9 @@ type Result struct {
 // history returns the run's calls: History, decoded again from the
 // run's records if a check dropped it.
 func (r *Result) history() ([]*Record, error) {
-	for i := range r.Watches {
-		responses, err := r.watchResponses(i)
-		if err != nil {
-			return nil, err
-		}
-		r.Watches[i].Responses = responses
-	}
+	// Calls-only reports must not read or re-hold decoded watches.
+	// Checkable and hashing reconstruct those separately, one segment
+	// at a time, only when they actually need watch data.
 	if r.History != nil || r.records == nil {
 		return r.History, nil
 	}

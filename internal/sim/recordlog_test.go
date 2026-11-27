@@ -225,6 +225,7 @@ func TestRecordLogAmbiguousRetryErrorsShareEntry(t *testing.T) {
 type chunkStore struct {
 	slots map[int64][]byte
 	fail  error
+	gets  int
 }
 
 func (c *chunkStore) Put(_ any, p []byte) (int64, error) {
@@ -237,6 +238,7 @@ func (c *chunkStore) Put(_ any, p []byte) (int64, error) {
 }
 
 func (c *chunkStore) Get(off int64, p []byte) error {
+	c.gets++
 	if c.fail != nil {
 		return c.fail
 	}

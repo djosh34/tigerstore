@@ -161,6 +161,7 @@ func eligibilitySearch(t *testing.T, h *history.History, old bool) (string, []el
 // legacyUsedSnapshots is the pre-#878 representation, independent of
 // packedUsed/restoreUsed. The surrounding charged loops are unchanged.
 func legacyUsedSnapshots(r *revisionOrder) {
+	r.testKeepPopped = true // The old pop kept backing slots, too.
 	saved := map[*state][]bool{}
 	r.testSaveUsed = func(m *mark) { saved[m.live] = slices.Clone(r.used) }
 	r.testRestoreUsed = func(m mark) { r.used = slices.Clone(saved[m.live]) }
@@ -222,7 +223,9 @@ func TestPackedUsedRetentionAndRestore(t *testing.T) {
 		if n > 0 {
 			address = &r.used[0]
 		}
-		clear(r.used)
+		for i := range r.used {
+			r.used[i] = true
+		}
 		r.restore(m)
 		wantSteps := int64((n*ordinaryUnits + workUnitsPerStep - 1) / workUnitsPerStep)
 		if w.stopped || !slices.Equal(r.used, want) || w.steps != wantSteps {
@@ -240,6 +243,21 @@ func TestPackedUsedRetentionAndRestore(t *testing.T) {
 				t.Fatal("a stopped charged scan crossed the used-restore boundary")
 			}
 		}
+	}
+}
+
+func TestExhaustedFrameDropsBackingSlot(t *testing.T) {
+	w := newWitness(&history.History{}, time.Now().Add(time.Minute))
+	r := newRevisionOrder(w)
+	w.search = r
+	f := &frame{rev: 2, cands: make([]int, 4096), next: 4096, mark: r.save()}
+	r.stack = append(r.stack, f)
+	backing := r.stack[:cap(r.stack)]
+	if r.write(2) || len(r.stack) != 0 || w.stopped {
+		t.Fatal("test must exhaust and pop its gap")
+	}
+	if backing[0] != nil {
+		t.Fatal("popped frame still pins candidates, snapshot and live state through stack capacity")
 	}
 }
 

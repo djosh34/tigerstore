@@ -178,6 +178,7 @@ type revisionOrder struct {
 	testTrace       func(phase string, op int)
 	testSaveUsed    func(*mark)
 	testRestoreUsed func(mark)
+	testKeepPopped  bool
 	// The certificate oracle replays an isolated witness with independent
 	// pre-certificate enumeration, never the fused candidate slice.
 	testCandidates         func(int64) []int
@@ -1933,7 +1934,13 @@ func (r *revisionOrder) write(rev int64) bool {
 	if r.testTrace != nil {
 		r.testTrace("exhaust", -1)
 	}
-	r.stack = r.stack[:len(r.stack)-1]
+	last := len(r.stack) - 1
+	if !r.testKeepPopped {
+		// A truncated slice still keeps its backing slots reachable.
+		// No search state uses this exhausted frame after the pop.
+		r.stack[last] = nil
+	}
+	r.stack = r.stack[:last]
 	return r.exhausted(rev)
 }
 
