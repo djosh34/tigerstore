@@ -47,6 +47,31 @@ type r3Pool struct {
 	Live                      []history.KeyValue
 	Created, Written, Deleted []int
 }
+type r3RepairCandidate struct {
+	Op             int
+	Call           *history.Op
+	LB, ReservedAt int64
+	Lease          int64
+	LeaseLive      bool
+	GrantCount     int
+	Grants         []int
+}
+type r3GrantDetail struct {
+	Op           int
+	Call         *history.Op
+	Used, Placed bool
+}
+type r3Repair struct {
+	At, By            int64
+	Skip              int
+	Key               string
+	State             []history.KeyValue
+	CountConstraints  [][4]int64
+	AckedPutRevisions []int64
+	Candidates        []r3RepairCandidate
+	GrantDetails      map[int64][]r3GrantDetail
+	Fixed             map[int64]*history.Op
+}
 type r3Gap struct {
 	Revision              int64
 	Visits, Constructions int64
@@ -64,11 +89,13 @@ var r3 struct {
 	Gaps       [6]r3Gap
 	Applying   *frame
 	JSON       []byte
+	Repair     *r3Repair
 }
 
 // LateGapR3Start enables a bounded diagnostic for this one long history.
 func LateGapR3Start(target int64) {
 	r3.Enabled = true
+	r3.Repair = nil
 	r3.Log = make([]r3LogEffect, target+2)
 	r3.ActualNear = map[int64][]history.KeyValue{}
 	for i := range r3.Gaps {
@@ -235,6 +262,60 @@ func r3Failure(r *revisionOrder, i int, rev int64, clause, key string, kv histor
 	}
 }
 
+// Observe the existing cardinality relaxation without its charged callbacks.
+// Capture once, only after the current candidate passed the earlier clauses.
+func r3RepairAt(r *revisionOrder, s *state, skip int) {
+	if !r3.Enabled || r3.Repair != nil || s.rev != 602475 {
+		return
+	}
+	k := s.index("k6")
+	if k < 0 || s.kvs[k].Version != 0 {
+		return
+	}
+	q := &r3Repair{At: s.rev, By: 602484, Skip: skip, Key: "k6", State: slices.Clone(s.kvs), GrantDetails: map[int64][]r3GrantDetail{}, Fixed: map[int64]*history.Op{}}
+	for _, c := range r.counts[602484] {
+		q.CountConstraints = append(q.CountConstraints, [4]int64{c.rev, int64(c.lo), int64(c.hi), c.n})
+	}
+	for _, rev := range r.putRevs[k] {
+		if rev > s.rev && rev <= q.By {
+			q.AckedPutRevisions = append(q.AckedPutRevisions, rev)
+		}
+	}
+	ids := map[int64]bool{}
+	seen := map[int]bool{}
+	for _, i := range r.putters[k] {
+		if seen[i] || i == skip || r.used[i] || r.lb[i] >= q.By || !touches(s, r.w.reqs[i], k, true) {
+			continue
+		}
+		seen[i] = true
+		c := r3RepairCandidate{Op: i, Call: &r.w.h.Ops[i], LB: r.lb[i], ReservedAt: r.reserved[i]}
+		if p := r.w.reqs[i].Put; p != nil {
+			c.Lease = p.Lease
+			c.LeaseLive = s.hasLease(p.Lease)
+			c.GrantCount = r.grants[p.Lease]
+			c.Grants = slices.Clone(r.grantsOf[p.Lease])
+			if p.Lease != 0 {
+				ids[p.Lease] = true
+			}
+		}
+		q.Candidates = append(q.Candidates, c)
+	}
+	for i, req := range r.w.reqs {
+		g := req.LeaseGrant
+		if g != nil && ids[g.ID] {
+			q.GrantDetails[g.ID] = append(q.GrantDetails[g.ID], r3GrantDetail{Op: i, Call: &r.w.h.Ops[i], Used: r.used[i], Placed: r.w.at[i].set()})
+		}
+	}
+	for rev := s.rev + 1; rev <= 602485; rev++ {
+		if i, ok := r.writer(rev); ok {
+			q.Fixed[rev] = &r.w.h.Ops[i]
+		} else if i, ok := r.resolved[rev]; ok {
+			q.Fixed[rev] = &r.w.h.Ops[i]
+		}
+	}
+	r3.Repair = q
+}
+
 func r3Done(r *revisionOrder) {
 	if !r3.Enabled {
 		return
@@ -251,6 +332,7 @@ func r3Done(r *revisionOrder) {
 	}
 	var out struct {
 		Base                                                           string
+		Repair                                                         *r3Repair
 		Revision, Target, Steps, MaxSteps                              int64
 		Backtracks                                                     int
 		Stopped                                                        bool
@@ -265,6 +347,7 @@ func r3Done(r *revisionOrder) {
 		FramesAboveFirstDifference, RemainingSlotsAboveFirstDifference int
 	}
 	out.Base = "2e1d1e1a"
+	out.Repair = r3.Repair
 	out.Revision, out.Target, out.Steps, out.MaxSteps = r.rev, r.top, r.w.steps, r.w.maxSteps
 	out.Backtracks, out.Stopped, out.FailureRevision = r.backs, r.w.stopped, r.at
 	if r.failure != nil {

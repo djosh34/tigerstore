@@ -2240,6 +2240,7 @@ func (r *revisionOrder) fits(i int, rev int64) (accepted bool) {
 			return false
 		}
 	}
+	r3RepairAt(r, s, i)
 	ok := r.reachable(s, i)
 	if !ok {
 		why = "reachable"

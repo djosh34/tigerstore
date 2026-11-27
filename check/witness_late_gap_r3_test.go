@@ -9,13 +9,13 @@ import (
 )
 
 func TestLateGapR3Observer(t *testing.T) {
-	q := history.Request{Delete: &history.DeleteRequest{Key: "a"}}
+	q := history.Request{Delete: &history.DeleteRequest{Key: "k6"}}
 	h := &history.History{
-		Start:  &history.Start{Rev: 602474, KVs: []history.KeyValue{{Key: "a", Value: "x", CreateRevision: 602474, ModRevision: 602474, Version: 1}}},
+		Start:  &history.Start{Rev: 602474, KVs: []history.KeyValue{{Key: "k6", Value: "x", CreateRevision: 602474, ModRevision: 602474, Version: 1}}},
 		Target: 602475, Log: []history.Request{q},
 		Ops: []history.Op{
 			{Client: 1, Call: 1, Return: 2, Req: q, Err: &history.Error{Code: "Unavailable", Message: "lost reply", Ambiguous: true}},
-			{Client: 1, Call: 3, Return: 4, Req: history.Request{Range: &history.RangeRequest{Key: "a"}}, Resp: &history.Response{Revision: 602475, Range: &history.RangeResponse{}}},
+			{Client: 1, Call: 3, Return: 4, Req: history.Request{Range: &history.RangeRequest{Key: "k6"}}, Resp: &history.Response{Revision: 602475, Range: &history.RangeResponse{}}},
 		},
 	}
 	var base, got int64
@@ -32,6 +32,9 @@ func TestLateGapR3Observer(t *testing.T) {
 	}
 	if got != base {
 		t.Fatalf("observer changed weighted steps: %d versus %d", got, base)
+	}
+	if r3.Repair == nil || r3.Repair.Key != "k6" || r3.Repair.At != 602475 {
+		t.Fatal("repair observer did not capture its bounded state")
 	}
 	g := r3.Gaps[0]
 	if g.LastPool == nil || g.LastPool.Certified || g.LastPool.Individual["unknown: delete: present keys, none covered unchanged"] != 1 || g.Candidates[0].Fits["accepted"] != 1 {
