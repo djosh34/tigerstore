@@ -477,8 +477,11 @@ func (n *node) finishFillPiece(q *replyFill, token fillToken, err error) error {
 	}
 	if err == nil && !q.cancelled && q.st == n.st && a.n > 0 {
 		last := &a.spans[a.n-1]
-		if q.record.active && q.record.id == last.id {
-			q.record.crc = last.sum
+		// Planning may already have selected the next version of the same
+		// key when a source/descriptor limit ends the piece. Its zero-byte
+		// cursor must not inherit the previous version's checksum seed.
+		if r := &q.record; r.active && r.id == last.id && r.valuePos > 0 && r.valuePos == int(last.valuePos)+len(last.dst) && r.state.vsum == last.expected && r.state.vlen == last.valueLen {
+			r.crc = last.sum
 		}
 	}
 	n.releaseFillSources(a)

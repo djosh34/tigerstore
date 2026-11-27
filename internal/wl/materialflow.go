@@ -274,7 +274,7 @@ func (n *node) publishMaterialRange(b *legacyBatch, c *client, s *stream, r *ran
 	promise := int64(0)
 	if c.stages == 0 {
 		promise = stageUnit
-		if cap(c.out) < 64<<10 {
+		if c.fundedSocketCapacity() < 64<<10 {
 			promise += 64 << 10
 			c.socketPromise = 64 << 10
 		}

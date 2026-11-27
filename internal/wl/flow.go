@@ -73,7 +73,7 @@ func (c *client) holdOutput(s *stream, data, trailer []byte, control bool) {
 		promise := int64(0)
 		if c.stages == 0 {
 			promise = stageUnit
-			if cap(c.out) < 64<<10 {
+			if c.fundedSocketCapacity() < 64<<10 {
 				promise += 64 << 10
 				c.socketPromise = 64 << 10
 			}
@@ -204,8 +204,12 @@ func (c *client) drain() {
 			limit = min(limit, int64(max(0, rawSocketRoom(c))))
 		}
 		if m := min(limit, f.conn, f.streams[h.sid]); m > 0 {
+			before := cap(c.out)
 			w := msgW{s: &c.sock, sid: h.sid, left: int(m)}
 			w.write(h.data[:m])
+			if h.flatCharge == heldControl {
+				c.controlSocketGrew(before)
+			}
 			h.data = h.data[m:]
 			f.bytes -= m
 			if h.flatBytes() == 0 {

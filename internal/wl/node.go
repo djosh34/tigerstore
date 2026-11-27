@@ -174,13 +174,14 @@ type node struct {
 	reserved int64
 	// coveredRoom is logical output reserve whose physical backing is
 	// irrevocably in the client pool. Input turns do not borrow it.
-	controlHeld   int64 // unchanged inherited watch-control output only, #912
-	coveredRoom   int64
-	stageCredits  stageCredit
-	headerSpare   int64 // unmaterialized bounded CONTINUATION backing
-	stagePromises int64
-	stageOrphans  int // closed clients retained only by quarantined loans
-	roomWait      []roomRead
+	controlHeld     int64 // unchanged inherited watch-control output only, #912
+	controlCapacity int64 // inherited socket growth, never new destination backing
+	coveredRoom     int64
+	stageCredits    stageCredit
+	headerSpare     int64 // unmaterialized bounded CONTINUATION backing
+	stagePromises   int64
+	stageOrphans    int // closed clients retained only by quarantined loans
+	roomWait        []roomRead
 	// roomClients are local wakes: their own output changed without
 	// returning any shared reserve room. roomFreed still wakes all.
 	roomClients []*client

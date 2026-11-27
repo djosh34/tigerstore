@@ -460,6 +460,7 @@ func (c *client) giveBufs() {
 		c.node.headerSpare -= c.headerSlack()
 	}
 	c.grow(-cap(c.in) - cap(c.pt))
+	c.shrinkControlCapacity(0)
 	c.growOut(-cap(c.out))
 	c.in, c.pt, c.out = nil, nil, nil
 	c.ir, c.iw, c.pr, c.pw, c.ow = 0, 0, 0, 0, 0
@@ -486,6 +487,7 @@ func (c *client) dropAll() {
 	c.controlHeld = 0
 	c.node.giveRoom(c, true)
 	c.grow(-cap(c.in) - cap(c.pt) - int(c.partial) - cap(c.block))
+	c.shrinkControlCapacity(0)
 	c.growOut(-cap(c.out) - int(c.flow.bytes))
 	c.block = nil
 	if c.slots != nil {

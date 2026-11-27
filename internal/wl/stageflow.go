@@ -15,7 +15,7 @@ func (n *node) admitStageQuota(c *client, size int, quota int64) *replyStage {
 	promise := int64(0)
 	if c.stages == 0 {
 		promise = stageUnit // protected copy/control guard
-		if cap(c.out) < 64<<10 {
+		if c.fundedSocketCapacity() < 64<<10 {
 			// Old and new socket arrays can coexist during a growth.
 			promise += 64 << 10
 		}
@@ -27,7 +27,7 @@ func (n *node) admitStageQuota(c *client, size int, quota int64) *replyStage {
 		return nil
 	}
 	stage.owner = c
-	if c.stages == 0 && cap(c.out) < 64<<10 {
+	if c.stages == 0 && c.fundedSocketCapacity() < 64<<10 {
 		c.socketPromise = 64 << 10
 	}
 	c.dropOut = true
@@ -65,7 +65,7 @@ func (n *node) stageOther(promise int64) int64 {
 	if n.cursorFetch {
 		// #904 and #912: exactly the unchanged inherited debits.
 		// Held backing itself remains main's 56-byte representation.
-		other -= n.mainCaptureCount() + n.controlHeld
+		other -= n.mainCaptureCount() + n.controlHeld + n.controlCapacity
 	}
 	return other
 }
@@ -142,11 +142,17 @@ func (c *client) stageSocket() {
 		if c.socketPromise > 0 {
 			c.promiseLocal, c.promiseTotal = nil, nil
 		}
+		c.shrinkControlCapacity(0)
 		c.growOut(cap(b) - cap(c.out))
 		c.promiseLocal, c.promiseTotal = local, total
 		c.out = b
 	}
 	if c.socketPromise > 0 {
+		// An inherited control buffer is not independent fetch backing.
+		// Reclassify only against the pre-funded finish promise.
+		need := max(0, 64<<10-c.fundedSocketCapacity())
+		c.controlCapacity -= need
+		c.node.controlCapacity -= need
 		c.stagePromise -= c.socketPromise
 		c.node.stagePromises -= c.socketPromise
 		c.socketPromise = 0

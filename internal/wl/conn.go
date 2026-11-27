@@ -29,16 +29,18 @@ type sock struct {
 	pt     []byte // opened plaintext not yet taken
 	pr, pw int
 
-	out     []byte // sealed records, then the open record
-	ow      int    // bytes of out written already
-	rec     int    // offset of the open record's header, -1 for none
-	wantOut bool   // registered for EPOLLOUT
-	noIn    bool   // registered without EPOLLIN: a paused client
-	outHold *int   // retain backing while protected output owns it
-	dropOut bool   // release an empty protected socket without a shrink-copy
-	outBase int    // the send buffer's size as it started
-	dirty   bool   // in the loop's list of sockets to flush
-	stats   *counters
+	out             []byte // sealed records, then the open record
+	ow              int    // bytes of out written already
+	rec             int    // offset of the open record's header, -1 for none
+	wantOut         bool   // registered for EPOLLOUT
+	noIn            bool   // registered without EPOLLIN: a paused client
+	controlCapacity int64  // unchanged inherited watch-control socket growth, #912
+	controlOwner    *client
+	outHold         *int // retain backing while protected output owns it
+	dropOut         bool // release an empty protected socket without a shrink-copy
+	outBase         int  // the send buffer's size as it started
+	dirty           bool // in the loop's list of sockets to flush
+	stats           *counters
 	// sent, if any, counts the bytes written: a peer connection's.
 	sent *atomic.Uint64
 	// broken is set when a reply came out another length than it said:
@@ -444,10 +446,11 @@ func (s *sock) flush() (bool, error) {
 	}
 	s.out = s.out[:0]
 	s.ow = 0
-	if s.outHold != nil && *s.outHold > 0 {
+	if s.retireProtectedControlSocket() || s.outHold != nil && *s.outHold > 0 {
 		return true, nil
 	}
 	if s.dropOut {
+		s.shrinkControlCapacity(0)
 		s.growOut(-cap(s.out))
 		s.out = nil
 		s.dropOut = false
@@ -459,6 +462,7 @@ func (s *sock) flush() (bool, error) {
 		// bytes waiting went past the client buffers' send half and the
 		// reserve: 9.96 MB of 8.59 MB with 33 clients at 96 MiB (#689's
 		// O re-check). Twice its base is what a record opens in it.
+		s.shrinkControlCapacity(s.outBase)
 		s.growOut(s.outBase - cap(s.out))
 		s.out = make([]byte, 0, s.outBase)
 	}
@@ -504,12 +508,14 @@ func (s *sock) writeFrame(typ, flags byte, p []byte) {
 // msgW writes one gRPC message of a known length as DATA frames of a
 // stream, straight into the records.
 type msgW struct {
-	control   bool // inherited watch-control output only (#912)
-	stage     *replyStage
-	s         *sock
-	sid       uint32
-	left      int // message bytes still to write, the 5-byte prefix included
-	frameLeft int
+	control       bool // inherited watch-control output only (#912)
+	controlClient *client
+	controlCap    int
+	stage         *replyStage
+	s             *sock
+	sid           uint32
+	left          int // message bytes still to write, the 5-byte prefix included
+	frameLeft     int
 	// A message the windows do not take is held: its client and stream,
 	// and its bytes.
 	c    *client
@@ -520,6 +526,9 @@ type msgW struct {
 // begin starts a gRPC message of n bytes on stream s of client c.
 func (w *msgW) begin(c *client, s *stream, n int) {
 	*w = msgW{control: w.control, s: &c.sock, sid: s.id, left: 5 + n}
+	if w.control {
+		w.controlClient, w.controlCap = c, cap(c.out)
+	}
 	if g := c.node; g != nil {
 		g.gs.calls[s.kind].sent++
 		g.gs.sentBytes += int64(n)
@@ -611,5 +620,7 @@ func (w *msgW) end() {
 	}
 	if w.c != nil {
 		w.c.holdOutput(w.st, w.held, nil, w.control)
+	} else if w.controlClient != nil {
+		w.controlClient.controlSocketGrew(w.controlCap)
 	}
 }
