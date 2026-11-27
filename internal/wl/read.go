@@ -206,6 +206,53 @@ func (n *node) retryReads(now int64) {
 // is. One that needs values the loop would wait on the disk for waits for
 // them to be read off the loop, and is served again then (fetch.go).
 func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
+	if n.cursorFetch && n.tryResidentPoint(c, s, r) {
+		return
+	}
+	n.serveRangeSlow(c, s, r, msg)
+}
+
+// tryResidentPoint keeps the common no-fetch/no-loan path out of the large
+// cursor/legacy retry frame and its defers. Selection and serialization are
+// shared with main's path. Any protected output, loan, cold value, historical
+// version, sort or large reply goes through the unchanged funded slow path.
+func (n *node) tryResidentPoint(c *client, s *stream, r *rangeReq) bool {
+	st := n.st
+	if s.kind != kRange || len(r.end) != 0 || n.legacyRetry != nil || st.legacyView != nil ||
+		n.stageCredits.used > 0 || n.stagePromises > 0 || n.legacyPromises > 0 || c.replyStage != nil ||
+		r.sortsOther() || r.rev > st.rev || r.rev > 0 && r.rev < st.compactRev {
+		return false
+	}
+	id, found := st.find(r.key)
+	if found && (st.keys[id].rec == 0 || r.rev > 0 && st.keys[id].mod > r.rev) {
+		return false
+	}
+	kvs, count, more, err := n.keyRangeKVs(r, n.kvs[:0], id, found)
+	if r.keysOnly {
+		for i, kv := range kvs {
+			kvs[i] = keysOnly(kv, r)
+		}
+	}
+	header, term := st.rev, n.term
+	body := sizeBytesField(1, n.hdrSizeTerm(header, term)) + sizeVarintField(4, uint64(count))
+	if more {
+		body += 2
+	}
+	for _, kv := range kvs {
+		body += sizeBytesField(2, len(kv))
+	}
+	wire := int64(5 + body)
+	if err != nil || n.cannotFit(wire) || n.roomNeeded(c, wire) != 0 || !n.msgRoom(c, wire) {
+		clear(kvs)
+		n.kvs = kvs[:0]
+		return false
+	}
+	n.gs.rangesN++
+	n.writeRangeReply(c, s, kvs, count, more, header, term, body)
+	return true
+}
+
+func (n *node) serveRangeSlow(c *client, s *stream, r *rangeReq, msg []byte) {
 	st := n.st
 	header, term := st.rev, n.term
 	legacyHeld := false
@@ -226,39 +273,19 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.replyError(c, s.id, codeOutOfRange, msgFuture)
 		return
 	}
-	var kvs [][]byte
-	var count int64
-	var more bool
-	var err error
-	// A current resident point lookup needs exactly main's selection, not
-	// a cursor metadata walk followed by the same lookup again. There is
-	// no source read, retained fetch owner or additional index here. The
-	// ordinary replyRoom below still funds any logical output loan in P.
-	residentPoint := false
-	if n.cursorFetch && n.legacyRetry == nil && st.legacyView == nil &&
-		s.kind == kRange && len(r.end) == 0 && !r.sortsOther() &&
-		n.stageCredits.used == 0 && n.stagePromises == 0 && n.legacyPromises == 0 {
-		id, found := st.find(r.key)
-		if !found || st.keys[id].rec != 0 && (r.rev <= 0 || st.keys[id].mod <= r.rev) {
-			kvs, count, more, err = n.keyRangeKVs(r, n.kvs[:0], id, found)
-			residentPoint = true
-		}
+	if n.tryFillRange(c, s, r, msg) {
+		return
 	}
-	if !residentPoint {
-		if n.tryFillRange(c, s, r, msg) {
-			return
-		}
-		if n.cursorFetch {
-			n.beginLegacyRange(c, s, r, msg)
-			defer func() { n.legacyReading = legacyOwner{}; n.dropCollectingLegacy() }()
-		}
-		if n.legacyRetry != nil {
-			defer func() { clear(n.kvs); n.kvs = nil }()
-		}
-		st.noWait = true
-		kvs, count, more, err = n.rangeKVs(r, n.kvs[:0], n.oneShot())
-		st.noWait = false
+	if n.cursorFetch {
+		n.beginLegacyRange(c, s, r, msg)
+		defer func() { n.legacyReading = legacyOwner{}; n.dropCollectingLegacy() }()
 	}
+	if n.legacyRetry != nil {
+		defer func() { clear(n.kvs); n.kvs = nil }()
+	}
+	st.noWait = true
+	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0], n.oneShot())
+	st.noWait = false
 	if errors.Is(err, errBig) {
 		clear(kvs)
 		n.kvs = kvs[:0]
@@ -338,6 +365,10 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.kvs = kvs[:0]
 		return
 	}
+	n.writeRangeReply(c, s, kvs, count, more, header, term, body)
+}
+
+func (n *node) writeRangeReply(c *client, s *stream, kvs [][]byte, count int64, more bool, header int64, term uint64, body int) {
 	if !s.began.IsZero() {
 		n.gs.ranges[1].observe(applyBuckets, n.now.Sub(s.began).Seconds())
 	}

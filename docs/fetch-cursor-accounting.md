@@ -86,12 +86,22 @@ sampled leader CPU under `tryFillRange`, then calls the legacy range selector;
 the preflight repeats the single-key lookup and metadata sizing before a
 resident reply that never fetches. It also enters a legacy fetch context.
 
-Resident point ranges now reuse main's unchanged single-key selector directly
+The first shortcut (5642c2c5) removed that preflight but kept the large
+retry-capable `serveRange` frame and its defers. Its fresh unprofiled first
+pair still failed: 554,086.4 main versus 521,984 candidate ops/s, ratio
+0.942062465348, run https://github.com/djosh34/tigerstore/actions/runs/46058258694 .
+That failed pair is retained, not retried as noise. Post-change profiles show
+the preflight gone but additional flat time in the large handler. The refined
+shortcut separates the no-fetch/no-loan point handler from that frame and
+shares main's selector and byte writer with the slow path.
+
+Resident point ranges reuse main's unchanged single-key selector directly
 when the selected record is already live in the slab (or the key is absent),
-with no active fetch/materialization/protected-P context. Cold or genuinely
+with no active fetch/materialization/protected-P context or output loan. Cold or genuinely
 historical values still use the cursor path. There is no new persistent cache,
-index, representation, or budget exemption. `replyRoom` still funds any logical
-output loan, and all whole-or-refuse limits remain unchanged. The regression
+index, representation, or budget exemption. Any output loan or protected
+output still follows the original cursor/P-funding path, and all
+whole-or-refuse limits remain unchanged. The regression
 is red with the shortcut disabled and green with it enabled; byte-for-byte
 main parity covers filters/count/projection/revisions/missing keys, with a P
 loan test and a cold historical-version test. Fresh unprofiled five-pair

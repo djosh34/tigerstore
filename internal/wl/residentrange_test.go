@@ -7,7 +7,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestResidentPointUsesMainSelectionWithoutCursorScan(t *testing.T) {
+func TestResidentPointUsesMainSelectionAndKeepsFundedFallbacks(t *testing.T) {
 	for _, mode := range []string{"current", "negative-revision", "at-current-revision", "count", "keys", "filtered", "missing", "logical-loan"} {
 		t.Run(mode, func(t *testing.T) {
 			var baseline []byte
@@ -50,10 +50,10 @@ func TestResidentPointUsesMainSelectionWithoutCursorScan(t *testing.T) {
 				if !bytes.Equal(baseline, encoded) {
 					t.Fatalf("main/cursor resident output differs: %v", got)
 				}
-				if n.stats.rangeFillScans != 0 || n.fillBook != nil || len(n.fills) != 0 || st.loads != 0 || n.legacyReading.c != nil {
+				if mode != "logical-loan" && (n.stats.rangeFillScans != 0 || n.fillBook != nil || len(n.fills) != 0 || st.loads != 0 || n.legacyReading.c != nil) {
 					t.Fatalf("resident lookup performed a cursor/legacy fetch preflight: scans %d book %v fills %d loads %d", n.stats.rangeFillScans, n.fillBook, len(n.fills), st.loads)
 				}
-				if mode == "logical-loan" && (n.stageCredits.used == 0 || c.heldStage(&c.flow.held[0]) == nil || n.stageCredits.used+n.stageOther(0) > n.sizes.clientPool) {
+				if mode == "logical-loan" && (n.stats.rangeFillScans == 0 || n.stageCredits.used == 0 || c.heldStage(&c.flow.held[0]) == nil || n.stageCredits.used+n.stageOther(0) > n.sizes.clientPool) {
 					t.Fatal("resident shortcut bypassed complete P funding of its output loan")
 				}
 			}
