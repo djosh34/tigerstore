@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -513,6 +514,193 @@ func TestDialClientV3DefaultWait(t *testing.T) {
 			t.Fatalf("high-level clientv3 call: %v, ambiguous %v", err, ambiguous(err))
 		}
 	})
+}
+
+// retryRejectionServer records a real received write's side effect,
+// answers it ambiguously, and then rejects the next attempt definitely.
+// A nil first error instead rejects the first attempt without applying.
+type retryRejectionServer struct {
+	pb.UnimplementedKVServer
+	pb.UnimplementedLeaseServer
+	first, final error
+	firstApplied bool
+	received     atomic.Int32
+	applied      atomic.Int32
+	stop         func()
+}
+
+func (s *retryRejectionServer) outcome() error {
+	if s.received.Add(1) == 1 && s.first != nil {
+		if s.firstApplied {
+			s.applied.Add(1)
+		}
+		return s.first
+	}
+	if s.stop != nil {
+		s.stop()
+	}
+	return s.final
+}
+
+func (s *retryRejectionServer) Put(context.Context, *pb.PutRequest) (*pb.PutResponse, error) {
+	return nil, s.outcome()
+}
+
+func (s *retryRejectionServer) Range(context.Context, *pb.RangeRequest) (*pb.RangeResponse, error) {
+	return nil, s.outcome()
+}
+
+func (s *retryRejectionServer) LeaseGrant(context.Context, *pb.LeaseGrantRequest) (*pb.LeaseGrantResponse, error) {
+	return nil, s.outcome()
+}
+
+func (s *retryRejectionServer) LeaseRevoke(context.Context, *pb.LeaseRevokeRequest) (*pb.LeaseRevokeResponse, error) {
+	return nil, s.outcome()
+}
+
+func (s *retryRejectionServer) LeaseKeepAlive(stream pb.Lease_LeaseKeepAliveServer) error {
+	if _, err := stream.Recv(); err != nil {
+		return err
+	}
+	return s.outcome()
+}
+
+// Exercise client.run itself, including its leader-changed retry loop,
+// done, stats and record-log decoding; final NoLeader/NoSpace do not
+// erase a possibly applied earlier Put (#900 re-check).
+func TestRetryRejectionDirectRun(t *testing.T) {
+	for _, final := range []error{rpctypes.ErrGRPCNoLeader, rpctypes.ErrGRPCNoSpace} {
+		for _, retry := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%v/retry=%v", final, retry), func(t *testing.T) {
+				simrun.Bubble(t, func(t *testing.T) {
+					log, err := newRecordLog()
+					if err != nil {
+						t.Fatal(err)
+					}
+					// With pinned clients this fixed RNG selects Put first.
+					s := &Sim{cfg: Config{Nodes: 1, PinClients: true, ClientTimeout: Second}, t0: time.Now(), rng: rand.New(rand.NewPCG(4, 2)), stopAt: Second, records: log}
+					backend := &retryRejectionServer{final: final, stop: func() { s.mu.Lock(); s.stopAt = 0; s.mu.Unlock() }}
+					if retry {
+						backend.first = rpctypes.ErrGRPCLeaderChanged
+						backend.firstApplied = true
+					}
+					lis := bufconn.Listen(1 << 16)
+					srv := grpc.NewServer()
+					defer srv.Stop()
+					pb.RegisterKVServer(srv, backend)
+					go func() { _ = srv.Serve(lis) }()
+					conn := dialTestConn(t, func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) })
+					s.nodes = []*node{{proc: &proc{ctx: t.Context(), wl: &wlProc{conn: conn}}}}
+					c := &client{sim: s, node: -1}
+					c.run()
+					recs, err := log.records()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(recs) != 1 {
+						t.Fatalf("got %d logical calls, want one Put; first %v", len(recs), recs[0].req)
+					}
+					if _, ok := recs[0].req.(*pb.PutRequest); !ok {
+						t.Fatalf("fixed RNG did not select Put: %T", recs[0].req)
+					}
+					assertRetryRejectionRecord(t, s, backend, recs[0], final, retry)
+				})
+			})
+		}
+	}
+}
+
+func assertRetryRejectionRecord(t *testing.T, s *Sim, backend *retryRejectionServer, r *Record, final error, retry bool) {
+	t.Helper()
+	wantReceived, wantApplied := int32(1), int32(0)
+	if backend.first != nil {
+		wantReceived = 2
+	}
+	if backend.firstApplied {
+		wantApplied = 1
+	}
+	if backend.received.Load() != wantReceived || backend.applied.Load() != wantApplied || r.Ambiguous != retry || ambiguous(r.Err) != retry || !errors.Is(r.Err, final) {
+		t.Fatalf("received %d, applied %d, error %v, ambiguous bit %v/classifier %v; want received %d, applied %d, ambiguous %v", backend.received.Load(), backend.applied.Load(), r.Err, r.Ambiguous, ambiguous(r.Err), wantReceived, wantApplied, retry)
+	}
+	if got, want := historyError(r.Err, r.Ambiguous), historyError(final, retry); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recorded error %+v, want %+v", got, want)
+	}
+	if retry && (s.stats.Ambiguous != 1 || s.stats.Failed != 0) || !retry && (s.stats.Ambiguous != 0 || s.stats.Failed != 1) {
+		t.Fatalf("classification counters: ambiguous %d, failed %d", s.stats.Ambiguous, s.stats.Failed)
+	}
+}
+
+// callV3 covers unary-interceptor retries of Put and the plain lease
+// Grant/Revoke client. KeepAliveOnce has its own stream retry loop: an
+// ambiguous Unavailable is retried, then LeaseNotFound halts it.
+func TestRetryRejectionClientV3(t *testing.T) {
+	for _, operation := range []string{"put", "grant", "revoke", "keepalive", "range-safe-retry"} {
+		for _, retry := range []bool{false, true} {
+			if operation == "range-safe-retry" && retry {
+				continue
+			}
+			t.Run(fmt.Sprintf("%s/retry=%v", operation, retry), func(t *testing.T) {
+				simrun.Bubble(t, func(t *testing.T) {
+					backend := &retryRejectionServer{final: rpctypes.ErrGRPCNoLeader}
+					var req proto.Message = &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}
+					switch operation {
+					case "grant":
+						req = &pb.LeaseGrantRequest{TTL: 3}
+					case "revoke":
+						req = &pb.LeaseRevokeRequest{ID: 1}
+					case "keepalive":
+						req = &pb.LeaseKeepAliveRequest{ID: 1}
+						backend.final = rpctypes.ErrGRPCLeaseNotFound
+					case "range-safe-retry":
+						req = &pb.RangeRequest{Key: []byte("k")}
+						backend.final = rpctypes.ErrGRPCKeyNotFound
+					}
+					if retry {
+						backend.first = status.Error(codes.DeadlineExceeded, "server deadline after applying the write")
+						backend.firstApplied = true
+						if operation == "keepalive" {
+							backend.first = status.Error(codes.Unavailable, "lost reply after renewing the lease")
+						}
+					}
+					if operation == "range-safe-retry" {
+						backend.first = rpctypes.ErrGRPCNoLeader
+						backend.firstApplied = false
+					}
+					lis := bufconn.Listen(1 << 16)
+					srv := grpc.NewServer()
+					defer srv.Stop()
+					pb.RegisterKVServer(srv, backend)
+					pb.RegisterLeaseServer(srv, backend)
+					go func() { _ = srv.Serve(lis) }()
+					cli, err := clientv3.New(clientv3.Config{Endpoints: []string{"http://kv"}, Logger: zap.NewNop(), DialOptions: v3Options(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) })})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer func() { _ = cli.Close() }()
+					log, err := newRecordLog()
+					if err != nil {
+						t.Fatal(err)
+					}
+					s := &Sim{cfg: Config{ClientTimeout: Second}, t0: time.Now(), records: log}
+					lease := clientv3.NewLeaseFromLeaseClient(pb.NewLeaseClient(cli.ActiveConnection()), cli, 0)
+					defer func() { _ = lease.Close() }()
+					c := &client{sim: s, v3: cli, lease: lease}
+					resp, err := c.callV3(req)
+					s.mu.Lock()
+					c.done(&Record{req: req, v3: true}, resp, err)
+					s.mu.Unlock()
+					recs, err := log.records()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(recs) != 1 {
+						t.Fatalf("got %d logical calls, want one", len(recs))
+					}
+					assertRetryRejectionRecord(t, s, backend, recs[0], backend.final, retry)
+				})
+			})
+		}
+	}
 }
 
 func TestDialClassificationRequiresEvidence(t *testing.T) {

@@ -167,6 +167,59 @@ func TestRecordLogUnsentDialErrorsShareEntry(t *testing.T) {
 	}
 }
 
+// Sticky ambiguity wrappers must also intern in constant space, retain
+// raw/status error formatting, and stay distinct from a first rejection.
+func TestRecordLogAmbiguousRetryErrorsShareEntry(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		newError func() error
+	}{
+		{"status", func() error { return status.Error(codes.Unavailable, "etcdserver: no leader") }},
+		{"raw", func() error { return errConnRefused }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l, err := newRecordLog()
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport := new(callTransport)
+			transport.prior.Store(true)
+			for range 64 {
+				err := transport.finish(tc.newError())
+				if err := l.add(&Record{Err: err, Ambiguous: ambiguous(err)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(l.errs) != 1 {
+				t.Fatalf("64 ambiguous retries occupy %d error entries, want 1", len(l.errs))
+			}
+			bare := tc.newError()
+			if err := l.add(&Record{Err: bare, Ambiguous: ambiguous(bare)}); err != nil {
+				t.Fatal(err)
+			}
+			if len(l.errs) != 2 {
+				t.Fatal("a first rejection was merged with an ambiguous retry")
+			}
+			recs, err := l.records()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range recs[:64] {
+				if !r.Ambiguous || !ambiguous(r.Err) || r.Err.Error() != bare.Error() || !errors.Is(r.Err, bare) {
+					t.Fatalf("ambiguous retry changed after decoding: %+v", r)
+				}
+				got, want := historyError(r.Err, true), historyError(bare, true)
+				if got.Code != want.Code || got.Message != want.Message {
+					t.Fatalf("recorded error %+v, want %+v", got, want)
+				}
+			}
+			if recs[64].Ambiguous || ambiguous(recs[64].Err) {
+				t.Fatal("a first rejection acquired an earlier possible effect")
+			}
+		})
+	}
+}
+
 // chunkStore is a Store in memory for TestArenaSpills, which fails every
 // read once fail is set.
 type chunkStore struct {

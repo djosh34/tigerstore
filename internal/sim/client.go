@@ -124,6 +124,9 @@ func (c *client) run() {
 		// its transport observation across these simulator retries too:
 		// an earlier attempt may have taken effect (wl/batch.go).
 		for errors.Is(err, rpctypes.ErrGRPCLeaderChanged) {
+			// The logical wrapper's outcome matters too, even if a
+			// transport without our stats handler supplied it.
+			transport.retried(err)
 			timeout := s.cfg.ClientTimeout
 			if timeout > 0 {
 				s.mu.Lock()
@@ -166,7 +169,9 @@ func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, er
 }
 
 // callObserved shares transport evidence across the attempts of a call.
-func (s *Sim) callObserved(n *node, req proto.Message, timeout int64, transport *callTransport) (proto.Message, error) {
+func (s *Sim) callObserved(n *node, req proto.Message, timeout int64, transport *callTransport) (resp proto.Message, err error) {
+	transport.retainAttempt(transport.attempt.Load())
+	defer func() { err = transport.finish(err) }()
 	s.mu.Lock()
 	p, deadline := n.proc, s.now()+timeout
 	lat := s.clientLatency()
@@ -175,9 +180,6 @@ func (s *Sim) callObserved(n *node, req proto.Message, timeout int64, transport 
 		return nil, errConnLost
 	}
 	if p == nil {
-		if transport.header.Load() {
-			return nil, errRetriedConnRefused
-		}
 		return nil, errConnRefused
 	}
 	ctx, cancel := context.WithCancel(p.ctx)
@@ -185,11 +187,8 @@ func (s *Sim) callObserved(n *node, req proto.Message, timeout int64, transport 
 		cancel()
 		ctx, cancel = context.WithTimeout(p.ctx, time.Duration(deadline-s.now()))
 	}
-	var resp proto.Message
-	var err error
 	ctx = context.WithValue(ctx, callTransportKey{}, transport)
 	resp, err = s.callWL(p, req, ctx)
-	err = transport.finish(err)
 	cancel()
 	switch {
 	case p.dead():
@@ -229,6 +228,9 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	if r.v3 && err == nil {
 		s.stats.V3OK++
 	}
+	if errors.Is(err, rpctypes.ErrGRPCNoSpace) {
+		s.stats.NoSpace++
+	}
 	switch {
 	case err == nil:
 		s.stats.OK++
@@ -239,9 +241,6 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 			s.stats.Compactions++
 		}
 		c.learn(resp)
-	case errors.Is(err, rpctypes.ErrGRPCNoSpace):
-		s.stats.NoSpace++
-		s.stats.Failed++
 	case r.Ambiguous:
 		s.stats.Ambiguous++
 	default:
@@ -260,9 +259,36 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 type callTransport struct {
 	observed atomic.Bool
 	header   atomic.Bool
+	// prior is sticky once an earlier attempt may have taken effect.
+	// A rejection of a later attempt cannot erase that uncertainty.
+	prior   atomic.Bool
+	attempt atomic.Pointer[callAttempt]
+}
+
+// Each gRPC attempt has its own header/outcome evidence. A rejection
+// with no effect is definite only for that attempt, not the whole call.
+// An unfinished/successful sent attempt is conservatively possibly
+// applied if another attempt starts before the logical call ends.
+type callAttempt struct {
+	header   atomic.Bool
+	definite atomic.Bool
 }
 
 type callTransportKey struct{}
+
+type callAttemptKey struct{}
+
+func (t *callTransport) retainAttempt(a *callAttempt) {
+	if a != nil && a.header.Load() && !a.definite.Load() {
+		t.prior.Store(true)
+	}
+}
+
+func (t *callTransport) retried(err error) {
+	if err != nil && ambiguous(err) {
+		t.prior.Store(true)
+	}
+}
 
 func observeCallTransport(ctx context.Context) (context.Context, *callTransport) {
 	t := new(callTransport)
@@ -276,6 +302,12 @@ func observeCallTransport(ctx context.Context) (context.Context, *callTransport)
 var refusedDialMessage = fmt.Sprintf("connection error: desc = %q", "transport: Error while dialing: "+errConnRefused.Error())
 
 func (t *callTransport) finish(err error) error {
+	if err != nil && t.prior.Load() {
+		if ambiguous(err) {
+			return err
+		}
+		return &ambiguousCallError{err}
+	}
 	if err == nil || !t.observed.Load() || t.header.Load() {
 		return err
 	}
@@ -299,16 +331,31 @@ func (e *unsentDialError) Is(target error) bool {
 	return ok && other != nil && errors.Is(e.error, other.error)
 }
 
-// A bare refusal after a received attempt retains its text and unwrap
-// chain, but not a first-attempt refusal's definite classification. Keep
-// one marker so recordLog interns these refusals too.
-var errRetriedConnRefused = fmt.Errorf("%w", errConnRefused)
+// Preserve the final error's representation and identity while retaining
+// a previous attempt's possible effect. Equal wrappers must intern in
+// recordLog just as equal unsentDialErrors do.
+type ambiguousCallError struct{ error }
+
+func (e *ambiguousCallError) Unwrap() error { return e.error }
+func (e *ambiguousCallError) GRPCStatus() *status.Status {
+	st, ok := status.FromError(e.error)
+	if !ok {
+		return nil
+	}
+	return st
+}
+
+func (e *ambiguousCallError) Is(target error) bool {
+	other, ok := target.(*ambiguousCallError)
+	return ok && other != nil && errors.Is(e.error, other.error)
+}
 
 // ambiguous reports whether a failed call may still have taken effect.
 func ambiguous(err error) bool {
 	var unsent *unsentDialError
+	var prior *ambiguousCallError
 	switch {
-	case errors.Is(err, errRetriedConnRefused):
+	case errors.As(err, &prior):
 		return true
 	case errors.As(err, &unsent):
 		return false

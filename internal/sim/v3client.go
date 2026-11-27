@@ -86,18 +86,36 @@ var simConnect = grpc.ConnectParams{
 // clock never moves, and the seed spins for good (#440).
 type retryPause struct{}
 
-func (retryPause) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context { return ctx }
+func (retryPause) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context {
+	if _, ok := ctx.Value(callTransportKey{}).(*callTransport); ok {
+		return context.WithValue(ctx, callAttemptKey{}, new(callAttempt))
+	}
+	return ctx
+}
 
 func (retryPause) HandleRPC(ctx context.Context, s stats.RPCStats) {
 	if t, ok := ctx.Value(callTransportKey{}).(*callTransport); ok {
+		a, _ := ctx.Value(callAttemptKey{}).(*callAttempt)
 		switch s := s.(type) {
 		case *stats.Begin:
 			if s.Client {
 				t.observed.Store(true)
+				if a != nil {
+					if previous := t.attempt.Swap(a); previous != a {
+						t.retainAttempt(previous)
+					}
+				}
 			}
 		case *stats.OutHeader:
 			if s.Client {
 				t.header.Store(true)
+				if a != nil {
+					a.header.Store(true)
+				}
+			}
+		case *stats.End:
+			if s.Client && a != nil {
+				a.definite.Store(s.Error != nil && !ambiguous(s.Error))
 			}
 		}
 	}
