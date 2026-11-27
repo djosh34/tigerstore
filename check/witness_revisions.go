@@ -169,6 +169,11 @@ type revisionOrder struct {
 	// turn, candidate, application and restore. Both are nil in normal runs.
 	testDueQuery func(call, rev, from int64, yield func(optional) bool)
 	testTrace    func(phase string, op int)
+	// The certificate oracle replays an isolated witness with independent
+	// pre-certificate enumeration, never the fused candidate slice.
+	testCandidates         func(int64) []int
+	testNoEventCertificate bool
+	testCertificate        func(int64, eventCertificate, []int)
 }
 
 // progress says where the search is, for the report of a timeout. A
@@ -1826,8 +1831,27 @@ func (r *revisionOrder) write(rev int64) bool {
 	if n := len(r.stack); n > 0 && r.stack[n-1].rev == rev {
 		f = r.stack[n-1]
 	} else {
-		f = &frame{rev: rev, mark: r.save(), cands: r.candidates(rev)}
+		m := r.save()
+		cands, cert := r.candidates(rev)
+		// A stop during construction/sort leaves a partial list, not an
+		// exhausted search. In particular, do not format around() on stop.
+		if w.stopped {
+			return false
+		}
+		if cert.all {
+			if r.testCertificate != nil {
+				r.testCertificate(rev, cert, cands)
+			}
+			if r.testTrace != nil {
+				r.testTrace("certified", -1)
+			}
+			return r.exhausted(rev)
+		}
+		f = &frame{rev: rev, mark: m, cands: cands}
 		r.stack = append(r.stack, f)
+		if r.testTrace != nil {
+			r.testTrace("gap", -1)
+		}
 	}
 	for ; f.next < len(f.cands); f.next++ {
 		if r.step() {
@@ -1852,8 +1876,18 @@ func (r *revisionOrder) write(rev int64) bool {
 	if w.stopped {
 		return false
 	}
+	if r.testTrace != nil {
+		r.testTrace("exhaust", -1)
+	}
 	r.stack = r.stack[:len(r.stack)-1]
-	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, w.around(len(w.events))))
+	return r.exhausted(rev)
+}
+
+func (r *revisionOrder) exhausted(rev int64) bool {
+	if r.w.stopped {
+		return false
+	}
+	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, r.w.around(len(r.w.events))))
 }
 
 // candidates are the ops that may write gap rev: the acked revokes at it
@@ -1868,7 +1902,11 @@ func (r *revisionOrder) write(rev int64) bool {
 // found the delete that wrote it (seed 59113215 on #238). Call order is
 // only a preference: the search still tries other orders, and verifies
 // every response and real-time constraint before passing.
-func (r *revisionOrder) candidates(rev int64) []int {
+func (r *revisionOrder) candidates(rev int64) ([]int, eventCertificate) {
+	if r.testCandidates != nil {
+		return r.testCandidates(rev), eventCertificate{}
+	}
+	cert := r.newEventCertificate(rev)
 	h := r.w.h
 	out := slices.Clone(r.byRev(r.revokes, rev))
 	// A revoke writes a revision only if a key holds its lease (fits), and
@@ -1879,10 +1917,11 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	if !r.w.slow {
 		possible = slices.Clone(r.writing)
 		leases := map[int64]bool{}
-		for _, kv := range r.w.live.kvs {
+		for k, kv := range r.w.live.kvs {
 			if r.step() {
-				return nil
+				return nil, eventCertificate{}
 			}
+			cert.key(r, rev, k)
 			if kv.Version != 0 && kv.Lease != 0 && !leases[kv.Lease] {
 				leases[kv.Lease] = true
 				possible = append(possible, r.revokesOfLease[kv.Lease]...)
@@ -1892,7 +1931,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	var amb []int
 	for _, i := range possible {
 		if r.step() {
-			return nil
+			return nil, eventCertificate{}
 		}
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
@@ -1903,6 +1942,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 		}
 		if !r.used[i] && r.lb[i] < rev {
 			amb = append(amb, i)
+			cert.candidate(r, i)
 		}
 	}
 	revoke := func(i int) int {
@@ -1914,7 +1954,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	sortWithStep(amb, func(a, b int) int {
 		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(r.w.calls[a], r.w.calls[b]), cmp.Compare(a, b))
 	}, r.step)
-	return append(out, amb...)
+	return append(out, amb...), cert
 }
 
 // fitsGranted is fits, and if op i does not fit, it puts in first, for
@@ -1923,12 +1963,16 @@ func (r *revisionOrder) candidates(rev int64) []int {
 // fits. No answer need show such a lease in use, so its grant need not be
 // an optional mutation, and an ambiguous put that a client saw write could
 // not go in at all (#514). A grant changes no key and no revision; a
-// wrong one is undone with the candidate.
+// wrong one is undone with the candidate. Test traces record a successful
+// return before the caller's expire/apply: nested expiry may invalidate a fit.
 func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	if r.testTrace != nil {
 		r.testTrace("fit", i)
 	}
 	if r.fits(i, rev) {
+		if r.testTrace != nil {
+			r.testTrace("fit-accepted", i)
+		}
 		return true
 	}
 	grants := r.grantsFor(leasesOfWithStep(r.w.reqs[i], r.step), rev-1)
@@ -1938,6 +1982,9 @@ func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	m := r.saveOrder()
 	r.grant(grants)
 	if r.fits(i, rev) {
+		if r.testTrace != nil {
+			r.testTrace("fit-accepted", i)
+		}
 		return true
 	}
 	r.restoreOrder(m)
