@@ -162,6 +162,10 @@ func progress(h *history.History, ops []porcupine.Operation, index []int, info p
 
 // describeOp names op i of h for a failure.
 func describeOp(h *history.History, i int) string {
+	return describeOpWithJSON(h, i, jsonOf)
+}
+
+func describeOpWithJSON(h *history.History, i int, jsonOf func(any) string) string {
 	op := &h.Ops[i]
 	got := "nothing"
 	switch {
@@ -170,7 +174,7 @@ func describeOp(h *history.History, i int) string {
 	case op.Err != nil:
 		got = fmt.Sprintf("error %q", op.Err.Message)
 	}
-	return fmt.Sprintf("op %d (client %d, %d to %d) %s with answer %s", i, op.Client, op.Call, op.Return, describeRequest(modelRequest(op)), got)
+	return fmt.Sprintf("op %d (client %d, %d to %d) %s with answer %s", i, op.Client, op.Call, op.Return, describeRequestWithJSON(modelRequest(op), jsonOf), got)
 }
 
 type input struct{ req history.Request }

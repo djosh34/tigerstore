@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/internal/wallclock"
 )
 
 // WitnessMode says where Witnessed takes the order of the writes from.
@@ -77,6 +78,7 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	if timeout <= 0 {
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
+	started := wallclock.Now()
 	w := newWitness(h, time.Now().Add(timeout))
 	if o.stepsUsed != nil {
 		defer func() { *o.stepsUsed = w.steps }()
@@ -102,11 +104,18 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	if err == nil && time.Now().After(w.deadline) {
 		err = ErrWitnessTimeout
 	}
-	switch {
-	case errors.Is(err, ErrWitnessTimeout) && w.maxSteps > 0 && w.steps > w.maxSteps:
-		err = fmt.Errorf("%w after %d steps; %s", err, w.maxSteps, w.stoppedAt())
-	case errors.Is(err, ErrWitnessTimeout):
-		err = fmt.Errorf("%w; %s", err, w.stoppedAt())
+	if errors.Is(err, ErrWitnessTimeout) {
+		limit := fmt.Sprintf("the real-time limit after %d weighted steps (no step budget)", w.steps)
+		if w.maxSteps > 0 {
+			limit = fmt.Sprintf("the real-time limit after %d of %d weighted steps", w.steps, w.maxSteps)
+		}
+		if w.maxSteps > 0 && w.steps > w.maxSteps {
+			// The extra accounting step detects exhaustion; it did not
+			// buy another search step.
+			limit = fmt.Sprintf("the step budget (%d of %d weighted steps)", w.maxSteps, w.maxSteps)
+		}
+		elapsed := time.Duration(max(0, wallclock.Now()-started))
+		err = fmt.Errorf("%w: %s; %s; elapsed search time %s", err, limit, w.stoppedAt(), elapsed)
 	}
 	if err != nil {
 		return fmt.Errorf("witness check (%s) of %d operations: %w", mode, len(h.Ops), err)
@@ -114,8 +123,10 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 	return nil
 }
 
-// ErrWitnessTimeout ends a check that passed its deadline or its steps
-// (MaxSteps): it decides nothing about the history.
+// ErrWitnessTimeout ends a check stopped by its step budget (MaxSteps),
+// deadline or real-time stop hook (StopWhen). The wrapped message names
+// the limit, weighted count and elapsed host search time; it decides
+// nothing about the history.
 var ErrWitnessTimeout = errors.New("timed out")
 
 // witness is one check: the order it builds, the replay of its events
@@ -166,7 +177,8 @@ type witness struct {
 	stopped bool
 	// replayStop is innerStep's method value, allocated once rather than
 	// again for every scoped state answered during replay.
-	replayStop func() bool
+	replayStop   func() bool
+	replayMutate func(int) bool
 	// scope caches the keys each op's request reads or writes
 	// (scopedState), and slow makes the witness copy the whole store for
 	// every try and answer instead, for the tests that compare the two
@@ -276,6 +288,7 @@ func (p place) compare(q place) int {
 func newWitness(h *history.History, deadline time.Time) *witness {
 	w := &witness{h: h, deadline: deadline, past: versions{}, at: make([]place, len(h.Ops)), kvsRev: -1, scope: make([][]string, len(h.Ops)), firsts: make([]firstAnswer, len(h.Ops))}
 	w.replayStop = w.innerStep
+	w.replayMutate = w.innerMutation
 	w.reqs = make([]history.Request, len(h.Ops))
 	w.calls, w.returns = make([]int64, len(h.Ops)), make([]int64, len(h.Ops))
 	for i := range h.Ops {
@@ -322,6 +335,10 @@ func (w *witness) budgetStep() bool {
 // search. The log witness keeps its existing operation-level accounting.
 func (w *witness) innerStep() bool {
 	return w.search != nil && w.search.step()
+}
+
+func (w *witness) innerMutation(size int) bool {
+	return w.search != nil && w.search.mutationStep(size)
 }
 
 // summary is the live store's summary, which shares its leases with the
@@ -376,7 +393,7 @@ func (w *witness) stateAt(j int) *state {
 	if w.search != nil {
 		stop = w.replayStop
 	}
-	s := state{keys: w.keys, kvs: w.kvs, leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: stop}
+	s := state{keys: w.keys, kvs: w.kvs, leases: sm.leases, rev: sm.rev, compacted: sm.compacted, past: w.past, stop: stop, mutate: w.replayMutate}
 	return s.clone()
 }
 
@@ -720,7 +737,7 @@ func (w *witness) unanswered(i, f, l, lo, hi int) error {
 		return ErrWitnessTimeout
 	}
 	o := s.step(w.reqs[i], false)
-	fmt.Fprintf(&b, " gets no state from %d to %d that answers it; at state %d (revision %d) the model gives %s", lo, hi, lo, w.states[lo].rev, outputOf(o))
+	fmt.Fprintf(&b, " gets no state from %d to %d that answers it; at state %d (revision %d) the model gives %s", lo, hi, lo, w.states[lo].rev, w.outputOf(o))
 	fmt.Fprintf(&b, "; the order around it: %s", w.around(lo))
 	return errors.New(b.String())
 }
@@ -734,7 +751,7 @@ func (w *witness) around(j int) string {
 		if ev.op >= 0 {
 			who = fmt.Sprintf("op %d", ev.op)
 		}
-		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequest(*ev.req)))
+		parts = append(parts, fmt.Sprintf("event %d (%s, to revision %d) %s", e, who, w.states[e].rev, describeRequestWithJSON(*ev.req, w.jsonOf)))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -747,7 +764,7 @@ func outputOf(o outcome) string {
 }
 
 // describe names op i for a failure.
-func (w *witness) describe(i int) string { return describeOp(w.h, i) }
+func (w *witness) describe(i int) string { return describeOpWithJSON(w.h, i, w.jsonOf) }
 
 // describeBrief names op i as describe does, but by the kind of its
 // request and the revision and size of its answer, not their contents:

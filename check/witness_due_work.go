@@ -284,7 +284,8 @@ func (r *revisionOrder) dueAt(call, rev, from int64) iter.Seq[optional] {
 // Inner work still offers a stop poll every 64 items, but budget steps
 // weigh it by cost: ordinary replay/search items at 1/1,024, and capacity
 // items at 1/16,384. The latter are short integer-vector/bitmap operations
-// and bulk sort estimates, not operation replays. #872's saved-history
+// and bulk sort estimates or 64-byte diagnostic assembly copies, not
+// operation replays. #872's saved-history
 // measurements give the weights and the simulator budget's conversion.
 const (
 	searchWeight     = 16
@@ -334,6 +335,17 @@ func (r *revisionOrder) step() bool {
 		return false
 	}
 	return r.workItem(ordinaryUnits)
+}
+
+// mutationStep accounts for a write that grows the transaction's prior-
+// value map beyond Go's eight-entry small-map representation. Those writes
+// hash/allocate map groups and event storage; one-key trials stay cheap.
+// This is extra to the scan charge, not a replacement for its stop polls.
+func (r *revisionOrder) mutationStep(size int) bool {
+	if size <= 8 {
+		return r.w.stopped
+	}
+	return r.chargeItems(1, workUnitsPerStep/2)
 }
 
 func (r *revisionOrder) capacityStep() bool {

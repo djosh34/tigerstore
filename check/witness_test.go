@@ -490,7 +490,7 @@ func TestWitnessedTimeout(t *testing.T) {
 	small.put(0, "a", "1")
 	for _, h := range []*history.History{b.done(), small.done()} {
 		for _, mode := range bothModes {
-			mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Nanosecond), "timed out; the order held")
+			mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Nanosecond), "timed out: the real-time limit after")
 		}
 	}
 }
@@ -504,7 +504,7 @@ func TestWitnessedMaxSteps(t *testing.T) {
 	}
 	h := b.done()
 	for _, mode := range bothModes {
-		mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Hour, MaxSteps(100)), "timed out after 100 steps; the order held")
+		mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Hour, MaxSteps(100)), "timed out: the step budget (100 of 100 weighted steps); the order held")
 		mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Hour, MaxSteps(1_000_000)))
 	}
 }

@@ -3,6 +3,8 @@ package sim
 import (
 	"testing"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/simrun"
 )
 
 // These tests select policies only. They run no seed or simulation.
@@ -29,6 +31,35 @@ func TestLongSeedLimits(t *testing.T) {
 	const job = 340 * time.Minute
 	if longSeedWallLimit+grace >= job {
 		t.Fatal("long limit leaves no room in the campaign timeout")
+	}
+}
+
+func TestOrdinaryAndAgedBackstops(t *testing.T) {
+	// The sizing floor is below the measured sustained search rates in
+	// four-process campaign queues, not an idle-runner extrapolation.
+	const rate = 200_000
+	budgetTime := time.Duration((witnessStepLimit+rate-1)/rate) * time.Second
+	const setup = 15 * time.Minute
+	const margin = 10 * time.Minute
+	if budgetTime != 30*time.Minute || simrun.OrdinaryWallLimit != 55*time.Minute {
+		t.Fatal("ordinary budget/backstop sizing changed without new measurements")
+	}
+	// This arithmetic is shared by the ordinary and aged defaults;
+	// TestResolveWallLimit and TestCampaignWallLimits test their selection.
+	if simrun.OrdinaryWallLimit < budgetTime+setup+margin || (budgetTime+setup)*100 > simrun.OrdinaryWallLimit*85 {
+		t.Fatal("step budget, setup and 15% margin do not fit before the backstop")
+	}
+}
+
+func TestSingleImageQueueEnvelope(t *testing.T) {
+	// Only the measured eight-image layout has one image per process
+	// queue. For that layout, one image and four forks each charged their
+	// soft limit plus grace fit in 325 minutes. This is not a bound on a
+	// campaign's multi-seed process: all its seeds share one 340-minute
+	// binary timeout, and larger queues may contain multiple images.
+	const grace = 10 * time.Minute
+	if time.Duration(1+forksPerImage)*(simrun.OrdinaryWallLimit+grace) >= 340*time.Minute {
+		t.Fatal("single-image measurement envelope does not fit its process timeout")
 	}
 }
 

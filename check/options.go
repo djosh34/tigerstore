@@ -14,8 +14,10 @@ type options struct {
 
 // MaxSteps fails a check, as its timeout does, once it took n steps:
 // a witness step indexes up to 256 history items, charges up to 1,024
-// ordinary inner items or 16,384 capacity items, places an op or tries
-// another order; a Porcupine step calls the model. Inside a simulation,
+// ordinary inner items or 16,384 capacity items (including 64-byte output
+// copies), encodes 2,048 diagnostic
+// JSON bytes, writes two large-map entries, places an op or tries another
+// order; a Porcupine step calls the model. Inside a simulation,
 // whose clock stands still while the check computes, the timeout never
 // comes, and this is the bound that holds.
 func MaxSteps(n int64) Option {
