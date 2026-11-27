@@ -92,8 +92,12 @@ jobs:
         run: |
           slow="^($(paste -sd'|' internal/wl/slow-tests.txt))\$"
           status=0
-          packages=$(python3 scripts/race-test-split.py packages)
-          printf '%s\n' "$packages" | xargs go test -race 2>&1 | tee "$RUNNER_TEMP/test.log" || status=1
+          # The guard's errors go into test.log too, as in test-check.
+          if ! packages=$(python3 scripts/race-test-split.py packages 2>"$RUNNER_TEMP/test.log"); then
+            cat "$RUNNER_TEMP/test.log" >&2
+            exit 1
+          fi
+          printf '%s\n' "$packages" | xargs go test -race 2>&1 | tee -a "$RUNNER_TEMP/test.log" || status=1
           go test -race -skip "$slow" ./internal/wl 2>&1 | tee -a "$RUNNER_TEMP/test.log" || status=1
           exit "$status"
       # wl's nodes on simos and simfs need the simulator's seam, the tag
@@ -129,8 +133,13 @@ jobs:
         env:
           PART: ${{ matrix.part }}
         run: |
-          tests=$(python3 scripts/race-test-split.py check-pattern "$PART")
-          go test -race -timeout 10m -run "$tests" ./check 2>&1 | tee "$RUNNER_TEMP/test.log"
+          # The guard's errors go into test.log too, so its artifact
+          # shows why a run stopped before any test.
+          if ! tests=$(python3 scripts/race-test-split.py check-pattern "$PART" 2>"$RUNNER_TEMP/test.log"); then
+            cat "$RUNNER_TEMP/test.log" >&2
+            exit 1
+          fi
+          go test -race -timeout 10m -run "$tests" ./check 2>&1 | tee -a "$RUNNER_TEMP/test.log"
       - if: failure()
         run: |
           if [ -f "$RUNNER_TEMP/test.log" ]; then
