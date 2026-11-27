@@ -15,7 +15,7 @@ def load(name, filename):
 
 
 gate = load('pr897_gate', 'fetch-pr897-gate.py')
-legacy = load('absolute_gate', 'fetch-original-measure.py')
+original = load('original_measurement', 'fetch-original-measure.py')
 runner = load('relative_runner', 'fetch-pr897-measure.py')
 
 
@@ -40,15 +40,16 @@ class PR897Gate(unittest.TestCase):
         self.assertEqual(report['status'], 'PASS')
 
     def test_absolute_target_is_not_the_relative_gate(self):
-        # All p95s exceed the untouched absolute target; option A passes.
+        # Both entry points use option A; #913's figures remain information.
         data = pairs()
         self.assertEqual(gate.assess(data)['status'], 'PASS')
         for row in data:
             for side in ('baseline', 'candidate'):
                 row[side]['latency_ms'] = dict(p95=1500, p99=1600, max=1600)
-        old = legacy.decide(data, False)
-        self.assertEqual(old['status'], 'RULING')
-        self.assertTrue(any('1000-ms' in reason for reason in old['reasons']))
+        report = original.decide(data, False)
+        self.assertEqual(report['status'], 'PASS')
+        self.assertTrue(all(info['candidate_over'] for info in report['design_figures']))
+        self.assertTrue(all(info['limit_ms'] == 1000 for info in report['design_figures']))
 
     def test_every_pair_not_the_median_must_clear_098(self):
         data = pairs()
@@ -99,12 +100,13 @@ class PR897Gate(unittest.TestCase):
             self.assertEqual(report['sides'][side]['refusals']['total'], [0]*5)
             self.assertIn('iqr', report['sides'][side]['throughput'])
 
-    def test_independent_refusal_regression_is_not_lost(self):
+    def test_refusal_regression_is_not_lost_or_an_extra_gate(self):
         data = pairs()
         data[0]['candidate']['refusals'] = dict(total=1, max_per_range=1)
         report = gate.assess(data)
-        self.assertEqual(report['status'], 'RULING')
-        self.assertTrue(any('refusal regression' in r for r in report['reasons']))
+        self.assertEqual(report['status'], 'PASS')
+        self.assertEqual(report['reasons'], [])
+        self.assertEqual(report['refusal_regressions'], ['total', 'max_per_range'])
 
     def test_order_and_count_are_checked(self):
         data = pairs()

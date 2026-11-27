@@ -100,7 +100,7 @@ on:
         options: ['0', '5']
         default: '0'
       fetch_pr897:
-        description: Separate PR897 option-A relative gate; five pairs, each throughput >=0.98 and baseline-MAD p95 noise; leaves the absolute diagnostic unchanged
+        description: PR897 option-A relative gate; five pairs, each throughput >=0.98 and baseline-MAD p95 noise; 1 s / 3 s figures are information for issue 913
         type: boolean
         default: false
 
@@ -125,7 +125,7 @@ jobs:
           test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
           if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
           { uname -a; lscpu; free -b; go version; findmnt -T "$RUNNER_TEMP"; } > "$RUNNER_TEMP/fetch-runner.txt"
-      - name: Five isolated alternating pairs, extend borderline results, stop on a ruling
+      - name: Five isolated alternating pairs, ruling A with issue 913 information
         env:
           BASELINE: ${{ inputs.baseline }}
           CANDIDATE: ${{ inputs.candidate }}
@@ -197,7 +197,7 @@ jobs:
           p = Path(os.environ['RUNNER_TEMP']) / 'fetch-pr897-evidence/manifest.json'
           report = json.loads(p.read_text()) if p.exists() else {'status':'INCOMPLETE', 'reason':'campaign failed before a manifest existed'}
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-              out.write('## PR897 option-A relative gate (not the absolute diagnostic)\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n')
+              out.write('## PR897 option-A relative gate (issue 913 figures are information)\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n')
           PY
       - uses: actions/upload-artifact@v7
         if: always()

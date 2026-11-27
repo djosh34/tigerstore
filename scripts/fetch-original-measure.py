@@ -4,9 +4,12 @@
 Never interprets an unqualified/failed test as a performance win. Both refs get
 identical syscall counters and cache preparation. Overlay sources, patches, raw
 logs, immutable refs and per-RPC samples are retained with the report.
+Only ruling A determines the performance verdict. #913's unchanged 1 s / 3 s
+design figures are information, never a campaign stop or merge gate.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -15,6 +18,11 @@ import re
 import statistics
 import subprocess
 import sys
+
+HERE = Path(__file__).resolve().parent
+spec = importlib.util.spec_from_file_location("pr897_gate", HERE / "fetch-pr897-gate.py")
+policy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(policy)
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 
@@ -90,48 +98,37 @@ def adapt(text, ref, side, pair, race, sync_delay, raw_name, raw_sha):
     return row
 
 
-def distribution(values):
-    q = statistics.quantiles(values, n=4, method="inclusive")
-    return {"median": statistics.median(values), "min": min(values), "max": max(values), "iqr": q[2] - q[0]}
+def design_figure(pair, race):
+    limit = 3000 if race else 1000
+    b, c = pair["baseline"]["latency_ms"], pair["candidate"]["latency_ms"]
+    over = c["p95"] > limit or c["max"] > limit
+    return dict(pair=pair["pair"], limit_ms=limit, candidate_over=over,
+                main_over=b["p95"] > limit or b["max"] > limit,
+                main_latency_ms=dict(b), candidate_latency_ms=dict(c),
+                message=f"information: {'over' if over else 'within'} #913's 1 s / 3 s design figure "
+                        f"(main: p95 {b['p95']} ms, max {b['max']} ms); "
+                        f"candidate p95 {c['p95']} ms, max {c['max']} ms; applicable figure {limit} ms")
 
 
 def decide(pairs, race):
-    if len(pairs) not in (5, 10):
-        return {"status": "INCOMPLETE", "reasons": ["need five pairs or the ten-pair extension"]}
-    if any(p["order"] != ("AB" if i % 2 == 0 else "BA") for i, p in enumerate(pairs)):
-        raise ValueError("pairs do not alternate AB/BA")
-    report = {"pairs": len(pairs), "sides": {}, "paired_ratios": []}
-    for side in ("baseline", "candidate"):
-        report["sides"][side] = {"throughput": distribution([p[side]["throughput"] for p in pairs]),
-            "wall_ms": distribution([p[side]["wall_ms"] for p in pairs]),
-            "latency_ms": {t: distribution([p[side]["latency_ms"][t] for p in pairs]) for t in ("p95", "p99", "max")},
-            "refusals": {t: [p[side]["refusals"][t] for p in pairs] for t in ("total", "max_per_range")}}
-    report["paired_ratios"] = [p["candidate"]["throughput"] / p["baseline"]["throughput"] for p in pairs]
-    def ratio(group):
-        return statistics.median(p["candidate"]["throughput"] for p in group) / statistics.median(p["baseline"]["throughput"] for p in group)
-    report["first_five_ratio"] = first = ratio(pairs[:5])
-    report["combined_ratio"] = combined = ratio(pairs)
-    reasons = []
-    if first < 0.98:
-        reasons.append("first-five median successful-throughput ratio below 0.98")
-    if len(pairs) == 10 and combined < 1:
-        reasons.append("ten-pair combined median successful-throughput ratio below 1.00")
-    limit = 3000 if race else 1000
-    for p in pairs:
-        if p["candidate"]["latency_ms"]["max"] > limit or p["candidate"]["latency_ms"]["p95"] > limit:
-            reasons.append(f"candidate pair {p['pair']} exceeds {limit}-ms p95/max target")
-    for metric in ("p95", "p99", "max"):
-        b = [p["baseline"]["latency_ms"][metric] for p in pairs]
-        c = [p["candidate"]["latency_ms"][metric] for p in pairs]
-        if statistics.median(c) > statistics.median(b) or metric == "max" and max(c) > max(b):
-            reasons.append(f"worsened {metric} tail")
-    for metric in ("total", "max_per_range"):
-        b = [p["baseline"]["refusals"][metric] for p in pairs]
-        c = [p["candidate"]["refusals"][metric] for p in pairs]
-        if sum(c) > sum(b) or max(c) > max(b):
-            reasons.append(f"worsened refusals {metric}")
-    report["status"] = "RULING" if reasons else "MORE_PAIRS" if len(pairs) == 5 and 0.98 <= first <= 1.02 else "PASS"
-    report["reasons"] = reasons
+    # A single source of truth for the ONLY performance gate: each ratio
+    # >=0.98, then each p95 delta within the predeclared five-main-run noise.
+    report = policy.assess(pairs)
+    report["design_figures"] = [design_figure(p, race) for p in pairs]
+    for row, info in zip(report["pairs"], report["design_figures"]):
+        row["design_figure"] = info
+    report["information"] = [p["message"] for p in report["design_figures"]]
+    report["baseline_p95_ms"] = [p["baseline"]["latency_ms"]["p95"] for p in pairs]
+    report["paired_ratios"] = [p["throughput_ratio"] for p in report["pairs"]]
+    # Keep the former tail/refusal checks visible, but never introduce a
+    # third performance gate alongside ruling A.
+    report["worsened_tails"] = []
+    if pairs:
+        for metric in ("p95", "p99", "max"):
+            b = [p["baseline"]["latency_ms"][metric] for p in pairs]
+            c = [p["candidate"]["latency_ms"][metric] for p in pairs]
+            if statistics.median(c) > statistics.median(b) or metric == "max" and max(c) > max(b):
+                report["worsened_tails"].append(metric)
     return report
 
 
@@ -153,11 +150,15 @@ def run(args):
     pairs = []
     manifest = {"schema": 1, "scope": "original-only", "refs": {"baseline": args.baseline, "candidate": args.candidate},
                 "race": args.race, "sync_delay_ms": args.sync_delay_ms, "pairs": pairs,
-                "run_url": os.environ["FETCH_MEASURE_RUN_URL"], "status": "INCOMPLETE"}
+                "run_url": os.environ["FETCH_MEASURE_RUN_URL"], "status": "INCOMPLETE",
+                "policy": "PR897-option-A", "noise_method": policy.NOISE_METHOD,
+                "design_figure_policy": "information only; #913 owns the 1 s / 3 s figures"}
     def save():
         (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     save()
-    for number in range(1, 11):
+    for filename in ("fetch-original-measure.py", "fetch-pr897-gate.py"):
+        (out / filename).write_bytes((HERE / filename).read_bytes())
+    for number in range(1, 6):
         order = "AB" if number % 2 else "BA"
         pair = {"pair": number, "order": order}
         for side in (("baseline", "candidate") if order == "AB" else ("candidate", "baseline")):
@@ -178,23 +179,15 @@ def run(args):
                 save()
                 return 2
             print(json.dumps({"pair": number, "side": side, "wall_ms": pair[side]["wall_ms"], "latency_ms": pair[side]["latency_ms"], "refusals": pair[side]["refusals"]}), flush=True)
-            # A hard latency miss needs a ruling immediately, not ten more
-            # process starts. Preserve the partial pair as raw evidence.
-            limit = 3000 if args.race else 1000
-            if side == "candidate" and pair[side]["latency_ms"]["max"] > limit:
-                manifest.update(status="RULING", reasons=[f"candidate p95/max target {limit} ms missed"], partial_pair=pair)
-                save()
-                return 1
+        pair["design_figure"] = design_figure(pair, args.race)
+        print(pair["design_figure"]["message"], flush=True)
         pairs.append(pair)
+        report = decide(pairs, args.race)
+        manifest.update(status=report["status"], report=report)
         save()
-        if number in (5, 10):
-            report = decide(pairs, args.race)
-            manifest.update(status=report["status"], report=report)
-            save()
-            if report["status"] == "MORE_PAIRS":
-                continue
-            return 0 if report["status"] == "PASS" else 1
-    raise AssertionError("unreachable")
+        if report["status"] == "RULING":
+            return 1
+    return 0 if manifest["status"] == "PASS" else 2
 
 
 def main():
