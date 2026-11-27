@@ -375,7 +375,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 		i := n.w.add(x)
 		n.pruneWatches(c, s)
 		s.wids = append(s.wids, i)
-		var w msgW
+		w := msgW{control: true}
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2
 		w.begin(c, s, size)
 		n.writeHdr(&w)
@@ -427,7 +427,7 @@ func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 			// etcd answers no cancel of a watch the stream does not have.
 			return nil
 		}
-		var w msgW
+		w := msgW{control: true}
 		size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(wid)) + 2
 		w.begin(c, s, size)
 		n.writeHdr(&w)
@@ -483,7 +483,7 @@ func (n *node) pruneWatches(c *client, s *stream) {
 // canceled at once, with watch ID -1 and the reason.
 func (n *node) writeRefused(c *client, s *stream, reason string) {
 	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, math.MaxUint64) + 2 + 2 + sizeBytesField(6, len(reason))
-	var w msgW
+	w := msgW{control: true}
 	w.begin(c, s, size)
 	n.writeHdr(&w)
 	w.varintField(2, math.MaxUint64)
@@ -933,7 +933,7 @@ func (n *node) retryProgress() {
 // writeProgress writes a progress notification of watch id, -1 for the
 // stream's, at the current revision.
 func (n *node) writeProgress(c *client, s *stream, id int64) {
-	var w msgW
+	w := msgW{control: true}
 	w.begin(c, s, sizeBytesField(1, n.hdrSize())+sizeVarintField(2, uint64(id)))
 	n.writeHdr(&w)
 	writeVarintNZ(&w, 2, uint64(id))
@@ -1016,7 +1016,7 @@ func (n *node) writeResponse(c *client, s *stream, x *watcher, evs []event, size
 // As etcd's, the header names revision 0.
 func (n *node) writeCompacted(c *client, s *stream, x *watcher) {
 	size := sizeBytesField(1, n.hdrSizeAt(0)) + sizeVarintField(2, uint64(x.id)) + 2 + sizeVarintField(5, uint64(n.st.compactRev))
-	var mw msgW
+	mw := msgW{control: true}
 	mw.begin(c, s, size)
 	n.writeHdrAt(&mw, 0)
 	writeVarintNZ(&mw, 2, uint64(x.id))

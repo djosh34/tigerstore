@@ -74,19 +74,19 @@ func fillQueuedBytes(t *testing.T, c *client) []byte {
 	t.Helper()
 	var data []byte
 	for _, h := range c.flow.held {
-		if h.material != nil {
-			copy := *h.material
+		if material := c.heldMaterial(&h); material != nil {
+			copy := *material
 			for p := copy.front(); len(p) > 0; p = copy.front() {
 				data = append(data, p...)
 				copy.consume(len(p))
 			}
 			continue
 		}
-		if h.stage == nil {
+		s := c.heldStage(&h)
+		if s == nil {
 			data = append(data, h.data...)
 			continue
 		}
-		s := h.stage
 		for at := s.read; at < s.size; {
 			p := s.page(at)
 			take := min(s.size-at, stagePayload-at%stagePayload)

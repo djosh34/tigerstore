@@ -14,12 +14,13 @@ const defaultWindow = 65535
 
 // held is a stream's message, or its trailers, waiting for window.
 type held struct {
-	sid        uint32
-	flatCharge int64
+	sid uint32
+	// Main's padding holds either a rounded flat charge (low bits zero),
+	// the inherited control marker, or a funded output handle. #912:
+	// keep this entry at main's 56 bytes, including empty high water.
+	flatCharge uint32
 	data       []byte // the gRPC message bytes still to send
-	material   *materialReply
-	stage      *replyStage // complete, independently releasable cursor output
-	trailer    []byte      // a header block that ends the stream once data is out
+	trailer    []byte // a header block that ends the stream once data is out
 }
 
 // flow is a client connection's send windows and what it holds.
@@ -49,6 +50,10 @@ func (c *client) take(s *stream, n int) bool {
 // hold keeps stream s's message data, or its trailers, until the windows
 // take it, and sends what they take now.
 func (c *client) hold(s *stream, data, trailer []byte) {
+	c.holdOutput(s, data, trailer, false)
+}
+
+func (c *client) holdOutput(s *stream, data, trailer []byte, control bool) {
 	f := &c.flow
 	if !s.holds {
 		s.holds = true
@@ -58,8 +63,13 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 		f.streams[s.id] = s.win
 	}
 	h := held{sid: s.id, data: data, trailer: trailer}
-	if len(data) > 0 && c.node.cursorFetch && c.node.legacyRetry != nil {
-		h.flatCharge = roundedFetch(int64(cap(data)))
+	if control {
+		h.flatCharge = heldControl
+		c.controlHeld += int64(len(data) + len(trailer))
+		c.node.controlHeld += int64(len(data) + len(trailer))
+	}
+	if len(data) > 0 && !control && c.node.cursorFetch && c.node.legacyRetry != nil {
+		h.flatCharge = uint32(roundedFetch(int64(cap(data))))
 		promise := int64(0)
 		if c.stages == 0 {
 			promise = stageUnit
@@ -77,8 +87,8 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 	f.held = append(f.held, h)
 	f.bytes += int64(len(data) + len(trailer))
 	physical := int64(len(data))
-	if h.flatCharge > 0 {
-		physical = h.flatCharge
+	if charge := h.flatBytes(); charge > 0 {
+		physical = charge
 	}
 	c.growOut(int(physical) + len(trailer))
 	f.counts[s.id]++
@@ -182,14 +192,14 @@ func (c *client) drain() {
 			k++
 			continue
 		}
-		if h.stage != nil {
-			c.drainStage(h)
+		if stage := c.heldStage(h); stage != nil {
+			c.drainStage(h, stage)
 		}
-		if h.material != nil {
-			c.drainMaterial(h)
+		if material := c.heldMaterial(h); material != nil {
+			c.drainMaterial(h, material)
 		}
 		limit := int64(len(h.data))
-		if h.flatCharge > 0 {
+		if h.flatBytes() > 0 {
 			c.stageSocket()
 			limit = min(limit, int64(max(0, rawSocketRoom(c))))
 		}
@@ -198,14 +208,19 @@ func (c *client) drain() {
 			w.write(h.data[:m])
 			h.data = h.data[m:]
 			f.bytes -= m
-			if h.flatCharge == 0 {
+			if h.flatBytes() == 0 {
 				c.growOut(-int(m))
+				if h.flatCharge == heldControl {
+					c.controlHeld -= m
+					n.controlHeld -= m
+				}
 			}
 			f.conn -= m
 			f.streams[h.sid] -= m
 			n.markDirty(&c.sock)
 		}
-		if len(h.data) > 0 || h.material != nil || h.stage != nil && h.stage.read < h.stage.size {
+		stage := c.heldStage(h)
+		if len(h.data) > 0 || c.heldMaterial(h) != nil || stage != nil && stage.read < stage.size {
 			if blocked == nil {
 				blocked = map[uint32]bool{}
 			}
@@ -214,8 +229,10 @@ func (c *client) drain() {
 			k++
 			continue
 		}
-		if h.flatCharge > 0 {
+		if h.flatBytes() > 0 {
 			c.releaseFlatOutput(h)
+		} else if h.flatCharge&3 >= 2 {
+			c.unlinkOutput(h)
 		}
 		if h.trailer != nil {
 			b := c.frame(9 + len(h.trailer))
@@ -223,6 +240,10 @@ func (c *client) drain() {
 			copy(b[9:], h.trailer)
 			f.bytes -= int64(len(h.trailer))
 			c.growOut(-len(h.trailer))
+			if h.flatCharge == heldControl {
+				c.controlHeld -= int64(len(h.trailer))
+				n.controlHeld -= int64(len(h.trailer))
+			}
 			n.markDirty(&c.sock)
 		}
 		f.counts[h.sid]--
@@ -279,19 +300,25 @@ func (c *client) dropHeld(sid uint32) {
 			continue
 		}
 		f.bytes -= int64(len(h.data) + len(h.trailer))
-		if h.material != nil {
-			f.bytes -= h.material.remaining
-			c.releaseMaterial(&h)
+		if material := c.heldMaterial(&h); material != nil {
+			f.bytes -= material.remaining
+			c.releaseMaterial(&h, material)
 		}
-		if h.flatCharge > 0 {
+		if h.flatBytes() > 0 {
 			c.releaseFlatOutput(&h)
 			c.growOut(-len(h.trailer))
 		} else {
 			c.growOut(-len(h.data) - len(h.trailer))
 		}
-		if h.stage != nil {
-			f.bytes -= int64(h.stage.size - h.stage.read)
-			h.stage.discard()
+		if stage := c.heldStage(&h); stage != nil {
+			f.bytes -= int64(stage.size - stage.read)
+			stage.discard()
+			c.unlinkOutput(&h)
+		}
+		if h.flatCharge == heldControl {
+			bytes := int64(len(h.data) + len(h.trailer))
+			c.controlHeld -= bytes
+			c.node.controlHeld -= bytes
 		}
 	}
 	clear(f.held[k:])

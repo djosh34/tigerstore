@@ -60,8 +60,7 @@ func TestProtectedMetadataStreamsPreserveMainProjection(t *testing.T) {
 					if h.sid != s.id {
 						continue
 					}
-					if h.stage != nil {
-						staged := h.stage
+					if staged := c.heldStage(&h); staged != nil {
 						for at := staged.read; at < staged.size; {
 							p := staged.page(at)
 							take := min(staged.size-at, stagePayload-at%stagePayload)

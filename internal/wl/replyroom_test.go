@@ -43,7 +43,7 @@ func roomRangeReply(t *testing.T, c *client) *pb.RangeResponse {
 		t.Fatal("the range sent no whole reply")
 	}
 	data := c.flow.held[0].data
-	if stage := c.flow.held[0].stage; stage != nil {
+	if stage := c.heldStage(&c.flow.held[0]); stage != nil {
 		if stage.written != stage.size || stage.read != 0 {
 			t.Fatal("the range queued an incomplete reply")
 		}

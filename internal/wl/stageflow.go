@@ -63,7 +63,9 @@ func (n *node) stageOther(promise int64) int64 {
 	}
 	other := input + n.cout - n.stageCredits.used + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + n.legacyPromises + promise
 	if n.cursorFetch {
-		other -= n.mainCaptureCount()
+		// #904 and #912: exactly the unchanged inherited debits.
+		// Held backing itself remains main's 56-byte representation.
+		other -= n.mainCaptureCount() + n.controlHeld
 	}
 	return other
 }
@@ -83,7 +85,9 @@ func (c *client) holdStage(s *stream, stage *replyStage) bool {
 		}
 		f.streams[s.id] = s.win
 	}
-	f.held = append(f.held, held{sid: s.id, stage: stage})
+	stage.output.stage = stage
+	key := c.linkOutput(&stage.output, 2)
+	f.held = append(f.held, held{sid: s.id, flatCharge: key})
 	f.bytes += int64(stage.size)
 	f.counts[s.id]++
 	if f.counts[s.id] == 1 && (f.conn > 0 || stage.responsePending) {
@@ -97,7 +101,7 @@ func (c *client) hasStageOutput() bool {
 		return false
 	}
 	for _, h := range c.flow.held {
-		if h.stage != nil || h.flatCharge > 0 || h.material != nil {
+		if c.heldStage(&h) != nil || h.flatBytes() > 0 || c.heldMaterial(&h) != nil {
 			return true
 		}
 	}
@@ -105,7 +109,7 @@ func (c *client) hasStageOutput() bool {
 }
 
 func (c *client) releaseFlatOutput(h *held) {
-	c.growOut(-int(h.flatCharge))
+	c.growOut(-int(h.flatBytes()))
 	h.flatCharge = 0
 	c.stages--
 	if c.stages == 0 {
@@ -150,19 +154,19 @@ func (c *client) stageSocket() {
 	c.dropOut = true
 }
 
-func (c *client) drainStage(h *held) {
+func (c *client) drainStage(h *held, stage *replyStage) {
 	c.stageSocket()
-	if h.stage.responsePending {
+	if stage.responsePending {
 		if rawSocketRoom(c) < len(respHeaders)+9 {
 			return
 		}
 		b := c.frame(9 + len(respHeaders))
 		putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, h.sid)
 		copy(b[9:], respHeaders)
-		h.stage.responsePending = false
+		stage.responsePending = false
 		c.node.markDirty(&c.sock)
 	}
-	for p := h.stage.front(); len(p) > 0; p = h.stage.front() {
+	for p := stage.front(); len(p) > 0; p = stage.front() {
 		// Leave a complete record's growth room so openRec never has to
 		// double this socket for a stage. Framing/crypto stay in c.out.
 		space := min(64<<10-len(c.out), cap(c.out)-len(c.out)) - (maxPlain + 2*recOverhead + 64)
@@ -176,7 +180,7 @@ func (c *client) drainStage(h *held) {
 		c.flow.bytes -= m
 		c.flow.conn -= m
 		c.flow.streams[h.sid] -= m
-		h.stage.consume(int(m))
+		stage.consume(int(m))
 		c.node.markDirty(&c.sock)
 	}
 }
@@ -186,18 +190,18 @@ func (c *client) drainStage(h *held) {
 func (c *client) dropStageOutput() {
 	for i := range c.flow.held {
 		h := &c.flow.held[i]
-		if h.material != nil {
-			c.flow.bytes -= h.material.remaining
-			c.releaseMaterial(h)
+		if material := c.heldMaterial(h); material != nil {
+			c.flow.bytes -= material.remaining
+			c.releaseMaterial(h, material)
 		}
-		if h.flatCharge > 0 {
+		if h.flatBytes() > 0 {
 			c.flow.bytes -= int64(len(h.data))
 			c.releaseFlatOutput(h)
 		}
-		if h.stage != nil {
-			c.flow.bytes -= int64(h.stage.size - h.stage.read)
-			h.stage.discard()
-			h.stage = nil
+		if stage := c.heldStage(h); stage != nil {
+			c.flow.bytes -= int64(stage.size - stage.read)
+			stage.discard()
+			c.unlinkOutput(h)
 		}
 	}
 }

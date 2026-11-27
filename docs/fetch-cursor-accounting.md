@@ -1,6 +1,6 @@
 # Fetch cursor accounting and activation gate
 
-Part of #833. Production routing is **not enabled**: the ordinary watch-control allocation gate below fails (#912). The #908 sort ruling has been implemented. This document records demonstrated gates, not a completed global proof or qualifying performance campaign.
+Part of #833. Production range/watch cursor routing is enabled for validation. The settled #904/#908/#912 main-parity boundaries are implemented; qualifying Actions measurements and broad active-routing validation remain outstanding. This document records demonstrated gates, not a completed performance campaign.
 
 ## Allocation inventory
 
@@ -18,7 +18,8 @@ Part of #833. Production routing is **not enabled**: the ordinary watch-control 
 | W: legacy | Charged 8-KiB roots, full paged index capacity, rounded payload and retained needed results. No second B/32, uncharged map, or TTL eviction of a needed dependency. |
 | W/P: canonical legacy adapter | Canonical protobuf bytes use W when the complete input fits; otherwise they use P. The existing transport/order entries are explicitly W-funded (8 bytes each, wide form 16), not uncharged per-record padding. W-backed input transfers to a pre-funded complete P destination before retirement. Large P-backed output retains its charged W index until DATA/reset; tiny selected output has a funded copy and retires the all-input view immediately. Main's sort representation is unchanged. |
 | P: canonical retry copies | Exact-capacity record construction avoids append-growth overlap. Raw retry promises include canonical/projection allocation bounds; a structurally non-fitting raw finish uses the canonical adapter instead of waiting indefinitely. |
-| Open: ordinary controls/containers | #912 demonstrates ordinary watch controls bypassing physical funding. Added held-entry fields/capacity are not exempt. This row prevents a global-proof/activation claim. |
+| Main parity: inherited watch controls | #912 leaves unchanged control output and held backing outside the proof. The inherited held-control debit is identified separately; admission/backpressure is unchanged. `held` stays exactly 56 bytes, rather than exempting the former added 24 bytes per entry. |
+| P: ordered-output handles | Intrusive stage/material nodes live inside their already-funded root/control units. Handles reuse `held`'s existing four padding bytes. No new map, growing index, per-control owner or retained high-water allocation is introduced. |
 
 All physical source leases survive through I/O acknowledgement. Completion cannot publish to a replacement client/store/watcher, and cannot clear a newer operation. WAL generations and checkpoint inodes are independent of logical record offsets. Normal validated current values can promote to the ordinary store slab; originating fulfillment is not reported as distinct-request reuse.
 
@@ -38,7 +39,7 @@ Maximum observed funding ledgers across both admission orders and cancellation c
 | 137 MiB | 4,046,848 / 4,489,216 | 5,668,864 / 8,978,432 | Fitting reservations coexist. |
 | 191 MiB | 4,046,848 / 6,258,688 | 6,684,672 / 12,517,376 | Fitting reservations coexist. |
 
-These are real mixed-consumer cases, including high-water metadata and held-reply retry. They are not the global proof: ordinary control output remains unresolved below.
+These are real mixed-consumer cases, including high-water metadata and held-reply retry. The separate #912 control-parity test below additionally checks protected P while inherited control replies accumulate. Socket-drain parity and broad active-routing validation still require confirmation.
 
 ## Option A / #904
 
@@ -60,11 +61,11 @@ The manager's option-A ruling excludes those unchanged arrays. `TestLegacySortSc
 
 `TestLegacyTinyInputsWithOversizedLastRecordComplete` additionally preserves main's valid pre-next-record overshoot: 100,000 tiny inputs followed by a final 1,280-KiB value. Its deterministic red was the added transport-prefix debit, not #908. Separating that explicitly charged W metadata from canonical bytes makes it finish without changing main's admission, comparator, sorting algorithm or selected set.
 
-## Remaining global blocker / #912
+## Main watch-control parity / #912
 
 Pristine main `0cd3dd28c5550cea1e2ea4f5dddd264687820f74` accepts 250,000 progress requests on a DATA-window-blocked watch stream. Their 1,750,000 gRPC input bytes fit one normal 2-MiB input turn. Already-counted P reaches **5,909,630 > 5,439,488 bytes**. The separate main `[]held` capacity is **294,180 x 56 = 16,474,080 bytes**, alone larger than P+R. No keys, writes, capture, sort, expiry or sleeps are involved. The exact standalone reproducer is published on #912.
 
-`TestWatchControlCannotSpendProtectedFetchCapacity` opens/funds the other stream's headers first, fills protected destinations, then uses real `node.request` progress messages. It honestly fails after **372** requests at **5,439,510 > 5,439,488 bytes**. No control/container exemption, timeout, skip or newly refused watch message has been assumed. The added held-entry footprint (80 versus main's 56 bytes) also remains an in-scope funding obligation. A ruling on inherited watch-control queuing/backpressure/admission is needed under the frozen main/input-turn policy before activation.
+The manager's settled #912 boundary excludes inherited control output and backing, not new growth. `TestWatchControlCannotSpendProtectedFetchCapacity` now compares 250,000 real progress requests against the legacy path: **5,500,000 queued bytes**, **294,180 held entries of exactly 56 bytes**, identical counts/bytes/capacities. Protected fetch P remains **5,431,326 / 5,439,488 bytes**. No request is refused and no timeout advances. Reset and connection close retire the separate inherited debit. `TestHeldOutputHandlesKeepMainLayoutAndRetire` checks exact size/offsets, funded owner sizes, handle wrap/collision, multiplexed reset and final drain retirement. #912 itself is unchanged.
 
 ## Activation-trial corrections
 
@@ -74,6 +75,6 @@ An active-routing broad race trial exposed deferred-handshake starvation, plus t
 
 Local original-workload diagnostics passed: both legacy control and cursor tests retain every value, retry, deadline and budget assertion. The cursor cold-worker test explicitly uses the supported refused-NOWAIT condition, because kernel readahead can otherwise warm later pieces after one fadvise. Its race 80-range phase was 2.267 s. This is not an equal-cache paired comparison or a qualifying campaign.
 
-Post-merge targeted race validation passes (6.074 s), including dense/overshoot/scratch parity, deterministic handoff rotation, and common/wide transport-index offsets/readiness. All four required v2.14.0 lint configurations report zero issues after the normal main merge. The expanded 71.005-s budgets/buffers/contracts run fails only the mandatory #912 gate; this is not a green correctness status.
+After merging main's #907 fix normally, targeted race validation passes (7.350 s), including all three contracts, combined runtime matrix, #904/#908/#912 parity, dense materialization and large-watch first-DATA holds. All four required v2.14.0 lint configurations report zero issues. The earlier expanded 71.005-s run predates the #912 ruling and failed its then-unexempted control gate; a new broad active-routing Actions run is required.
 
-The offline `scripts/fetch-measure-gate.py` checks named/reuse evidence and thresholds (15 synthetic tests), but explicitly does **not** certify the separate original-workload gate. `bench/fetch-measure-plan.json` has verified trace hashes and ten predeclared fresh seeds for each Kubernetes shape; candidate is null, measurements empty and status `BLOCKED_NOT_RUN`. The Actions artifact adapter, actual routing/cache/reuse evidence, original/5-ms campaigns and qualifying paired Actions measurements remain unperformed. No result from the disabled production binary is presented as #833 evidence.
+The offline `scripts/fetch-measure-gate.py` checks named/reuse evidence and thresholds (15 synthetic tests), but explicitly does **not** certify the separate original-workload gate. `bench/fetch-measure-plan.json` has verified trace hashes and ten predeclared fresh seeds for each Kubernetes shape; candidate is null, measurements empty and status `BLOCKED_NOT_RUN`. The Actions artifact adapter, actual routing/cache/reuse evidence, original/5-ms campaigns and qualifying paired Actions measurements remain unperformed. No old disabled-routing result is presented as #833 evidence.

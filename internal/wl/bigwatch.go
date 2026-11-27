@@ -188,7 +188,7 @@ func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) b
 // cancels a watch.
 func (n *node) writeCanceled(c *client, s *stream, x *watcher, reason string) {
 	size := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id)) + 2 + sizeBytesField(6, len(reason))
-	var mw msgW
+	mw := msgW{control: true}
 	mw.begin(c, s, size)
 	n.writeHdr(&mw)
 	writeVarintNZ(&mw, 2, uint64(x.id))

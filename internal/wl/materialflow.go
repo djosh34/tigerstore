@@ -13,6 +13,7 @@ const materialEnd = ^uint64(0)
 // history dependency survives the queue commit. The transport index is
 // explicitly W-funded through output retirement; canonical bytes stay P.
 type materialReply struct {
+	output                                                     heldOutput
 	batch                                                      *legacyBatch
 	first, slot                                                uint64
 	selected, count, sent, limit, chunk, packetLeft, nextChunk int64
@@ -283,7 +284,9 @@ func (n *node) publishMaterialRange(b *legacyBatch, c *client, s *stream, r *ran
 	n.stagePromises += promise
 	c.stages++
 	c.dropOut = true
-	f.held = append(f.held, held{sid: s.id, material: m})
+	m.output.material = m
+	key := c.linkOutput(&m.output, 3)
+	f.held = append(f.held, held{sid: s.id, flatCharge: key})
 	f.bytes += m.remaining
 	f.counts[s.id]++
 	n.gs.rangesN++
@@ -295,9 +298,8 @@ func (n *node) publishMaterialRange(b *legacyBatch, c *client, s *stream, r *ran
 	n.markDirty(&c.sock)
 }
 
-func (c *client) drainMaterial(h *held) {
+func (c *client) drainMaterial(h *held, m *materialReply) {
 	c.stageSocket()
-	m := h.material
 	if m.responsePending {
 		if rawSocketRoom(c) < 9+len(respHeaders) {
 			return
@@ -321,16 +323,16 @@ func (c *client) drainMaterial(h *held) {
 		c.flow.streams[h.sid] -= take
 		c.node.markDirty(&c.sock)
 	}
-	c.releaseMaterial(h)
+	c.releaseMaterial(h, m)
 }
 
-func (c *client) releaseMaterial(h *held) {
-	b := h.material.batch
+func (c *client) releaseMaterial(h *held, m *materialReply) {
+	b := m.batch
 	c.growOut(-int(b.materialCharge) - stageUnit)
 	b.materialCharge = 0
 	b.data = nil
 	b.materialIndex = nil
-	h.material = nil
+	c.unlinkOutput(h)
 	b.lease.release()
 	c.stages--
 	if c.stages == 0 {

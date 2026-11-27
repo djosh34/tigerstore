@@ -504,6 +504,7 @@ func (s *sock) writeFrame(typ, flags byte, p []byte) {
 // msgW writes one gRPC message of a known length as DATA frames of a
 // stream, straight into the records.
 type msgW struct {
+	control   bool // inherited watch-control output only (#912)
 	stage     *replyStage
 	s         *sock
 	sid       uint32
@@ -518,7 +519,7 @@ type msgW struct {
 
 // begin starts a gRPC message of n bytes on stream s of client c.
 func (w *msgW) begin(c *client, s *stream, n int) {
-	*w = msgW{s: &c.sock, sid: s.id, left: 5 + n}
+	*w = msgW{control: w.control, s: &c.sock, sid: s.id, left: 5 + n}
 	if g := c.node; g != nil {
 		g.gs.calls[s.kind].sent++
 		g.gs.sentBytes += int64(n)
@@ -609,6 +610,6 @@ func (w *msgW) end() {
 		w.s.broken = true
 	}
 	if w.c != nil {
-		w.c.hold(w.st, w.held, nil)
+		w.c.holdOutput(w.st, w.held, nil, w.control)
 	}
 }

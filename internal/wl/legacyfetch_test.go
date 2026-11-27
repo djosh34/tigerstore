@@ -161,7 +161,7 @@ func TestWholeLegacyMaterializationCommitsWithoutCopyOverlap(t *testing.T) {
 						}
 					}
 				}
-				if c.waiting() != 0 || len(c.flow.held) == 0 || c.flow.held[0].material == nil || st.heldReads() != 0 || n.fillBook.used != fetchCoreWork+c.flow.held[0].material.batch.materialIndexCharge {
+				if c.waiting() != 0 || len(c.flow.held) == 0 || c.heldMaterial(&c.flow.held[0]) == nil || st.heldReads() != 0 || n.fillBook.used != fetchCoreWork+c.heldMaterial(&c.flow.held[0]).batch.materialIndexCharge {
 					t.Fatal("complete reply was not independently queued before DATA")
 				}
 				// Destroy its former store before any DATA publication. Queue

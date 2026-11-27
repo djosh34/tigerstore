@@ -150,8 +150,8 @@ type node struct {
 	fetchNoWaitRefused bool
 	measureSort        func(candidateCapacity, parsedCapacity int)
 
-	// Production stays gated by the ordinary watch-control allocation
-	// regression. #908's unchanged sort arrays are excluded, not that output.
+	// Production routing is activated only after the allocation and
+	// correctness gates; inherited #904/#908/#912 debits stay unchanged.
 	cursorFetch                                                          bool
 	fills                                                                []*replyFill
 	fillActive                                                           *replyFill
@@ -174,6 +174,7 @@ type node struct {
 	reserved int64
 	// coveredRoom is logical output reserve whose physical backing is
 	// irrevocably in the client pool. Input turns do not borrow it.
+	controlHeld   int64 // unchanged inherited watch-control output only, #912
 	coveredRoom   int64
 	stageCredits  stageCredit
 	headerSpare   int64 // unmaterialized bounded CONTINUATION backing

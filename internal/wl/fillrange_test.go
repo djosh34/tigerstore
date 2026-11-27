@@ -39,10 +39,10 @@ func fillRangeFixture(t *testing.T) (*client, *stream, *store, *memLog, *loop) {
 func stagedRangeResponse(t *testing.T, c *client) *pb.RangeResponse {
 	t.Helper()
 	for _, h := range c.flow.held {
-		if h.stage == nil {
+		s := c.heldStage(&h)
+		if s == nil {
 			continue
 		}
-		s := h.stage
 		wire := make([]byte, s.size)
 		for at := 0; at < len(wire); {
 			p := s.page(at)
@@ -162,10 +162,10 @@ func TestCompletedCursorWaitsForSocketWithoutReserializing(t *testing.T) {
 	n.pumpFills()
 	var data []byte
 	for _, h := range c.flow.held {
-		if h.sid != s.id || h.stage == nil {
+		stage := c.heldStage(&h)
+		if h.sid != s.id || stage == nil {
 			continue
 		}
-		stage := h.stage
 		for at := stage.read; at < stage.size; {
 			p := stage.page(at)
 			take := min(stage.size-at, stagePayload-at%stagePayload)
@@ -388,8 +388,8 @@ func TestUncommittedCursorRestartsAfterSameRevisionStoreReplacement(t *testing.T
 	}
 	queued := int64(0)
 	for _, h := range c.flow.held {
-		if h.stage != nil {
-			queued += h.stage.charged
+		if stage := c.heldStage(&h); stage != nil {
+			queued += stage.charged
 		}
 	}
 	if n.stageCredits.used != queued || n.fillActive != nil || len(n.fills) != 0 {

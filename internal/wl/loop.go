@@ -171,7 +171,7 @@ func run(ctx context.Context, cfg Config) error {
 		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
 		// TestWatchControlCannotSpendProtectedFetchCapacity is still a
 		// mandatory failing global gate; do not activate production yet.
-		cursorFetch: false,
+		cursorFetch: true,
 	}
 	if cfg.TraceLargePuts {
 		n.putTimings = &putTimings{pending: make(map[uint64][]*putTiming)}

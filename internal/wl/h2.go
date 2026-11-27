@@ -226,6 +226,9 @@ type client struct {
 	roomWake      bool        // queued in node.roomClients
 	coveredRoom   int64       // output quota backed by the client pool, not input reserve
 	stagePending  int64       // unpublished wire bytes, including worker quarantine
+	outputs       *heldOutput // intrusive, already-funded ordered output owners
+	outputSeq     uint32
+	controlHeld   int64       // unchanged main watch-control debit, #912
 	replyStage    *replyStage // non-yielding ordinary response serialization
 	stagePromise  int64       // protected socket/finish capacity
 	socketPromise int64       // stagePromise consumed by actual socket backing
@@ -479,6 +482,8 @@ func (c *client) dropAll() {
 		c.node.stageOrphans++
 	}
 	c.dropStageOutput()
+	c.node.controlHeld -= c.controlHeld
+	c.controlHeld = 0
 	c.node.giveRoom(c, true)
 	c.grow(-cap(c.in) - cap(c.pt) - int(c.partial) - cap(c.block))
 	c.growOut(-cap(c.out) - int(c.flow.bytes))

@@ -1,9 +1,13 @@
 package wl
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
 
-// Unlike #904/#908, ordinary watch-control output is not excluded. Main
-// accepts these requests within one input turn, even with DATA closed.
+// #912 excludes only inherited watch-control output and held backing.
+// Keep main's admission/backpressure, prove exact parity, and keep #897's
+// entry at 56 bytes rather than exempting its former 80-byte growth.
 func TestWatchControlCannotSpendProtectedFetchCapacity(t *testing.T) {
 	c, _, _, _, _ := fillRangeFixture(t)
 	n := c.node
@@ -33,12 +37,40 @@ func TestWatchControlCannotSpendProtectedFetchCapacity(t *testing.T) {
 	if requests*(5+len(msg)) > int(n.sizes.reserve()) {
 		t.Fatal("probe exceeded a normal input turn")
 	}
+	if unsafe.Sizeof(held{}) != 56 || unsafe.Sizeof(replyStage{}) > stageUnit || unsafe.Sizeof(materialReply{}) > stageUnit {
+		t.Fatal("#897 grew main's held entry or overflowed funded control storage")
+	}
 	for i := range requests {
 		if err := n.request(other, s, msg); err != nil {
 			t.Fatal(err)
 		}
 		if used := n.stageCredits.used + n.stageOther(0); used > n.sizes.clientPool {
-			t.Fatalf("UNRESOLVED ordinary watch control stole protected P after %d requests: %d > %d; no capture or sort", i+1, used, n.sizes.clientPool)
+			t.Fatalf("watch control stole protected P after %d requests: %d > %d; #912 excludes only unchanged control bytes", i+1, used, n.sizes.clientPool)
 		}
+	}
+	main, _, _, _, _ := fillRangeFixture(t)
+	main.node.cursorFetch = false
+	main.flow.conn = 0
+	ms := main.newStream(3, kWatch)
+	if err := main.node.request(main, ms, nil); err != nil {
+		t.Fatal(err)
+	}
+	before := main.node.cout
+	for range requests {
+		if err := main.node.request(main, ms, msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(other.flow.held) != len(main.flow.held) || cap(other.flow.held) != cap(main.flow.held) || other.flow.bytes != main.flow.bytes || other.controlHeld != main.controlHeld || other.controlHeld != main.node.cout-before {
+		t.Fatal("#897 enlarged inherited #912 output or held backing")
+	}
+	t.Logf("#912 parity: controls=%d bytes=%d held capacity=%d x 56; added fetch P=%d/%d", requests, other.controlHeld, cap(other.flow.held), n.stageCredits.used+n.stageOther(0), n.sizes.clientPool)
+	other.dropHeld(s.id)
+	if other.controlHeld != 0 || n.controlHeld != 0 {
+		t.Fatal("reset retained inherited-control debit")
+	}
+	main.dropAll()
+	if main.controlHeld != 0 || main.node.controlHeld != 0 {
+		t.Fatal("close retained inherited-control debit")
 	}
 }
