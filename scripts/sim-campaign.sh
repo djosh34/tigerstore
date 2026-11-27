@@ -7,7 +7,7 @@ export GOSIMTOOL="$GITHUB_WORKSPACE/.gosim/bin/gosim"
 # A runner shut down for memory may never reach artifact upload (#775).
 (while true; do
   echo "memory $(date -u +%T): $(free -m | awk '/^Mem:/ {print "used " $3 " MiB, available " $7 " MiB"}'); largest: $(ps -eo rss=,comm= --sort=-rss | head -3 | awk '{printf "%s %d MiB; ", $2, $1/1024}')" | tee -a "$RUNNER_TEMP/memory.log"
-  sleep 30
+  sleep 5
 done) &
 memory=$!
 trap 'kill "$memory" 2>/dev/null || true' EXIT

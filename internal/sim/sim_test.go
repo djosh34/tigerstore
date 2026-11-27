@@ -809,6 +809,9 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 	if err := check.Watches(h); err != nil {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
+	if res.long {
+		check.LateGapR3Start(res.FinalRev)
+	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
 		var steps int64
 		var cpuFrom time.Duration
@@ -828,6 +831,8 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 				elapsed = max(0, cpuTo-cpuFrom)
 			}
 			report(steps, elapsed, time.Duration(max(0, wallclock.Now()-wallFrom)))
+			simrun.Artifact("sim-out/late-gap-r3/measurement.json", check.LateGapR3JSON())
+			simrun.Artifact("sim-out/late-gap-r3/witness.txt", []byte(fmt.Sprintf("steps=%d budget=%d cpu=%s wall=%s error=%v\n", steps, budget, elapsed, time.Duration(max(0, wallclock.Now()-wallFrom)), err)))
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("witness: %w", err))

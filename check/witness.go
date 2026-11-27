@@ -352,10 +352,12 @@ func (w *witness) summary() summary {
 
 // apply adds an event sent by op and replays it.
 func (w *witness) apply(op int, req *history.Request) outcome {
+	before := w.live.rev
 	o := w.live.step(*req, true)
 	if w.stopped {
 		return o
 	}
+	r3Applied(w, op, before, o.events)
 	w.past.add(o.events)
 	for _, e := range o.events {
 		w.appended = append(w.appended, e.KV.Key)

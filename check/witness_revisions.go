@@ -29,6 +29,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := newRevisionOrder(w)
 	w.search = r
+	defer r3Done(r)
 	if w.testRevision != nil {
 		w.testRevision(r)
 	}
@@ -680,8 +681,14 @@ func (r *revisionOrder) indexCounts() {
 // the search tried every order of the writes in between, 15 million times
 // back, before it saw that count.
 func (r *revisionOrder) reachable(s *state, skip int) bool {
+	if g := r3GapAt(r.rev); g != nil {
+		g.ReachClause = "room"
+	}
 	if r.step() || !r.roomReachable(s, skip) {
 		return false
+	}
+	if g := r3GapAt(r.rev); g != nil {
+		g.ReachClause = "counts"
 	}
 	first := sort.Search(len(r.countRevs), func(k int) bool { return r.countRevs[k] >= s.rev })
 	for _, rev := range r.countRevs[first:] {
@@ -1648,6 +1655,7 @@ type mark struct {
 // frame is a gap of the search: its revision, the candidates to write it,
 // and the next one to try.
 type frame struct {
+	r3    r3Choice
 	rev   int64
 	cands []int
 	next  int
@@ -1788,6 +1796,9 @@ func (r *revisionOrder) search() (err error) {
 	for u := uint64(r.first) + 1; ; {
 		rev := int64(min(u, math.MaxInt64))
 		r.rev = rev
+		if g := r3GapAt(rev); g != nil {
+			g.Visits++
+		}
 		if r.testTrace != nil {
 			r.testTrace("revision", -1)
 		}
@@ -1844,6 +1855,9 @@ func (r *revisionOrder) search() (err error) {
 			return r.failure
 		}
 		f := r.stack[len(r.stack)-1]
+		if r3.Enabled {
+			f.r3.Op = -1
+		}
 		r.restore(f.mark)
 		r.backs++
 		u = uint64(f.rev)
@@ -1908,6 +1922,9 @@ func (r *revisionOrder) write(rev int64) bool {
 			r.testTrace("gap", -1)
 		}
 	}
+	if r3.Enabled {
+		f.r3 = r3Choice{Op: -1}
+	}
 	for ; f.next < len(f.cands); f.next++ {
 		if r.step() {
 			return false
@@ -1923,7 +1940,11 @@ func (r *revisionOrder) write(rev int64) bool {
 		if w.stopped {
 			return false
 		}
+		if r3.Enabled {
+			r3.Applying = f
+		}
 		w.apply(i, &w.reqs[i])
+		r3.Applying = nil
 		r.use(i)
 		f.next++
 		return true
@@ -2015,7 +2036,9 @@ func (r *revisionOrder) candidates(rev int64) ([]int, eventCertificate) {
 	sortWithStep(amb, func(a, b int) int {
 		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(r.w.calls[a], r.w.calls[b]), cmp.Compare(a, b))
 	}, r.step)
-	return append(out, amb...), cert
+	out = append(out, amb...)
+	r3PoolAt(r, rev, out, cert)
+	return out, cert
 }
 
 // fitsGranted is fits, and if op i does not fit, it puts in first, for
@@ -2102,7 +2125,11 @@ func (r *revisionOrder) grant(grants []int) {
 // expiries due before it: the model says it writes exactly rev, it changes
 // no key that a client saw unchanged at rev, and an acked revoke gets its
 // answer.
-func (r *revisionOrder) fits(i int, rev int64) bool {
+func (r *revisionOrder) fits(i int, rev int64) (accepted bool) {
+	why := "stopped"
+	if r3GapAt(rev) != nil {
+		defer func() { r3FitResult(r, i, rev, why, accepted) }()
+	}
 	if r.step() {
 		return false
 	}
@@ -2112,6 +2139,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 		// the due optionals below change no key. The ambiguous revokes
 		// of a busy history are its leases' expiries, tried at every gap
 		// (#499).
+		why = "revoke has no live key"
 		return false
 	}
 	s, undo := r.try(w.live, w.reqs[i])
@@ -2134,9 +2162,15 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 	}
 	o := s.step(w.reqs[i], true)
 	if o.err != nil || s.rev != rev {
+		why = "model did not write revision"
+		if o.err != nil {
+			why = "model error: " + o.err.Code
+		}
+		r3Failure(r, i, rev, why, "", history.KeyValue{}, lifeTo{}, s)
 		return false
 	}
 	if op := &w.h.Ops[i]; op.Resp != nil && !matches(o, op.Resp) {
+		why = "response mismatch"
 		return false
 	}
 	for _, e := range o.events {
@@ -2144,6 +2178,8 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		if r.unchanged(e.KV.Key, rev) {
+			why = "changed covered key: " + e.KV.Key
+			r3Failure(r, i, rev, why, e.KV.Key, e.KV, lifeTo{}, s)
 			return false
 		}
 		// A key it changes inside a life a client saw stays in that
@@ -2160,6 +2196,14 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			if l.c <= rev && rev <= l.to {
 				kv, ok := s.get(e.KV.Key)
 				if !ok || kv.CreateRevision != l.c || rev < l.m && kv.Version >= l.v || rev >= l.m && kv.Version != l.v {
+					why = "life missing key: " + e.KV.Key
+					if ok {
+						why = "life create mismatch: " + e.KV.Key
+						if kv.CreateRevision == l.c {
+							why = "life version mismatch: " + e.KV.Key
+						}
+					}
+					r3Failure(r, i, rev, why, e.KV.Key, kv, l, s)
 					return false
 				}
 			}
@@ -2171,6 +2215,8 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		if kv := s.kvs[k]; kv.Version == 0 || kv.CreateRevision != rev {
+			why = "observed create missing: " + s.keys[k]
+			r3Failure(r, i, rev, why, s.keys[k], kv, lifeTo{}, s)
 			return false
 		}
 	}
@@ -2179,15 +2225,30 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 			return false
 		}
 		if kv := s.kvs[k]; kv.Version == 0 || kv.ModRevision != rev {
+			why = "observed write missing: " + s.keys[k]
+			r3Failure(r, i, rev, why, s.keys[k], kv, lifeTo{}, s)
 			return false
 		}
 	}
 	for _, k := range r.byRev(r.deleted, rev) {
 		if r.step() || k < 0 || s.kvs[k].Version != 0 || !slices.ContainsFunc(o.events, func(e history.Event) bool { return r.step() || e.KV.Key == s.keys[k] }) {
+			why = "observed delete missing"
+			if k >= 0 {
+				why += ": " + s.keys[k]
+				r3Failure(r, i, rev, why, s.keys[k], s.kvs[k], lifeTo{}, s)
+			}
 			return false
 		}
 	}
-	return r.reachable(s, i)
+	ok := r.reachable(s, i)
+	if !ok {
+		why = "reachable"
+		if g := r3GapAt(rev); g != nil {
+			why += ": " + g.ReachClause
+		}
+		r3Failure(r, i, rev, why, "", history.KeyValue{}, lifeTo{}, s)
+	}
+	return ok
 }
 
 // finish places what follows the writer of rev: the acked mutations that

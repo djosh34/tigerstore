@@ -85,6 +85,10 @@ jobs:
           go-version-file: go.mod
       # Builds the gosim and native test binaries, and runs no test.
       - run: scripts/sim.sh ./internal/sim '^$'
+      - name: Verify the unchanged lease-free fork trace and history pin
+        env:
+          SIM_OUT: ${{ runner.temp }}/hash-pin
+        run: scripts/sim.sh ./internal/sim '^TestLeaseFreeForkTrace$' -test.v
       - name: Run the planned process queues
         env:
           TEST: ${{ inputs.test }}
@@ -101,6 +105,11 @@ jobs:
           path: |
             ${{ runner.temp }}/seeds-*.log
             ${{ runner.temp }}/memory.log
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: late-gap-r3-${{ matrix.shard }}
+          path: ${{ runner.temp }}/sim-out/late-gap-r3
       - if: always()
         uses: actions/upload-artifact@v6
         with:
