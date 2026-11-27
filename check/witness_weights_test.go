@@ -150,28 +150,29 @@ func TestMixedWeightsSharePollingAndBudget(t *testing.T) {
 // long seeds have a separate, runner-time-sized cap under #876.
 func TestWeightedSavedMargins(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		base int64
+		name           string
+		base, weighted int64
 	}{
-		{"planted-B01a-1.json", 10},
-		{"seed-5058843.json", 1479},
-		{"seed-5068434.json", 107},
-		{"seed-59113215.json", 272},
-		{"seed-77148.json", 777},
-		{"seed-888737.json", 141},
-		{"witness-425.json.gz", 23712},
-		{"witness-control-80-201.json.gz", 9764},
-		{"witness-control-320-1529.json.gz", 15881},
-		{"grants-81000", 87330},
-		{"gaps-256-expiries-4096", 13271},
+		{"planted-B01a-1.json", 10, 10},
+		{"seed-5058843.json", 1479, 1795},
+		{"seed-5068434.json", 107, 114},
+		{"seed-59113215.json", 272, 293},
+		{"seed-77148.json", 777, 841},
+		{"seed-888737.json", 141, 158},
+		{"witness-425.json.gz", 23712, 25435},
+		{"witness-control-80-201.json.gz", 9764, 12340},
+		{"witness-control-320-1529.json.gz", 15881, 110660},
+		{"grants-81000", 87330, 89394},
+		{"gaps-256-expiries-4096", 13271, 62819},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var used, oldUsed int64
+			var used int64
 			h := budgetHistory(t, tc.name)
-			err := Witnessed(h, FromRevisions, time.Hour, StepsUsed(&used))
-			oldErr := Witnessed(h, FromRevisions, time.Hour, StepsUsed(&oldUsed), func(o *options) { o.testRevision = legacyUsedSnapshots })
-			if used != oldUsed || fmt.Sprint(err) != fmt.Sprint(oldErr) {
-				t.Fatalf("snapshot representation changed ratio row: packed %d/%v, old %d/%v", used, err, oldUsed, oldErr)
+			err := Witnessed(h, FromRevisions, time.Hour, StepsUsed(&used), snapshotOracle(t))
+			// Pin the unchanged main/#899 row as well as checking every
+			// snapshot against the independent old flags in this pass.
+			if used != tc.weighted {
+				t.Fatalf("changed ratio row: weighted %d, recorded %d", used, tc.weighted)
 			}
 			if errors.Is(err, ErrWitnessTimeout) || used <= 0 || used*50_000_000 > tc.base*350_000_000 {
 				t.Fatalf("lost margin: %d weighted steps, base %d, ratio floor 350M/50M; %v", used, tc.base, err)

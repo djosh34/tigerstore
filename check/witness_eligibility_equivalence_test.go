@@ -167,6 +167,63 @@ func legacyUsedSnapshots(r *revisionOrder) {
 	r.testRestoreUsed = func(m mark) { r.used = slices.Clone(saved[m.live]) }
 }
 
+// snapshotOracle checks the old boolean representation at every boundary
+// of the existing search, instead of replaying that search twice more.
+// Equal saved/restored flags imply identical subsequent choices; unchanged
+// accounting/poll state preserves the weighted trace by induction. All
+// recorded/generated cases use this, including in the coverage job's
+// non-race -short pass (the 2,048-history gate does not shrink under -short).
+func snapshotOracle(t *testing.T) Option {
+	t.Helper()
+	return func(o *options) {
+		o.testRevision = func(r *revisionOrder) {
+			saved := map[*state][]bool{}
+			uncharged := func(run func()) {
+				steps, ticks := r.w.steps, r.w.workTicks
+				work, budget, stopped := r.workLeft, r.budgetLeft, r.w.stopped
+				run()
+				if r.w.steps != steps || r.w.workTicks != ticks || r.workLeft != work || r.budgetLeft != budget || r.w.stopped != stopped {
+					t.Fatal("snapshot representation changed accounting or stop/poll state")
+				}
+			}
+			r.testSaveUsed = func(m *mark) {
+				uncharged(func() {
+					old := slices.Clone(r.used)
+					m.used = packedUsed(r.used)
+					if len(m.used) != (len(old)+63)/64 {
+						t.Fatal("packed snapshot dropped a partial word")
+					}
+					for i, want := range old {
+						if got := m.used[i/64]&(uint64(1)<<uint(i%64)) != 0; got != want {
+							t.Fatalf("saved operation %d differs from the old snapshot", i)
+						}
+					}
+					saved[m.live] = old
+				})
+			}
+			r.testRestoreUsed = func(m mark) {
+				uncharged(func() {
+					want, ok := saved[m.live]
+					if !ok {
+						t.Fatal("restore has no independent old snapshot")
+					}
+					restoreUsed(r.used, m.used)
+					if !slices.Equal(r.used, want) {
+						t.Fatal("restored flags differ from the old snapshot")
+					}
+				})
+			}
+		}
+	}
+}
+
+// Keep a small explicit two-search weighted/semantic-trace comparison as
+// well as the full corpus's per-boundary oracle, without duplicating the
+// entire checker race workload.
+func TestPackedUsedLegacySearchTrace(t *testing.T) {
+	compareUsedSnapshots(t, budgetHistory(t, "seed-59113215.json"))
+}
+
 func compareUsedSnapshots(t *testing.T, h *history.History) {
 	t.Helper()
 	type result struct {
@@ -391,13 +448,12 @@ func TestEligibilityWholeSearchEquivalence(t *testing.T) {
 						t.Fatalf("%s: search lengths differ: new %d, old %d", label, len(trace), len(oldTrace))
 					}
 					public := "pass"
-					if err := Witnessed(h, FromRevisions, time.Minute); err != nil {
+					if err := Witnessed(h, FromRevisions, time.Minute, snapshotOracle(t)); err != nil {
 						public = err.Error()
 					}
 					if got != public {
 						t.Fatalf("%s: instrumented %q, public %q", label, got, public)
 					}
-					compareUsedSnapshots(t, h)
 					histories++
 					if got != "pass" {
 						failures++
