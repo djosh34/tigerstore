@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "status": "BLOCKED_CORRECTNESS",
+  "status": "RULING_REQUIRED",
   "purpose": "Predeclared seeds and immutable trace inventory; not measurement evidence",
-  "blocker": "TestLeaseFreeForkTrace/1 pinned-main trace/history mismatch: https://github.com/djosh34/tigerstore/actions/runs/46024056534/job/140590955373",
+  "blocker": "Original non-race pair 1: candidate p95 1685.987438 ms and maximum 1711.896241 ms exceed the 1000-ms gate; https://github.com/djosh34/tigerstore/actions/runs/46034356851",
   "trace_hashes_and_seed_files_verified": true,
   "seed_generator_ref": "a3cf2694d5b2fbc082438341e8c5713288b51f2e",
-  "baseline_ref": "8c71a6f24cd590d0fde95373d9ec78becd9d9349",
-  "candidate_ref": "69dc0db59b773037b57d52fb01973c9f91f5b699",
+  "baseline_ref": "55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4",
+  "candidate_ref": "c084b588303c51735e6f4d60377d212db4fff294",
   "pairs": {
     "initial": 5,
     "borderline_extra": 5,
@@ -17,7 +17,32 @@
   "reuse_delay_ms": [0, 100, 500],
   "reuse_clients": [10, 20],
   "reuse_value_bytes": [65536, 262144, 1048576],
-  "measurements": [],
+  "measurements": [{
+    "case": "original-80-range",
+    "cache": "matched-nowait-refused-after-fadvise",
+    "race": false,
+    "sync_delay_ms": 0,
+    "run": "https://github.com/djosh34/tigerstore/actions/runs/46034356851",
+    "artifact": "https://github.com/djosh34/tigerstore/actions/runs/46034356851/artifacts/15215438543",
+    "completed_pairs": 1,
+    "order": "AB",
+    "status": "RULING",
+    "reason": "candidate p95/max exceed 1000 ms; stopped immediately, no five-pair median claim",
+    "baseline": {
+      "wall_ms": 1684.728781,
+      "throughput": 47.48538809464311,
+      "latency_ms": {"p95": 1669.033559, "p99": 1682.944488, "max": 1682.944488},
+      "refusals": {"total": 95, "max_per_range": 3},
+      "raw_log_sha256": "b62666cb00199f48d8b88589784af416f95350586b5c629b6fc01cf4dc8eb33a"
+    },
+    "candidate": {
+      "wall_ms": 1714.413694,
+      "throughput": 46.66318303451442,
+      "latency_ms": {"p95": 1685.987438, "p99": 1711.896241, "max": 1711.896241},
+      "refusals": {"total": 0, "max_per_range": 0},
+      "raw_log_sha256": "eb95cac037c3d7eae41ddb61c0ebfb3f71c6a1008d072943fc624e2ddc4e4a3a"
+    }
+  }],
   "shapes": {
     "small": {
       "trace": "bench/recordings/small.trace.gz",
