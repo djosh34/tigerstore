@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Actions runner for the manager's separate #897 option-A relative gate.
 
-Uses the unchanged original adapter/overlays, NOT its absolute-target runner
-or decision function. The absolute-target scripts and workflow remain available
-unchanged. Five fresh AB/BA pairs; stop on any pair's throughput ratio <0.98.
+Uses the original adapter/overlays and the same ruling-A decision function.
+The unchanged 1 s / 3 s design figures are #913 information, not a stop.
+Five fresh AB/BA pairs; stop on any pair's throughput ratio <0.98.
 """
 import argparse
 import hashlib
@@ -24,7 +24,7 @@ def load(name, path):
 
 HERE = Path(__file__).resolve().parent
 original = load('original_adapter', HERE / 'fetch-original-measure.py')
-policy = load('pr897_policy', HERE / 'fetch-pr897-gate.py')
+policy = original.policy
 
 
 def run(args):
@@ -40,7 +40,7 @@ def run(args):
                     refs=dict(baseline=args.baseline, candidate=args.candidate),
                     race=args.race, sync_delay_ms=args.sync_delay_ms, pairs=pairs,
                     run_url=os.environ['FETCH_MEASURE_RUN_URL'], status='INCOMPLETE',
-                    absolute_target_policy='unchanged separate fetch-original-measure.py; not the PR897 gate',
+                    design_figure_policy='information only; #913 owns the 1 s / 3 s figures',
                     remaining_named_reuse_ceiling_gates='NOT_EVALUATED')
     def save():
         (out / 'manifest.json').write_text(json.dumps(manifest, indent=2, allow_nan=False)+'\n')
@@ -91,9 +91,11 @@ def run(args):
                                   throughput=pair[side]['throughput'], latency_ms=pair[side]['latency_ms'],
                                   refusals=pair[side]['refusals'])), flush=True)
             save()
+        pair['design_figure'] = original.design_figure(pair, args.race)
+        print(pair['design_figure']['message'], flush=True)
         pairs.append(pair)
         del manifest['partial_pair']
-        report = policy.assess(pairs)
+        report = original.decide(pairs, args.race)
         manifest.update(status=report['status'], report=report)
         save()
         print('PR897_GATE '+json.dumps(report), flush=True)
