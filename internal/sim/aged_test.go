@@ -309,7 +309,10 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 			cfg.from, cfg.replay = img, image
 			simrun.Reseed(cfg.Seed)
 			res := run(t, cfg)
-			checkers(t, res)
+			if seed != 5 || i != 0 {
+				t.Fatal("diagnostic scratch branch permits only image 5 fork 0")
+			}
+			diagnostic5000(t, res)
 			st := res.Stats
 			t.Logf("fork %d (seed %d) of image %d, %s after it: %d ok, %d failed, %d ambiguous, %d writes after the image, %d fenced, %d replaced, %d cold restarts; imaged leases: %d keepalives, %d client revokes, %d expiry decisions, %d committed removals; hashes %s",
 				i, cfg.Seed, seed, after(i), st.OK, st.Failed, st.Ambiguous, len(res.Log)-res.base, st.Fenced, st.Replaced, st.ColdRestarts, st.ImageKeepAlives, st.ImageRevokes, st.ImageExpiryDecisions, st.ImageRemovals, runHashes(res))

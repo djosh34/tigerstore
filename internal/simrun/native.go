@@ -499,6 +499,24 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 	if !ok || imageOnly {
 		return false
 	}
+	// Keep the verified image with this diagnostic's streamed history.
+	input, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageOut, err := os.Create(filepath.Join(os.Getenv("SIM_OUT"), "image.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, copyErr := io.Copy(imageOut, input)
+	closeErr, inputErr := imageOut.Close(), input.Close()
+	if err := errors.Join(copyErr, closeErr, inputErr); err != nil {
+		t.Fatal(err)
+	}
+	proof, _ := json.Marshal(map[string]any{"actual_image_sha256": hash, "expected_image_sha256": os.Getenv("SIM_IMAGE_SHA256"), "matched": true})
+	if err := os.WriteFile(filepath.Join(os.Getenv("SIM_OUT"), "image-proof.json"), proof, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	stop := false
 	for k := range forks {
 		if only >= 0 && k != only {
@@ -508,6 +526,12 @@ func imageAndForks[T any](t *testing.T, r Run, forks int, double bool, add func(
 			Test: r.Test, Seed: r.Seed, WallLimit: r.WallLimit, Env: append(slices.Clone(env), fmt.Sprintf("SIM_FORK=%d", k)),
 			Inputs: map[string]string{"image": path}, ReplayEnv: []string{"SIM_IMAGE_SHA256=" + hash},
 		}
+		// NEVER MERGE: stream the single diagnostic history to a driver-owned
+		// file, rather than duplicating gigabytes in the gosim artifact map.
+		if r.Seed != 5 || k != 0 || double {
+			t.Fatal("diagnostic requires seed 5, fork 0, once")
+		}
+		fork.Outputs = map[string]string{"diagnostic-history": filepath.Join(os.Getenv("SIM_OUT"), "history.json")}
 		stop = imageFork(t, fork, k, double, add) || stop
 	}
 	return stop
