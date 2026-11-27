@@ -91,7 +91,14 @@ jobs:
           PROCESSES: ${{ toJSON(matrix.processes) }}
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
-        run: bash scripts/sim-campaign.sh
+          GOMEMLIMIT: 9GiB
+          SIM_DIAL_EVIDENCE: ${{ runner.temp }}/dial-progress.log
+        run: |
+          touch "$SIM_DIAL_EVIDENCE"
+          tail -F "$SIM_DIAL_EVIDENCE" &
+          reader=$!
+          trap 'kill "$reader" 2>/dev/null || true' EXIT
+          bash scripts/sim-campaign.sh
       # Even successful seeds retain hashes for replay. A dead runner may
       # upload nothing: the summary must still account for its seeds.
       - if: always()
@@ -101,6 +108,7 @@ jobs:
           path: |
             ${{ runner.temp }}/seeds-*.log
             ${{ runner.temp }}/memory.log
+            ${{ runner.temp }}/dial-progress.log
       - if: always()
         uses: actions/upload-artifact@v6
         with:
