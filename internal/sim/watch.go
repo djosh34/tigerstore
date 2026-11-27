@@ -355,6 +355,7 @@ func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 			res.Watches = append(res.Watches, WatchResult{
 				Key: w.key, End: w.end, PrevKV: w.prevKV, ProgressNotify: w.progress, Start: sg.start, Responses: sg.responses,
 			})
+			res.watchRefs = append(res.watchRefs, slices.Clone(seg.responses))
 			if sg.start == 0 {
 				if current {
 					return fmt.Errorf("watch %d was never created; its last stream was on node %d, and a compaction last restarted it at %s, %s before the end", w.id, w.lastNode(), seconds(w.restartedAt), seconds(s.endAt-w.restartedAt))
@@ -387,6 +388,30 @@ func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 		}
 	}
 	return nil
+}
+
+// watchResponses rehydrates at most one logical watch for a conversion
+// or hash, without pinning every decoded watch in the Result again.
+func (r *Result) watchResponses(i int) ([]WatchRecord, error) {
+	w := r.Watches[i]
+	if w.Responses != nil || r.records == nil || len(r.watchRefs) != len(r.Watches) {
+		return w.Responses, nil
+	}
+	var out []WatchRecord
+	var err error
+	simrun.Aside(func() {
+		for _, lw := range r.watchRefs[i] {
+			var m proto.Message
+			if m, err = r.records.decode(lw.msg); err != nil {
+				return
+			}
+			out = append(out, WatchRecord{Time: lw.at, Resp: m.(*pb.WatchResponse)})
+		}
+	})
+	if r.chunks != nil && r.chunks.err != nil {
+		return nil, fmt.Errorf("%w: the history's chunks: %w", errRunnerDisk, r.chunks.err)
+	}
+	return out, err
 }
 
 // decodedSegment is a logical watch as its client got it.

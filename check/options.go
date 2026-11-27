@@ -10,6 +10,8 @@ type options struct {
 	// slow makes the witness copy the whole store for every try and
 	// answer, as the tests that compare it with the fast one need.
 	slow bool
+	// testRevision installs independent snapshot/trace oracles in tests.
+	testRevision func(*revisionOrder)
 }
 
 // MaxSteps fails a check, as its timeout does, once it took n steps:

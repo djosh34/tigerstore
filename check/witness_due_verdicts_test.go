@@ -26,7 +26,7 @@ func TestDueRecordedVerdicts(t *testing.T) {
 		for i := range h.Ops {
 			h.Ops[i].Effect = nil
 		}
-		err := Witnessed(h, FromRevisions, time.Minute)
+		err := Witnessed(h, FromRevisions, time.Minute, snapshotOracle(t))
 		got[name] = "pass"
 		if err != nil {
 			got[name] = err.Error()

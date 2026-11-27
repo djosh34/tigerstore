@@ -34,15 +34,23 @@ import (
 // narrower ones, is never easier to linearize.
 func (r *Result) Checkable() (*history.History, error) { return r.checkable(false) }
 
-// checkable is Checkable, which with release drops History as it goes,
-// each call once it is converted: a long run's history takes gigabytes,
-// and the checks need only the copy they get (#500). A report decodes it
-// again (history).
+// checkable is Checkable, which with release drops each decoded call and
+// watch response after conversion: long histories take gigabytes and
+// the checks need only their converted copy (#500). Encoded references
+// reconstruct hashes/reports; results without watch references keep their
+// decoded watches. Calls are also released on a conversion error.
 func (r *Result) checkable(release bool) (*history.History, error) {
 	if release {
 		// Also when a call fails to convert: a report then decodes the
 		// whole history again, not what is left of it.
-		defer func() { r.History = nil }()
+		defer func() {
+			r.History = nil
+			if r.records != nil && len(r.watchRefs) == len(r.Watches) {
+				for i := range r.Watches {
+					r.Watches[i].Responses = nil
+				}
+			}
+		}()
 	}
 	h := &history.History{Target: r.FinalRev, Start: r.start}
 	if r.Stats.QuorumLostAt > 0 {
@@ -128,6 +136,10 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 		h.Log = append(h.Log, req)
 	}
 	for i, w := range r.Watches {
+		responses, err := r.watchResponses(i)
+		if err != nil {
+			return nil, err
+		}
 		hw := history.Watch{
 			Client: r.Clients + i,
 			Req: history.WatchRequest{
@@ -135,7 +147,7 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 				PrevKV: w.PrevKV, ProgressNotify: w.ProgressNotify,
 			},
 		}
-		for _, wr := range w.Responses {
+		for _, wr := range responses {
 			hr, err := watchResponse(wr)
 			if err != nil {
 				return nil, err
@@ -146,6 +158,9 @@ func (r *Result) checkable(release bool) (*history.History, error) {
 			hw.Responses = append(hw.Responses, hr)
 		}
 		h.Watches = append(h.Watches, hw)
+		if release && r.records != nil && len(r.watchRefs) == len(r.Watches) {
+			r.Watches[i].Responses = nil
+		}
 	}
 	return h, nil
 }

@@ -948,7 +948,11 @@ type Result struct {
 	Log     []proto.Message
 	revs    []int64
 	Watches []WatchResult
-	Stats   Stats
+	// watchRefs retain only encoded record references, not decoded
+	// protobufs, so long checks can release Responses and reports can
+	// reconstruct their exact bytes later.
+	watchRefs [][]loggedWatch
+	Stats     Stats
 	// Silences are the times leaders went silent on a stalled disk.
 	// HeldAppendAt is when the leader StallLeaderAt stalled handed its
 	// disk the oldest append the stall holds, and SteppedDownAt when it
@@ -1012,6 +1016,9 @@ type Result struct {
 // history returns the run's calls: History, decoded again from the
 // run's records if a check dropped it.
 func (r *Result) history() ([]*Record, error) {
+	// Calls-only reports must not read or re-hold decoded watches.
+	// Checkable and hashing reconstruct those separately, one segment
+	// at a time, only when they actually need watch data.
 	if r.History != nil || r.records == nil {
 		return r.History, nil
 	}
