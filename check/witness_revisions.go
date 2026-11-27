@@ -2,6 +2,7 @@ package check
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -28,6 +29,10 @@ import (
 // needs them, after every answer that needs them left out.
 func (w *witness) fromRevisions() error {
 	r := newRevisionOrder(w)
+	defer func() {
+		dial876Progress.Revision, dial876Progress.Target = r.rev, r.top
+		dial876Progress.Gaps, dial876Progress.Backtracks = len(r.stack), r.backs
+	}()
 	w.search = r
 	if w.testRevision != nil {
 		w.testRevision(r)
@@ -1852,7 +1857,14 @@ func (r *revisionOrder) search() (err error) {
 // write places the writer of rev, the next candidate if rev is a gap.
 func (r *revisionOrder) write(rev int64) bool {
 	w := r.w
+	measured := dial876Gap(rev)
+	if measured != nil {
+		measured.Visits++
+	}
 	if i, ok := r.writer(rev); ok {
+		if measured != nil {
+			measured.AckedWriter++
+		}
 		r.expire(w.calls[i], 0)
 		if w.stopped {
 			return false
@@ -1867,6 +1879,9 @@ func (r *revisionOrder) write(rev int64) bool {
 		return true
 	}
 	if i, ok := r.resolved[rev]; ok && !r.used[i] && r.lb[i] < rev {
+		if measured != nil {
+			measured.ResolvedWriter++
+		}
 		if r.fitsGranted(i, rev) {
 			r.expire(w.calls[i], 0)
 			if w.stopped {
@@ -1891,6 +1906,18 @@ func (r *revisionOrder) write(rev int64) bool {
 		// exhausted search. In particular, do not format around() on stop.
 		if w.stopped {
 			return false
+		}
+		if measured != nil {
+			pool := len(cands)
+			if measured.Constructions == 0 || pool < measured.MinPool {
+				measured.MinPool = pool
+			}
+			measured.Constructions++
+			measured.MaxPool = max(measured.MaxPool, pool)
+			measured.LastPool = pool
+			if cert.all {
+				measured.Certified++
+			}
 		}
 		if cert.all {
 			if r.testCertificate != nil {
@@ -2009,6 +2036,39 @@ func (r *revisionOrder) candidates(rev int64) ([]int, eventCertificate) {
 		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(r.w.calls[a], r.w.calls[b]), cmp.Compare(a, b))
 	}, r.step)
 	return append(out, amb...), cert
+}
+
+// Scratch-only #876 Actions evidence; never to merge. These fixed-size
+// counters neither scan candidates again nor charge/change search work.
+type dial876GapEvidence struct {
+	Revision                            int64
+	Visits, AckedWriter, ResolvedWriter int64
+	Constructions, Certified            int64
+	MinPool, MaxPool, LastPool          int
+}
+
+var dial876Progress struct {
+	Revision, Target int64
+	Gaps, Backtracks int
+}
+
+var dial876Gaps = [2]dial876GapEvidence{{Revision: 432504}, {Revision: 444957}}
+
+func dial876Gap(rev int64) *dial876GapEvidence {
+	for i := range dial876Gaps {
+		if rev == dial876Gaps[i].Revision {
+			return &dial876Gaps[i]
+		}
+	}
+	return nil
+}
+
+func Dial876Measurements() []byte {
+	b, _ := json.MarshalIndent(struct {
+		Progress any
+		Gaps     [2]dial876GapEvidence
+	}{dial876Progress, dial876Gaps}, "", "  ")
+	return b
 }
 
 // fitsGranted is fits, and if op i does not fit, it puts in first, for

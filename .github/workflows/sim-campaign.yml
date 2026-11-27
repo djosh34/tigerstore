@@ -104,6 +104,11 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v6
         with:
+          name: dial-classification-evidence-${{ matrix.shard }}
+          path: ${{ runner.temp }}/sim-out/dial-evidence
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
           name: sim-campaign-files-${{ matrix.shard }}
           path: ${{ runner.temp }}/sim-out
   summary:
