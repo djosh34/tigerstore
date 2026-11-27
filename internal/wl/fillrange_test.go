@@ -59,6 +59,26 @@ func stagedRangeResponse(t *testing.T, c *client) *pb.RangeResponse {
 	return nil
 }
 
+func TestCursorFulfillmentPromotesForAnotherRequest(t *testing.T) {
+	c, s, st, log, l := fillRangeFixture(t)
+	putValue(t, st, log, "/reuse", "original")
+	id, _ := st.find([]byte("/reuse"))
+	st.keys[id].rec = 0
+	msg := appendBytesField(nil, 1, []byte("/reuse"))
+	serveRoomRange(t, c, s, msg)
+	runFillWork(t, c.node, l)
+	if st.keys[id].rec == 0 {
+		t.Fatal("validated current record was not promoted")
+	}
+	for _, sid := range []uint32{5, 7} {
+		next := c.newStream(sid, kRange)
+		serveRoomRange(t, c, next, msg)
+		if len(c.node.fills) > 0 || c.node.legacyPending != nil {
+			t.Fatal("a distinct request reread the same cold record")
+		}
+	}
+}
+
 func TestCursorRangeKeepsValuesAndHeaderAtItsAdmittedView(t *testing.T) {
 	c, _, st, log, l := fillRangeFixture(t)
 	old := bytes.Repeat([]byte("a"), 16<<10)

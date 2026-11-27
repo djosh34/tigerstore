@@ -275,7 +275,7 @@ var errTooManyRequests = requestErr(codeResourceExhausted, "etcdserver: too many
 // handshake read past its end.
 func newClient(h *handoff, n *node) *client {
 	c := &client{
-		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, loose: &n.looseGrown, outBase: clientOutBuf,
+		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, loose: &n.looseGrown, outBase: clientOutBuf, creditWake: &n.fillCreditWake,
 		hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn, node: n,
 	}
 	if len(h.left) > 0 {

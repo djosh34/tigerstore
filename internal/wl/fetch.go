@@ -94,13 +94,19 @@ func (st *store) trimFetched(since time.Time, max int64) {
 // awayRead is a range that waits for values read off the loop: its
 // stream and its request.
 type awayRead struct {
-	h   handle
-	msg []byte
+	h      handle
+	msg    []byte
+	c      *client
+	charge int
 }
 
 // awaitValues has the range of h, msg, wait for the values the store
 // found away, and fetches them.
 func (n *node) awaitValues(h handle, msg []byte) {
+	if n.cursorFetch {
+		n.awaitLegacyRange(h, msg)
+		return
+	}
 	n.awayReads = append(n.awayReads, awayRead{h: h, msg: bytes.Clone(msg)})
 	n.fetchAway()
 }
@@ -108,6 +114,10 @@ func (n *node) awaitValues(h handle, msg []byte) {
 // fetchAway reads the values the store found away off the loop, but for
 // those a fetch under way reads already.
 func (n *node) fetchAway() {
+	if n.cursorFetch {
+		n.freezeLegacy()
+		return
+	}
 	st := n.st
 	var vs []logValue
 	for _, v := range st.away {
@@ -231,5 +241,11 @@ func (st *store) setCkpt(gen int, f ckptFile) {
 
 // dropFetched lets go of the values fetched more than fetchedFor ago.
 func (n *node) dropFetched() {
+	if n.cursorFetch {
+		if b := n.legacyMemo; b != nil && !b.needed && n.now.Sub(b.created) >= fetchedFor {
+			n.dropLegacyBatch(b)
+		}
+		return
+	}
 	n.st.trimFetched(n.now.Add(-fetchedFor), fetchedMax(n.st.budget))
 }

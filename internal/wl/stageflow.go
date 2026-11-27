@@ -41,7 +41,10 @@ func (n *node) admitStage(c *client, size int) *replyStage {
 // stageOther excludes only actual input debt backed by the independent
 // input-turn reserve. Its logical unused grant is never spare output P.
 func (n *node) stageOther(promise int64) int64 {
-	other := n.cpool + n.cout - n.stageCredits.used + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + promise
+	other := n.cpool + n.cout - n.stageCredits.used + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + n.legacyPromises + promise
+	if n.cursorFetch {
+		other -= n.mainCaptureCount()
+	}
 	if n.inTurn != nil {
 		base := n.turnLimit - n.turnRoom + n.looseGrown - n.turnLoose
 		other -= min(n.turnRoom, max(0, n.cpool-base))
@@ -78,11 +81,26 @@ func (c *client) hasStageOutput() bool {
 		return false
 	}
 	for _, h := range c.flow.held {
-		if h.stage != nil {
+		if h.stage != nil || h.flatCharge > 0 {
 			return true
 		}
 	}
 	return false
+}
+
+func (c *client) releaseFlatOutput(h *held) {
+	c.growOut(-int(h.flatCharge))
+	h.flatCharge = 0
+	c.stages--
+	if c.stages == 0 {
+		c.node.stagePromises -= c.stagePromise
+		c.stagePromise = 0
+	}
+	if c.stages == 0 && c.fillOwners == 0 && c.stageOrphan {
+		c.stageOrphan = false
+		c.node.stageOrphans--
+	}
+	h.data = nil
 }
 
 // stageSocket prepares a bounded socket array out of the finish credit
@@ -130,6 +148,10 @@ func (c *client) drainStage(h *held) {
 func (c *client) dropStageOutput() {
 	for i := range c.flow.held {
 		h := &c.flow.held[i]
+		if h.flatCharge > 0 {
+			c.flow.bytes -= int64(len(h.data))
+			c.releaseFlatOutput(h)
+		}
 		if h.stage != nil {
 			c.flow.bytes -= int64(h.stage.size - h.stage.read)
 			h.stage.discard()

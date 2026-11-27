@@ -12,6 +12,7 @@ const (
 type fetchWorkBook struct {
 	limit  int64
 	used   int64
+	peak   int64
 	next   uint64
 	active *fetchWorkLease
 }
@@ -30,7 +31,7 @@ func newFetchWorkBook(budget int64) fetchWorkBook {
 	if budget > 0 {
 		limit &^= stageUnit - 1
 	}
-	return fetchWorkBook{limit: limit, used: fetchCoreWork}
+	return fetchWorkBook{limit: limit, used: fetchCoreWork, peak: fetchCoreWork}
 }
 
 // reserve is called before allocating the job/cache storage it covers.
@@ -45,7 +46,19 @@ func (b *fetchWorkBook) reserve(bytes int64) *fetchWorkLease {
 	b.next++
 	l := &fetchWorkLease{book: b, id: b.next, bytes: bytes}
 	b.used += bytes
+	b.peak = max(b.peak, b.used)
 	return l
+}
+
+func (l *fetchWorkLease) grow(bytes int64) bool {
+	b := l.book
+	if l.settled || l.running || bytes < 0 || bytes > b.limit || b.used > b.limit-bytes {
+		return false
+	}
+	b.used += bytes
+	b.peak = max(b.peak, b.used)
+	l.bytes += bytes
+	return true
 }
 
 // start is the single-worker gate. A retained cache lease need not start

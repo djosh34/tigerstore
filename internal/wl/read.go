@@ -207,7 +207,16 @@ func (n *node) retryReads(now int64) {
 // them to be read off the loop, and is served again then (fetch.go).
 func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 	st := n.st
-	if r.rev > 0 && r.rev < st.compactRev {
+	header, term := st.rev, n.term
+	legacyHeld := false
+	if b := n.legacyRetry; b != nil && b.owner.hr == nil && b.owner.h == mkHandle(c, s.id) {
+		copyReq := *r
+		copyReq.rev = b.owner.view
+		r = &copyReq
+		header, term = b.owner.header, b.owner.term
+		legacyHeld = b.readHeld
+	}
+	if r.rev > 0 && r.rev < st.compactRev && !legacyHeld {
 		n.gs.rangesN++
 		n.replyError(c, s.id, codeOutOfRange, msgCompacted)
 		return
@@ -219,6 +228,10 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 	}
 	if n.tryFillRange(c, s, r, msg) {
 		return
+	}
+	if n.cursorFetch {
+		n.beginLegacyRange(c, s, r, msg)
+		defer func() { n.legacyReading = legacyOwner{}; n.dropCollectingLegacy() }()
 	}
 	st.noWait = true
 	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0], n.oneShot())
@@ -240,7 +253,7 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 			kvs[i] = keysOnly(kv, r)
 		}
 	}
-	body := sizeBytesField(1, n.hdrSize()) + sizeVarintField(4, uint64(count))
+	body := sizeBytesField(1, n.hdrSizeTerm(header, term)) + sizeVarintField(4, uint64(count))
 	if more {
 		body += 2
 	}
@@ -260,7 +273,7 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 			return
 		}
 		// The reserve has no room for it: it waits, unbuilt (reserve.go).
-		n.waitRoom(c, s, msg, body-sizeBytesField(1, n.hdrSize()))
+		n.waitRoom(c, s, msg, body-sizeBytesField(1, n.hdrSizeTerm(header, term)))
 		return
 	}
 	n.gs.rangesN++
@@ -281,7 +294,7 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 	}
 	var w msgW
 	n.beginReply(c, s, &w, body)
-	n.writeHdr(&w)
+	n.writeHdrTerm(&w, header, term)
 	for _, kv := range kvs {
 		w.bytesField(2, kv)
 	}
@@ -465,7 +478,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 		if noValue {
 			rec = st.keyAt(id, rev)
 		} else {
-			a := len(st.away)
+			a := st.awayBytes
 			rec, err = st.at(id, rev)
 			if errors.Is(err, errAway) {
 				// The scan goes on, so that one fetch reads every value the
@@ -474,9 +487,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 				away, err = true, nil
 				count++
 				taken++
-				for _, v := range st.away[a:] {
-					size += int64(v.len)
-				}
+				size += st.awayBytes - a
 				return true
 			}
 			if err != nil {
@@ -494,6 +505,9 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 	})
 	if big {
 		st.away = st.away[:a0]
+		if n.cursorFetch {
+			n.dropCollectingLegacy()
+		}
 		return kvs, 0, false, errBig
 	}
 	if away {

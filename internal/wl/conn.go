@@ -46,7 +46,9 @@ type sock struct {
 	// node's client buffers (sizes.clientBufs): what it reads in pool, and
 	// what waits to be sent in outPool; nil for a peer's. loose counts
 	// what pool took with no check of its room (growLoose).
-	pool, outPool, loose *int64
+	pool, outPool, loose       *int64
+	creditWake                 *bool // loop-owned physical client-credit progress
+	promiseLocal, promiseTotal *int64
 }
 
 // A socket's buffers: the ciphertext read, the plaintext opened and the
@@ -74,6 +76,9 @@ func newSock(h *handoff, stats *counters) *sock {
 // grow counts n more bytes of what the socket reads in its pool, and
 // growOut of what waits to be sent.
 func (s *sock) grow(n int) {
+	if n < 0 && s.creditWake != nil {
+		*s.creditWake = true
+	}
 	if s.pool != nil {
 		*s.pool += int64(n)
 	}
@@ -90,8 +95,22 @@ func (s *sock) growLoose(n int) {
 }
 
 func (s *sock) growOut(n int) {
+	if n > 0 {
+		s.takeOutputPromise(int64(n))
+	}
+	if n < 0 && s.creditWake != nil {
+		*s.creditWake = true
+	}
 	if s.outPool != nil {
 		*s.outPool += int64(n)
+	}
+}
+
+func (s *sock) takeOutputPromise(bytes int64) {
+	if s.promiseLocal != nil {
+		take := min(bytes, *s.promiseLocal)
+		*s.promiseLocal -= take
+		*s.promiseTotal -= take
 	}
 }
 

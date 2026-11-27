@@ -97,6 +97,9 @@ func (n *node) giveRoom(c *client, closed bool) {
 	c.coveredRoom -= covered
 	n.coveredRoom -= covered
 	n.reserved -= returned - covered
+	if n.cursorFetch && returned > 0 {
+		n.fillCreditWake = true
+	}
 	c.roomHeld = keep
 }
 
@@ -407,6 +410,8 @@ func (n *node) serveHeld() { n.serveHeldRoom(true) }
 // output changed when no shared reserve room was returned.
 func (n *node) serveHeldRoom(all bool) {
 	held := n.heldReplies
+	n.heldScanning = held
+	defer func() { n.heldScanning = nil }()
 	n.heldReplies = nil
 	for _, hr := range held {
 		if !all && !hr.c.roomWake {
@@ -438,15 +443,29 @@ func (n *node) stepHeld(hr *heldReply) bool {
 	if hr.fetching {
 		return true
 	}
+	if n.cursorFetch && (n.legacyRetry == nil || n.legacyRetry.owner.hr != hr) {
+		n.queueLegacyHeld(hr)
+		return true
+	}
 	size := sizeBytesField(1, n.hdrSizeAt(hr.hdrRev)) + hr.body
 	if !n.msgRoom(c, int64(5+size)) {
 		return true
 	}
 	st := hr.st
 	recs := n.kvs[:0]
+	if n.cursorFetch {
+		c.growOut(int(roundedFetch(int64(len(hr.refs)) * 24)))
+		recs = make([][]byte, 0, len(hr.refs))
+	}
 	defer func() {
+		if n.cursorFetch {
+			c.growOut(-int(roundedFetch(int64(cap(recs)) * 24)))
+		}
 		clear(recs)
 		n.kvs = recs[:0]
+		if n.cursorFetch {
+			n.kvs = nil
+		}
 	}()
 	away := false
 	st.noWait = true

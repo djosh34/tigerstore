@@ -650,6 +650,25 @@ func (n *node) syncWatchers() error {
 			w.remove(i)
 			continue
 		}
+		if n.cursorFetch {
+			done, err := n.startWatchFill(i, x, c, s, &budget)
+			if errors.Is(err, errPrevCompacted) {
+				n.writeCompacted(c, s, x)
+				w.remove(i)
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if done {
+				x.syncRev = 0
+				n.progressIfSynced(c, s)
+				continue
+			}
+			w.unsynced[k] = i
+			k++
+			continue
+		}
 		if room := n.connOut - c.waiting(); budget.left() && room > 0 && !c.slow() && !x.fetchWait {
 			// It writes what its client's share has room for, at least a
 			// revision's events (#725).
@@ -809,14 +828,12 @@ func (n *node) catchUp(x *watcher, b *syncBudget, emit func([]event) bool) (bool
 		}
 		ev := event{del: ch.del, key: ch.key, rev: ch.rev}
 		var err error
-		a := len(st.away)
+		a := st.awayBytes
 		// What the event's values take, those found away too: the fetch
 		// reads them.
 		spend := func() {
-			for _, v := range st.away[a:] {
-				b.bytes -= int64(v.len)
-			}
-			a = len(st.away)
+			b.bytes -= st.awayBytes - a
+			a = st.awayBytes
 		}
 		if !ch.del {
 			if ev.kv, err = st.putAt(ch.key, ch.rev); errors.Is(err, errAway) {

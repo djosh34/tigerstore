@@ -147,12 +147,18 @@ type node struct {
 	fetching  map[int64]bool
 	// cursorFetch stays disabled until the shared legacy allocator and
 	// complete physical-credit gate are connected.
-	cursorFetch  bool
-	fills        []*replyFill
-	fillActive   *replyFill
-	fillBook     *fetchWorkBook
-	fillRetired  *fetchWorkLease
-	fillSequence uint64
+	cursorFetch                                                          bool
+	fills                                                                []*replyFill
+	fillActive                                                           *replyFill
+	fillBook                                                             *fetchWorkBook
+	fillRetired                                                          *fetchWorkLease
+	fillCreditWake                                                       bool
+	legacyCollect, legacyPending, legacyRunning, legacyMemo, legacyRetry *legacyBatch
+	legacyReading                                                        legacyOwner
+	legacyAgain, legacyPrefer, legacyWaitP                               bool
+	legacyPromises                                                       int64
+	heldScanning                                                         []*heldReply
+	fillSequence                                                         uint64
 	// bigs are the range replies sent in pieces (bigrange.go).
 	bigs []*bigRange
 	// selKeys is txnRange's scratch (replysize.go).

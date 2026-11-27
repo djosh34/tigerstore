@@ -9,42 +9,56 @@ import (
 // A fill owns one destination and one strict wire cursor. Worker plans
 // contain only immutable source leases and destination spans: no store.
 type replyFill struct {
-	h                handle
-	c                *client
-	st               *store
-	stage            *replyStage
-	msg              []byte
-	req              rangeReq
-	view, header     int64
-	count, selected  int64
-	more             bool
-	last             uint32
-	hasLast          bool
-	taken            int64
-	record           fillRecord
-	meta             int
-	cancelled, ready bool
-	op, piece        uint64
-	work             *fetchWorkLease
-	arena            *fillArena
+	h                   handle
+	c                   *client
+	st                  *store
+	stage               *replyStage
+	msg                 []byte
+	req                 rangeReq
+	view, header        int64
+	headerTerm          uint64
+	count, selected     int64
+	more                bool
+	last                uint32
+	hasLast             bool
+	taken               int64
+	record              fillRecord
+	watch               *fillWatch
+	stream              *fillStream
+	raw                 bool
+	ids                 []uint32
+	bigRange            *bigRange
+	bigWatch            *bigWatch
+	outer               [32]byte
+	outerPos, outerSize int
+	meta                int
+	cancelled, ready    bool
+	op, piece           uint64
+	work                *fetchWorkLease
+	arena               *fillArena
 }
 
 type fillToken struct{ op, piece uint64 }
 
 type fillRecord struct {
-	active           bool
-	id               uint32
-	state            ckptState
-	phase            int
-	keyPos, valuePos int
-	crc              uint32
-	start, size      int
+	active            bool
+	id                uint32
+	state             ckptState
+	phase             int
+	field             int
+	keyPos, valuePos  int
+	crc               uint32
+	start, size       int
+	atom              [64]byte
+	atomPos, atomSize int
+	stageOp           uint64
 }
 
 const (
 	fillReady = 1 << iota
 	fillContinue
 	fillFinal
+	fillPromote
 )
 
 // Exactly 64 bytes on supported 64-bit builds. Allocation is one fixed
@@ -65,14 +79,19 @@ type fillSource struct {
 	gen  int
 }
 
-type fillArena struct {
-	spans   [2048]fillSpan
-	window  [128 << 10]byte
+type fetchSources struct {
 	sources [2]fillSource
-	n, ns   int
+	ns      int
 }
 
-func (a *fillArena) read(source int, p []byte, off int64, nowait bool) error {
+type fillArena struct {
+	spans  [2048]fillSpan
+	window [128 << 10]byte
+	fetchSources
+	n int
+}
+
+func (a *fetchSources) read(source int, p []byte, off int64, nowait bool) error {
 	s := &a.sources[source]
 	switch {
 	case s.wal != nil:
@@ -120,9 +139,10 @@ func (a *fillArena) execute() error {
 		j := i + 1
 		for j < a.n {
 			x := &a.spans[j]
-			if x.source != d.source || x.flags&fillReady != 0 || x.off < start || x.off > end+512 || x.off+int64(len(x.dst))-start > int64(len(a.window)) {
+			if x.source != d.source || x.flags&fillReady != 0 || x.off < start-512 || x.off > end+512 || max(end, x.off+int64(len(x.dst)))-min(start, x.off) > int64(len(a.window)) {
 				break
 			}
+			start = min(start, x.off)
 			end = max(end, x.off+int64(len(x.dst)))
 			j++
 		}
@@ -151,7 +171,7 @@ func (a *fillArena) execute() error {
 	return nil
 }
 
-func (n *node) releaseFillSources(a *fillArena) {
+func (n *node) releaseFetchSources(a *fetchSources) {
 	for i := range a.ns {
 		s := &a.sources[i]
 		if s.wal != nil {
@@ -162,6 +182,11 @@ func (n *node) releaseFillSources(a *fillArena) {
 		}
 		*s = fillSource{}
 	}
+	a.ns = 0
+}
+
+func (n *node) releaseFillSources(a *fillArena) {
+	n.releaseFetchSources(&a.fetchSources)
 	clear(a.spans[:])
 }
 
@@ -175,14 +200,14 @@ func (q *replyFill) varint(field int, value uint64) {
 	q.stage.append(p[:n])
 }
 
-func (q *replyFill) length(field, size int) {
+func (q *replyFill) length(size int) {
 	var p [20]byte
-	n := putUvarint(p[:], uint64(field)<<3|2)
-	n += putUvarint(p[n:], uint64(size))
+	p[0] = 10
+	n := 1 + putUvarint(p[1:], uint64(size))
 	q.stage.append(p[:n])
 }
 
-func (n *node) fillSource(q *replyFill, a *fillArena, off int64, want int) (int, int, error) {
+func (n *node) fillSource(q *replyFill, a *fetchSources, off int64, want int) (int, int, error) {
 	if inCkpt(off) {
 		gen := ckptGenOf(off)
 		for i := range a.ns {
@@ -241,7 +266,7 @@ func (n *node) fillSource(q *replyFill, a *fillArena, off int64, want int) (int,
 }
 
 func (n *node) planFill(q *replyFill, a *fillArena) error {
-	if r := &q.record; r.active {
+	if r := &q.record; r.active && r.state.vlen > 0 {
 		fresh, ok := q.st.putStateAt(r.id, r.state.mod)
 		if !ok {
 			return errLogCut
@@ -251,43 +276,95 @@ func (n *node) planFill(q *replyFill, a *fillArena) error {
 		}
 		r.state.voff = fresh.voff
 	}
-	for a.n < len(a.spans) {
+	for {
 		r := &q.record
+		if q.raw && q.stage.written == q.stage.size {
+			if r.active && r.phase == 4 && r.valuePos == int(r.state.vlen) {
+				r.leaseAtom()
+				r.phase = 5
+			}
+			if r.active && r.phase == 5 && r.atomPos == r.atomSize {
+				r.active = false
+				q.taken++
+			}
+			q.ready = true
+			return nil
+		}
 		if !r.active {
-			if !n.nextFillRange(q) {
-				if q.more {
-					q.varint(3, 1)
+			next, err := n.nextFillRecord(q)
+			if err != nil {
+				return err
+			}
+			if !next {
+				if q.watch == nil && q.stream == nil && !q.raw {
+					if q.more {
+						q.varint(3, 1)
+					}
+					q.varint(4, uint64(q.count))
 				}
-				q.varint(4, uint64(q.count))
 				q.ready = true
 				return nil
 			}
 			r = &q.record
 		}
+		if !q.drainFillAtom(q.outer[:q.outerSize], &q.outerPos) {
+			q.ready = q.raw
+			return nil
+		}
 		s := &r.state
 		key := q.st.key(r.id)
 		switch r.phase {
 		case 0:
-			q.length(2, r.size)
-			r.start = q.stage.written
-			q.length(1, len(key))
+			p := appendFillLen(r.atom[:0], r.field, r.size)
+			r.start = q.stage.written + len(p)
+			r.stageOp = q.op
+			p = appendFillLen(p, 1, len(key))
+			r.atomPos, r.atomSize = 0, len(p)
 			r.phase = 1
 		case 1:
-			q.stage.append(key[r.keyPos:])
-			r.keyPos = len(key)
-			q.varint(2, uint64(s.create))
-			q.varint(3, uint64(s.mod))
-			q.varint(4, uint64(s.ver))
-			if s.vlen > 0 {
-				q.length(5, int(s.vlen))
+			if !q.drainFillAtom(r.atom[:r.atomSize], &r.atomPos) {
+				q.ready = q.raw
+				return nil
 			}
 			r.phase = 2
 		case 2:
+			take := min(len(key)-r.keyPos, q.stage.size-q.stage.written)
+			q.stage.append(key[r.keyPos : r.keyPos+take])
+			r.keyPos += take
+			if r.keyPos < len(key) {
+				q.ready = q.raw
+				return nil
+			}
+			p := r.atom[:0]
+			for _, kv := range [...]struct {
+				field int
+				value int64
+			}{{2, s.create}, {3, s.mod}, {4, s.ver}} {
+				if kv.value != 0 {
+					p = appendVarintField(p, kv.field, uint64(kv.value))
+				}
+			}
+			if s.vlen > 0 {
+				p = appendFillLen(p, 5, int(s.vlen))
+			}
+			r.atomPos, r.atomSize = 0, len(p)
+			r.phase = 3
+		case 3:
+			if !q.drainFillAtom(r.atom[:r.atomSize], &r.atomPos) {
+				q.ready = q.raw
+				return nil
+			}
+			r.phase = 4
+		case 4:
 			if r.valuePos == int(s.vlen) {
-				r.phase = 3
+				r.leaseAtom()
+				r.phase = 5
 				continue
 			}
-			dst := q.stage.span(q.stage.written, int(s.vlen)-r.valuePos)
+			if a.n == len(a.spans) {
+				return nil
+			}
+			dst := q.stage.span(q.stage.written, min(int(s.vlen)-r.valuePos, q.stage.size-q.stage.written))
 			flags := uint16(0)
 			off := s.voff + int64(r.valuePos)
 			source, take := -1, len(dst)
@@ -298,7 +375,7 @@ func (n *node) planFill(q *replyFill, a *fillArena) error {
 				flags |= fillReady
 			} else {
 				var err error
-				source, take, err = n.fillSource(q, a, off, take)
+				source, take, err = n.fillSource(q, &a.fetchSources, off, take)
 				if err != nil {
 					return err
 				}
@@ -322,25 +399,45 @@ func (n *node) planFill(q *replyFill, a *fillArena) error {
 			}
 			if r.valuePos+take == int(s.vlen) {
 				flags |= fillFinal
+				if r.stageOp == q.op {
+					flags |= fillPromote
+				}
 			}
 			a.spans[a.n] = fillSpan{dst: dst, off: off, sum: r.crc, expected: s.vsum, source: uint16(max(0, source)), flags: flags, id: r.id, start: uint32(r.start), size: uint32(r.size), valueLen: s.vlen, valuePos: uint32(r.valuePos)}
 			a.n++
 			r.valuePos += take
 			q.stage.written += take
-		case 3:
-			q.varint(6, uint64(s.lease))
+		case 5:
+			if !q.drainFillAtom(r.atom[:r.atomSize], &r.atomPos) {
+				q.ready = q.raw
+				return nil
+			}
 			r.active = false
 			q.taken++
+			if q.stream != nil {
+				q.stream.records--
+			}
 		}
 	}
-	return nil
 }
 
 func (n *node) finishFillPiece(q *replyFill, token fillToken, err error) error {
 	if n.fillActive != q || q.work == nil || q.arena == nil || q.op != token.op || q.piece != token.piece {
 		return nil
 	}
+	if q.watch != nil && !n.validFillWatch(q) {
+		q.cancelled = true
+		q.stage.discard()
+	}
 	a := q.arena
+	if err == nil && !q.cancelled && q.st == n.st {
+		for i := range a.n {
+			p := &a.spans[i]
+			if p.flags&fillPromote != 0 {
+				n.promoteFillRecord(q, p)
+			}
+		}
+	}
 	if q.work.running {
 		q.work.acknowledge()
 	}
@@ -360,6 +457,10 @@ func (n *node) finishFillPiece(q *replyFill, token fillToken, err error) error {
 	n.fillActive = nil
 	if err != nil && !q.cancelled && q.st == n.st {
 		q.cancelled = true
+		if q.raw {
+			n.failRawFill(q)
+			return nil
+		}
 		if c, s := n.clientOf(q.h); c != nil {
 			n.replyError(c, s.id, codeInternal, err.Error())
 		}
@@ -368,23 +469,31 @@ func (n *node) finishFillPiece(q *replyFill, token fillToken, err error) error {
 }
 
 func (n *node) pumpFills() {
+	n.updateFillCredits()
 	if n.fillRetired != nil {
 		n.fillRetired.release()
 		n.fillRetired = nil
 	}
-	if len(n.fills) == 0 || n.fillActive != nil {
+	if n.fillActive != nil {
 		return
 	}
 	for i := 0; i < len(n.fills); {
 		q := n.fills[i]
 		c, _ := n.clientOf(q.h)
-		if q.cancelled || c == nil || q.st != n.st {
+		staleWatch := q.watch != nil && (!n.validFillWatch(q) || !q.raw && q.watch.compact != n.st.compactRev)
+		if q.cancelled || c == nil || q.st != n.st || staleWatch {
 			msg := q.msg
 			restart := !q.cancelled && c != nil && q.st != n.st
 			n.removeFill(i)
 			q.stage.discard()
-			if q.st == n.st {
-				q.st.releaseRead(q.view)
+			n.releaseFillRead(q)
+			if q.watch != nil {
+				n.endFillWatch(q)
+				restart = false
+			}
+			if q.raw {
+				n.endRawFill(q)
+				restart = false
 			}
 			if restart {
 				if _, s := n.clientOf(q.h); s != nil {
@@ -398,16 +507,22 @@ func (n *node) pumpFills() {
 			continue
 		}
 		if q.ready {
-			if !n.publishFillRange(q) {
+			if !n.publishFill(q) {
 				i++
 				continue
 			}
 			n.removeFill(i)
-			q.st.releaseRead(q.view)
+			n.releaseFillRead(q)
 			q.freeMeta(n)
 			continue
 		}
 		i++
+	}
+	if n.legacyRunning != nil {
+		return
+	}
+	if (n.legacyPrefer || len(n.fills) == 0) && n.pumpLegacy() {
+		return
 	}
 	if len(n.fills) == 0 || len(n.fetching) > 0 || len(n.st.fetched) > 0 {
 		return
@@ -418,9 +533,15 @@ func (n *node) pumpFills() {
 	}
 	q := n.fills[0]
 	lease := n.fillBook.reserve(fetchCursorWork - fetchCoreWork)
+	if lease == nil && n.legacyMemo != nil && !n.legacyMemo.needed {
+		n.dropLegacyBatch(n.legacyMemo)
+		lease = n.fillBook.reserve(fetchCursorWork - fetchCoreWork)
+	}
 	if lease == nil {
+		n.pumpLegacy()
 		return
 	}
+	n.legacyPrefer = true
 	q.work = lease
 	q.arena = &fillArena{}
 	q.piece++
@@ -433,6 +554,15 @@ func (n *node) pumpFills() {
 	}
 	n.fillActive = q
 	beforeRecord, beforeLast, beforeHasLast := q.record, q.last, q.hasLast
+	beforeOuter, beforeOuterPos, beforeOuterSize := q.outer, q.outerPos, q.outerSize
+	var beforeWatch fillWatch
+	var beforeStream fillStream
+	if q.stream != nil {
+		beforeStream = *q.stream
+	}
+	if q.watch != nil {
+		beforeWatch = *q.watch
+	}
 	beforeTaken, beforeReady, beforeWritten := q.taken, q.ready, q.stage.written
 	err := n.planFill(q, q.arena)
 	if err != nil {
@@ -454,6 +584,13 @@ func (n *node) pumpFills() {
 			// A busy/stopping worker is a scheduling wait, not a new
 			// client-visible error. The destination is still private.
 			q.record, q.last, q.hasLast = beforeRecord, beforeLast, beforeHasLast
+			q.outer, q.outerPos, q.outerSize = beforeOuter, beforeOuterPos, beforeOuterSize
+			if q.watch != nil {
+				*q.watch = beforeWatch
+			}
+			if q.stream != nil {
+				*q.stream = beforeStream
+			}
 			q.taken, q.ready, q.stage.written = beforeTaken, beforeReady, beforeWritten
 			a.n = 0
 			lease.acknowledge()
@@ -465,6 +602,107 @@ func (n *node) pumpFills() {
 		copy(n.fills, n.fills[1:])
 		n.fills[len(n.fills)-1] = q
 	}
+}
+
+func stageVarint(s *replyStage, at, end int) (uint64, int, bool) {
+	var value uint64
+	for shift := uint(0); shift < 64 && at < end; shift += 7 {
+		page := s.page(at)
+		b := page[stageHead+at%stagePayload]
+		at++
+		if shift == 63 && b > 1 {
+			return 0, at, false
+		}
+		value |= uint64(b&127) << shift
+		if b < 128 {
+			return value, at, true
+		}
+	}
+	return 0, at, false
+}
+
+func (n *node) promoteFillRecord(q *replyFill, p *fillSpan) {
+	start, end := int(p.start), int(p.start+p.size)
+	if end > q.stage.written || end > q.stage.size || p.id >= q.st.nkeys {
+		return
+	}
+	at := start
+	mod := int64(0)
+	for at < end {
+		tag, next, ok := stageVarint(q.stage, at, end)
+		if !ok {
+			return
+		}
+		at = next
+		switch tag & 7 {
+		case 0:
+			value, next, ok := stageVarint(q.stage, at, end)
+			if !ok {
+				return
+			}
+			at = next
+			if tag>>3 == 3 {
+				mod = int64(value)
+			}
+		case 2:
+			length, next, ok := stageVarint(q.stage, at, end)
+			if !ok || length > uint64(end-next) {
+				return
+			}
+			at = next + int(length)
+		default:
+			return
+		}
+		if mod != 0 {
+			break
+		}
+	}
+	st := q.st
+	k := &st.keys[p.id]
+	if mod == 0 || k.create == 0 || k.mod != mod || k.rec != 0 || k.vlen != p.valueLen || k.vsum != p.expected {
+		return
+	}
+	size := int(p.size)
+	st.loads++
+	if _, cell := classOf(size); st.budget != 0 && (st.slab.used+int64(cell) > st.topMax() || !st.slab.reuses(size) && int64(st.slab.top+cell) > st.topMax()) {
+		st.unkept++
+		return
+	}
+	off, err := st.slab.alloc(size)
+	if err != nil {
+		st.unkept++
+		return
+	}
+	dst := st.slab.bytes(off, size)
+	for at := start; at < end; {
+		take := min(end-at, stagePayload-at%stagePayload)
+		page := q.stage.page(at)
+		copy(dst[at-start:at-start+take], page[stageHead+at%stagePayload:stageHead+at%stagePayload+take])
+		at += take
+	}
+	k.rec, k.rlen = off, uint32(size)
+}
+
+func appendFillLen(p []byte, field, size int) []byte {
+	var b [20]byte
+	n := putUvarint(b[:], uint64(field)<<3|2)
+	n += putUvarint(b[n:], uint64(size))
+	return append(p, b[:n]...)
+}
+
+func (r *fillRecord) leaseAtom() {
+	p := r.atom[:0]
+	if r.state.lease != 0 {
+		p = appendVarintField(p, 6, uint64(r.state.lease))
+	}
+	r.atomPos, r.atomSize = 0, len(p)
+}
+
+func (q *replyFill) drainFillAtom(p []byte, pos *int) bool {
+	take := min(len(p)-*pos, q.stage.size-q.stage.written)
+	q.stage.append(p[*pos : *pos+take])
+	*pos += take
+	return *pos == len(p)
 }
 
 func cloneFillRequest(msg []byte) []byte { return bytes.Clone(msg) }

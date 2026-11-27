@@ -125,8 +125,11 @@ type store struct {
 	heldStatesPeak int
 	tree           tree
 
-	leases map[int64]*lease
-	log    logReader
+	leases     map[int64]*lease
+	log        logReader
+	fetchOwner *node
+	legacyView *legacyBatch
+	awayBytes  int64
 	// ckpts are the checkpoint files values may lie in, by the generation
 	// bit of their offsets: the newest one, and the one being written.
 	ckpts   [2]ckptFile
@@ -380,7 +383,7 @@ func (st *store) live(id uint32) ([]byte, error) {
 // holds slab bytes until it is written.
 func (st *store) load(id uint32) ([]byte, error) {
 	k := &st.keys[id]
-	val, err := st.readValue(k.voff, k.vlen, k.vsum)
+	val, err := st.readValueRef(id, k.mod, k.voff, k.vlen, k.vsum)
 	if err != nil {
 		return nil, err
 	}
@@ -457,6 +460,7 @@ func (st *store) readValue(off int64, n, sum uint32) ([]byte, error) {
 		val, err = st.readLog(off, int(n))
 	}
 	if errors.Is(err, errAway) {
+		st.awayBytes += int64(n)
 		st.away = append(st.away, logValue{off: off, len: n, sum: sum})
 	}
 	if err != nil {
@@ -469,6 +473,26 @@ func (st *store) readValue(off int64, n, sum uint32) ([]byte, error) {
 		return nil, err
 	}
 	return val, nil
+}
+
+func (st *store) readValueRef(id uint32, mod, off int64, n, sum uint32) ([]byte, error) {
+	if b := st.legacyView; b != nil {
+		if val, err, ok := b.lookup(id, mod); ok {
+			if err != nil {
+				return nil, err
+			}
+			if err := checkValue(val, off, sum); err != nil {
+				return nil, err
+			}
+			return val, nil
+		}
+	}
+	if st.noWait && n > 0 && st.fetchOwner != nil && st.fetchOwner.cursorFetch {
+		st.awayBytes += int64(n)
+		st.fetchOwner.collectLegacy(id, mod, n, sum)
+		return nil, errAway
+	}
+	return st.readValue(off, n, sum)
 }
 
 // logValue is a value the store names in the log.
@@ -1178,7 +1202,12 @@ func (st *store) at(id uint32, rev int64) ([]byte, error) {
 		if e.deleted {
 			return nil, nil
 		}
-		val, err := st.readValue(e.voff, e.vlen, e.vsum)
+		if b := st.legacyView; b != nil {
+			if rec, err, ok := b.heldRecord(id, e.mod); ok {
+				return rec, err
+			}
+		}
+		val, err := st.readValueRef(id, e.mod, e.voff, e.vlen, e.vsum)
 		if err != nil {
 			return nil, err
 		}
@@ -1270,7 +1299,12 @@ func (st *store) putAt(id uint32, rev int64) ([]byte, error) {
 		if e.mod < rev {
 			break
 		}
-		val, err := st.readValue(e.voff, e.vlen, e.vsum)
+		if b := st.legacyView; b != nil {
+			if rec, err, ok := b.heldRecord(id, e.mod); ok {
+				return rec, err
+			}
+		}
+		val, err := st.readValueRef(id, e.mod, e.voff, e.vlen, e.vsum)
 		if err != nil {
 			return nil, err
 		}

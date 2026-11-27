@@ -60,6 +60,7 @@ const (
 	stageFreed
 	stageCommitted
 	stageBroken
+	stageStreaming
 )
 
 func stageCapacity(n int) int64 {
@@ -148,6 +149,16 @@ func (s *replyStage) commit() bool {
 	return true
 }
 
+// commitPiece publishes a validated part of an already-large message.
+// Its remaining bytes stay logically pending until copied to the socket.
+func (s *replyStage) commitPiece() bool {
+	if s.flags != 0 || s.loans != 0 || s.written != s.size {
+		return false
+	}
+	s.flags |= stageCommitted | stageStreaming
+	return true
+}
+
 func (s *replyStage) borrow() bool {
 	if s.flags != 0 {
 		return false
@@ -191,6 +202,8 @@ func (s *replyStage) free() {
 		c.growOut(-int(s.charged))
 		if s.flags&stageCommitted == 0 {
 			c.stagePending -= int64(s.size)
+		} else if s.flags&stageStreaming != 0 {
+			c.stagePending -= int64(s.size - s.read)
 		}
 		c.stages--
 		if c.stages == 0 {
@@ -234,6 +247,9 @@ func (s *replyStage) consume(n int) {
 	}
 	old := s.read
 	s.read += n
+	if s.flags&stageStreaming != 0 && s.owner != nil {
+		s.owner.stagePending -= int64(n)
+	}
 	if s.read == s.size {
 		s.discard()
 		return

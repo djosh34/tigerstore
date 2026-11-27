@@ -49,16 +49,22 @@ type bigWatch struct {
 	// next is where the next event lies among the revision's changes,
 	// counted from the revision's first; end is where the message being
 	// written ends, and frag whether it is a fragment but the last.
-	next, end int
-	frag      bool
-	opened    bool // a message is begun: the stream holds it alone
-	msgLeft   int  // bytes of that message still to build, its prefix included
+	next, end      int
+	frag           bool
+	opened         bool // a message is begun: the stream holds it alone
+	started        bool // at least one DATA byte has been published
+	held, heldPrev bool
+	msgLeft        int // bytes of that message still to build, its prefix included
 	// buf is what it built and has not sent yet, from pos.
-	buf      []byte
-	pos      int
-	fetching bool // it waits for values read off the loop
-	canceled bool // its watch went: it ends the message under way
-	counted  int
+	buf       []byte
+	pos       int
+	fetching  bool // it waits for values read off the loop
+	canceled  bool // its watch went: it ends the message under way
+	counted   int
+	stage     *replyStage
+	waitP     bool
+	pieceLeft int
+	resume    fillResume
 }
 
 // bigEv is one event of a bigWatch: its change and its Event's size.
@@ -167,8 +173,11 @@ func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) b
 	}
 	// The states at the revision and before it, which its events show,
 	// stay while it is sent.
-	st.holdRead(b.rev - 1)
-	st.holdRead(b.rev)
+	if !n.cursorFetch {
+		st.holdRead(b.rev - 1)
+		st.holdRead(b.rev)
+		b.held, b.heldPrev = true, true
+	}
 	x.big = true
 	n.bigWatches = append(n.bigWatches, b)
 	n.stats.bigWatches++
@@ -192,6 +201,7 @@ func (n *node) writeCanceled(c *client, s *stream, x *watcher, reason string) {
 // pumpBigWatches moves the large watch responses on as far as their
 // connections take them.
 func (n *node) pumpBigWatches() {
+	n.updateFillCredits()
 	if len(n.bigWatches) == 0 {
 		return
 	}
@@ -211,6 +221,12 @@ func (n *node) pumpBigWatches() {
 // bigWatchReady reports whether a large watch response could move on now.
 func (n *node) bigWatchReady() bool {
 	for _, b := range n.bigWatches {
+		if b.st != n.st {
+			return true
+		}
+		if b.waitP && !n.fillCreditWake {
+			continue
+		}
 		if b.fetching {
 			continue
 		}
@@ -218,7 +234,16 @@ func (n *node) bigWatchReady() bool {
 		if c == nil {
 			return true
 		}
-		if c.bigW != nil && c.bigW != b || c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || c.streamWin(s) <= 0) || !b.opened && s.holds && !s.big {
+		if b.st != n.st || n.watcherOf(b) == nil {
+			return true
+		}
+		if n.cursorFetch && !b.started && (c.flow.conn <= 0 || c.streamWin(s) <= 0) {
+			continue
+		}
+		if b.stage != nil && rawSocketRoom(c) <= 0 {
+			continue
+		}
+		if c.bigW != nil && c.bigW != b || c.waiting() >= n.connOut || (b.stage != nil || b.pos < len(b.buf)) && (c.flow.conn <= 0 || c.streamWin(s) <= 0) || !b.opened && s.holds && !s.big {
 			continue
 		}
 		return true
@@ -251,10 +276,18 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 		// A snapshot installed since replaced the store it reads. The
 		// install has the watch catch up again (installSnapshot); a
 		// stream that has part of the response, a fragment or more, ends.
-		if b.opened || b.next > 0 {
+		if b.started || !n.cursorFetch && (b.opened || b.next > 0) {
 			n.abortBigWatch(c, s)
 		}
 		return false
+	}
+	if n.cursorFetch && !b.started {
+		if b.canceled {
+			return false
+		}
+		if c.flow.conn <= 0 || c.streamWin(s) <= 0 {
+			return true
+		}
 	}
 	if c.bigW != nil && c.bigW != b {
 		// One large watch response at a time on a connection: another's
@@ -271,6 +304,12 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 			if m <= 0 {
 				return true // it waits for window
 			}
+			if !b.started {
+				if !n.startWatchData(b, c, s) {
+					return false
+				}
+				b.started = true
+			}
 			w := msgW{s: &c.sock, sid: s.id, left: int(m)}
 			w.write(b.buf[b.pos : b.pos+int(m)])
 			c.spendWin(s, m)
@@ -278,7 +317,14 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 			n.markDirty(&c.sock)
 			continue
 		}
-		if b.fetching {
+		if b.stage != nil {
+			if !n.drainRawStage(c, s, b.stage, true) {
+				return true
+			}
+			b.stage = nil
+			continue
+		}
+		if b.fetching || b.waitP {
 			return true
 		}
 		if b.opened && b.next == b.end {
@@ -407,6 +453,9 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 // worth, once their values are all in memory. It reports false if it
 // ended b.
 func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
+	if n.cursorFetch {
+		return n.startRawWatch(b)
+	}
 	st := b.st
 	j := revStart(st, b.rev)
 	target := int(n.connOut)
@@ -481,10 +530,18 @@ func (b *bigWatch) recount() {
 
 // endBigWatch lets go of what b holds.
 func (n *node) endBigWatch(b *bigWatch) {
-	if b.st == n.st {
-		b.st.releaseRead(b.rev - 1)
+	n.cancelRawWatch(b)
+	if b.stage != nil {
+		b.stage.discard()
+		b.stage = nil
+	}
+	if b.st == n.st && b.held {
+		if b.heldPrev {
+			b.st.releaseRead(b.rev - 1)
+		}
 		b.st.releaseRead(b.rev)
 	}
+	b.held, b.heldPrev = false, false
 	if x := n.watcherOf(b); x != nil {
 		x.big = false
 	}

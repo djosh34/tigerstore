@@ -74,10 +74,14 @@ type bigRange struct {
 	buf []byte
 	pos int
 	// counted is what buf, sorted and after hold, in the client pool.
-	counted  int
-	fetching bool     // it waits for values read off the loop
-	piece    []uint32 // the keys of the piece being read
-	scan     []byte
+	counted   int
+	fetching  bool // it waits for values read off the loop
+	stage     *replyStage
+	waitP     bool
+	pieceLeft int
+	resume    fillResume
+	piece     []uint32 // the keys of the piece being read
+	scan      []byte
 }
 
 // sortedKey is a key of a sorted range and its sort field.
@@ -100,6 +104,7 @@ func (n *node) startBig(c *client, s *stream, msg []byte) {
 // pumpBig moves the large replies on as far as their connections take
 // them.
 func (n *node) pumpBig() {
+	n.updateFillCredits()
 	if len(n.bigs) == 0 {
 		return
 	}
@@ -121,6 +126,12 @@ func (n *node) pumpBig() {
 // and that waits for no value.
 func (n *node) bigReady() bool {
 	for _, b := range n.bigs {
+		if b.st != n.st {
+			return true
+		}
+		if b.waitP && !n.fillCreditWake {
+			continue
+		}
 		if b.fetching || !b.planned && !n.mayPlan(b) {
 			continue
 		}
@@ -128,7 +139,10 @@ func (n *node) bigReady() bool {
 		if c == nil {
 			return true
 		}
-		if c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
+		if b.stage != nil && rawSocketRoom(c) <= 0 {
+			continue
+		}
+		if c.waiting() >= n.connOut || (b.stage != nil || b.pos < len(b.buf)) && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
 			continue
 		}
 		return true
@@ -189,7 +203,14 @@ func (n *node) stepBig(b *bigRange) bool {
 			n.markDirty(&c.sock)
 			continue
 		}
-		if b.fetching {
+		if b.stage != nil {
+			if !n.drainRawStage(c, s, b.stage, false) {
+				return true
+			}
+			b.stage = nil
+			continue
+		}
+		if b.fetching || b.waitP {
 			return true
 		}
 		if b.ended && b.msgLeft == 0 {
@@ -209,6 +230,11 @@ func (n *node) stepBig(b *bigRange) bool {
 
 // endBig lets go of what b holds.
 func (n *node) endBig(b *bigRange) {
+	n.cancelRawRange(b)
+	if b.stage != nil {
+		b.stage.discard()
+		b.stage = nil
+	}
 	if b.planned && b.st == n.st {
 		b.st.releaseRead(b.rev)
 	}
@@ -461,6 +487,9 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		b.recount()
 		return true
 	}
+	if n.cursorFetch && b.pieceLeft > 0 {
+		return n.startRawRange(b)
+	}
 	target := int(n.connOut)
 	b.piece = b.piece[:0]
 	size := 0
@@ -476,6 +505,9 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		// Fewer records than it counted: never, as the revision is held.
 		n.abortBig(c, s)
 		return false
+	}
+	if n.cursorFetch {
+		return n.startRawRange(b)
 	}
 	st := b.st
 	recs := n.kvs[:0]

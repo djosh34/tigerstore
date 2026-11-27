@@ -14,10 +14,11 @@ const defaultWindow = 65535
 
 // held is a stream's message, or its trailers, waiting for window.
 type held struct {
-	sid     uint32
-	data    []byte      // the gRPC message bytes still to send
-	stage   *replyStage // complete, independently releasable cursor output
-	trailer []byte      // a header block that ends the stream once data is out
+	sid        uint32
+	flatCharge int64
+	data       []byte      // the gRPC message bytes still to send
+	stage      *replyStage // complete, independently releasable cursor output
+	trailer    []byte      // a header block that ends the stream once data is out
 }
 
 // flow is a client connection's send windows and what it holds.
@@ -55,9 +56,28 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 		}
 		f.streams[s.id] = s.win
 	}
-	f.held = append(f.held, held{sid: s.id, data: data, trailer: trailer})
+	h := held{sid: s.id, data: data, trailer: trailer}
+	if len(data) > 0 && c.node.cursorFetch && c.node.legacyRetry != nil {
+		h.flatCharge = roundedFetch(int64(cap(data)))
+		promise := int64(0)
+		if c.stages == 0 {
+			promise = stageUnit
+			if cap(c.out) < 64<<10 {
+				promise += 64 << 10
+			}
+		}
+		c.takeOutputPromise(promise)
+		c.stagePromise += promise
+		c.node.stagePromises += promise
+		c.stages++
+	}
+	f.held = append(f.held, h)
 	f.bytes += int64(len(data) + len(trailer))
-	c.growOut(len(data) + len(trailer))
+	physical := int64(len(data))
+	if h.flatCharge > 0 {
+		physical = h.flatCharge
+	}
+	c.growOut(int(physical) + len(trailer))
 	f.counts[s.id]++
 	// Behind another of its stream's entries, or with the connection's
 	// window shut, it cannot go out yet.
@@ -162,12 +182,19 @@ func (c *client) drain() {
 		if h.stage != nil {
 			c.drainStage(h)
 		}
-		if m := min(int64(len(h.data)), f.conn, f.streams[h.sid]); m > 0 {
+		limit := int64(len(h.data))
+		if h.flatCharge > 0 {
+			c.stageSocket()
+			limit = min(limit, int64(max(0, rawSocketRoom(c))))
+		}
+		if m := min(limit, f.conn, f.streams[h.sid]); m > 0 {
 			w := msgW{s: &c.sock, sid: h.sid, left: int(m)}
 			w.write(h.data[:m])
 			h.data = h.data[m:]
 			f.bytes -= m
-			c.growOut(-int(m))
+			if h.flatCharge == 0 {
+				c.growOut(-int(m))
+			}
 			f.conn -= m
 			f.streams[h.sid] -= m
 			n.markDirty(&c.sock)
@@ -180,6 +207,9 @@ func (c *client) drain() {
 			f.held[k] = *h
 			k++
 			continue
+		}
+		if h.flatCharge > 0 {
+			c.releaseFlatOutput(h)
 		}
 		if h.trailer != nil {
 			b := c.frame(9 + len(h.trailer))
@@ -243,7 +273,12 @@ func (c *client) dropHeld(sid uint32) {
 			continue
 		}
 		f.bytes -= int64(len(h.data) + len(h.trailer))
-		c.growOut(-len(h.data) - len(h.trailer))
+		if h.flatCharge > 0 {
+			c.releaseFlatOutput(&h)
+			c.growOut(-len(h.trailer))
+		} else {
+			c.growOut(-len(h.data) - len(h.trailer))
+		}
 		if h.stage != nil {
 			f.bytes -= int64(h.stage.size - h.stage.read)
 			h.stage.discard()
