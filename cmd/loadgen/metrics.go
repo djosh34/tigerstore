@@ -41,6 +41,7 @@ func windowMetrics(endpoints []string, start, stop int64, slack time.Duration) (
 	if _, err := sampleMetrics(client, scheme, endpoints, math.MaxInt64); err != nil {
 		return out, err
 	}
+	profile := serverProfile(scheme, endpoints, start, stop)
 	for i, at := range []int64{start, stop} {
 		time.Sleep(time.Duration(at - now()))
 		var err error
@@ -48,7 +49,7 @@ func windowMetrics(endpoints []string, start, stop int64, slack time.Duration) (
 			return out, err
 		}
 	}
-	return out, nil
+	return out, <-profile
 }
 
 // metricsClient is an HTTP/1.1 client of its own, apart from the load's

@@ -110,7 +110,7 @@ def run(args):
             raise ValueError('full immutable refs required')
     if args.baseline == args.candidate:
         raise ValueError('distinct refs required')
-    manifest = dict(schema=1, status='INCOMPLETE', scope='resident-3g-range-1k-RTT0-only',
+    manifest = dict(schema=1, status='INCOMPLETE', scope='resident-leader-profile-DIAGNOSTIC-NOT-GATE' if args.profile else 'resident-3g-range-1k-RTT0-only',
                     refs=refs, tooling_ref=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
                     noise_method=policy.NOISE_METHOD, pairs=[], run_url=os.environ['FETCH_MEASURE_RUN_URL'],
                     settings=dict(memory_bytes=3<<30, cache='resident-3g', RTT_ms=0,
@@ -136,7 +136,7 @@ def run(args):
     subprocess.run(['bash','scripts/dev-certs.sh',str(certs)],check=True)
     env = dict(os.environ, CERTS=str(certs), BINS=str(bins), LOADGEN=str(bins/'loadgen'),
                NULLSTORE=str(bins/'nullstore'), BENCH_GOMEMLIMIT='3GiB',
-               BENCH_FLAGS='--memory-budget-bytes 3221225472', ETCD_UNSAFE_LOG_RING_BYTES='536870912',
+               BENCH_FLAGS='--memory-budget-bytes 3221225472'+(' --enable-pprof' if args.profile else ''), ETCD_UNSAFE_LOG_RING_BYTES='536870912',
                FETCH_MEASURE_FIXED_LOAD='1', MODES='max', SEEDS='94125874', REPS='1', LAYOUT='3 0 1 2', LAYOUTS='', LEAD='1')
     calibration = out / 'generator'
     with (out / 'generator.log').open('w') as log:
@@ -151,14 +151,14 @@ def run(args):
         client_cores=ceiling['client_cores'],server_cores_by_node=ceiling['server_cores_by_node'],
         qualification='diagnostic only: nullstore can be server-limited; actual targets require <=0.8 client core and >=0.9 fixed-leader core')
     save()
-    for number in range(1,6):
+    for number in range(1, 2 if args.profile else 6):
         order = 'AB' if number % 2 else 'BA'
         pair = dict(pair=number, order=order, case='range-1k')
         for side in (('baseline','candidate') if order=='AB' else ('candidate','baseline')):
             destination = out / f'{number:02}-{side}'
             logfile = out / f'{number:02}-{side}.log'
             with logfile.open('w') as log:
-                result = subprocess.run(['bash','bench/run.sh','range-1k',str(destination)],env=dict(env,TARGETS=side),
+                result = subprocess.run(['bash','bench/run.sh','range-1k',str(destination)],env=dict(env,TARGETS=side, FETCH_PROFILE_LEADER=str(out/f'{side}.cpu.pprof') if args.profile else ''),
                                         stdout=log,stderr=subprocess.STDOUT,check=False)
             failures = [str(p.relative_to(out)) for p in destination.rglob('*.failed')]
             if result.returncode or failures:
@@ -178,6 +178,15 @@ def run(args):
             save()
         manifest['pairs'].append(pair)
         del manifest['partial_pair']
+        if args.profile:
+            manifest.update(status='DIAGNOSTIC_COMPLETE_NOT_GATE')
+            for side in refs:
+                (out/f'{side}.profile-bin').write_bytes((bins/side).read_bytes())
+                for suffix, flags in [('top',['-top','-nodefraction=0']),('range',['-list=tryFillRange|serveRange|rangeKVs|stateAt'])]:
+                    with (out/f'{side}-{suffix}.txt').open('w') as log:
+                        subprocess.run(['go','tool','pprof',*flags,str(bins/side),str(out/f'{side}.cpu.pprof')],stdout=log,stderr=subprocess.STDOUT,check=True)
+            save()
+            return 0
         report = policy.assess(manifest['pairs'])
         manifest.update(status=report['status'],report=report)
         save()
@@ -189,6 +198,7 @@ def run(args):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--profile',action='store_true',help='one profiled pair, diagnostic only, never a gate verdict')
     p.add_argument('--baseline',required=True)
     p.add_argument('--candidate',required=True)
     p.add_argument('--out',type=Path,required=True)

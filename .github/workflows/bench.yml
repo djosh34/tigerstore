@@ -103,6 +103,10 @@ on:
         description: PR897 option-A relative gate; five pairs, each throughput >=0.98 and baseline-MAD p95 noise; 1 s / 3 s figures are information for issue 913
         type: boolean
         default: false
+      fetch_profile_leader:
+        description: One resident pair with leader CPU profiles, diagnostic only and never a gate
+        type: boolean
+        default: false
       fetch_resident:
         description: Named range-1k resident 3-GiB control, fixed load, never-populated fetch-cache proof, PR897 option A
         type: boolean
@@ -238,7 +242,11 @@ jobs:
           BASELINE: ${{ inputs.baseline }}
           CANDIDATE: ${{ inputs.candidate }}
           FETCH_ETCDCTL: ${{ runner.temp }}/etcd-v3.7.2-linux-arm64/etcdctl
-        run: python3 -B scripts/fetch-resident-measure.py --baseline "$BASELINE" --candidate "$CANDIDATE" --out "$RUNNER_TEMP/resident-evidence"
+          PROFILE: ${{ inputs.fetch_profile_leader }}
+        run: |
+          args=()
+          if [ "$PROFILE" = true ]; then args+=(--profile); fi
+          python3 -B scripts/fetch-resident-measure.py --baseline "$BASELINE" --candidate "$CANDIDATE" "${args[@]}" --out "$RUNNER_TEMP/resident-evidence"
       - name: Preserve raw qualified or incomplete evidence
         if: always()
         run: |
