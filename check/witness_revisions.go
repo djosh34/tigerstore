@@ -42,9 +42,32 @@ func newRevisionOrder(w *witness) *revisionOrder {
 	return &revisionOrder{
 		w:     w,
 		first: w.live.rev,
-		alive: map[int64]int64{}, grants: map[int64]int{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
+		alive: map[int64]int64{}, grants: map[int64]grantCount{}, grantsOf: map[int64][]int{}, revokesOfLease: map[int64][]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string][]lifeTo{}, covered: map[string][]span{}, used: make([]bool, len(w.h.Ops)), ready: make([]bool, len(w.h.Ops)), lb: make([]int64, len(w.h.Ops)),
 		counts: map[int64][]count{},
 	}
+}
+
+// grantCount has the same eight-byte map payload as the previous int.
+// n saturates at two: only uniqueness matters. op is the sole grant's
+// identity, or a negative sentinel; histories beyond int32 use the
+// conservative path rather than truncating an operation identity.
+type grantCount struct{ n, op int32 }
+
+const (
+	imageGrant   = -1
+	unknownGrant = -2
+)
+
+func (r *revisionOrder) countGrant(id int64, op int) {
+	g := r.grants[id]
+	if g.n < 2 {
+		g.n++
+	}
+	g.op = unknownGrant
+	if op >= imageGrant && op <= math.MaxInt32 {
+		g.op = int32(op)
+	}
+	r.grants[id] = g
 }
 
 // revisionOrder is the state of fromRevisions.
@@ -80,7 +103,7 @@ type revisionOrder struct {
 	// before taking it away. An ambiguous revoke writes a later revision,
 	// unless the ID was granted more than once (grants).
 	alive  map[int64]int64
-	grants map[int64]int
+	grants map[int64]grantCount
 	// grantsOf are the ambiguous grants of each lease ID (fitsGranted),
 	// and revokesOfLease its ambiguous revokes; writing are the ambiguous
 	// ops but the revokes (candidates).
@@ -179,6 +202,9 @@ type revisionOrder struct {
 	testSaveUsed    func(*mark)
 	testRestoreUsed func(mark)
 	testKeepPopped  bool
+	testNoSoleGrant bool
+	testSoleGrant   func(put, grant int)
+	testRejection   func(rev int64, err error)
 	// The certificate oracle replays an isolated witness with independent
 	// pre-certificate enumeration, never the fused candidate slice.
 	testCandidates         func(int64) []int
@@ -396,7 +422,7 @@ func (r *revisionOrder) index() error {
 			if r.indexStep() {
 				return ErrWitnessTimeout
 			}
-			r.grants[id]++
+			r.countGrant(id, imageGrant)
 		}
 	}
 	for i := range h.Ops {
@@ -423,7 +449,11 @@ func (r *revisionOrder) index() error {
 			if op.Resp != nil && op.Resp.LeaseGrant != nil {
 				id = op.Resp.LeaseGrant.ID
 			}
-			r.grants[id]++
+			grant := i
+			if op.Err != nil && !op.Err.Ambiguous {
+				grant = unknownGrant
+			}
+			r.countGrant(id, grant)
 		}
 	}
 	// What clients saw: a key unchanged over a span, and the writer of a
@@ -724,6 +754,10 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 // delete a key.
 func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) bool {
 	now := s.rev
+	// Gap exhaustion is a rejection the unpruned search also makes.
+	// A mandatory writer has no such continuation: keep its old path
+	// so this optimization cannot invent a new explanation there.
+	gap := create && len(r.stack) > 0 && r.stack[len(r.stack)-1].rev == s.rev
 	ok := func(i int) bool {
 		if r.step() {
 			return true
@@ -732,7 +766,7 @@ func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) b
 		if op.Resp != nil {
 			return op.Resp.Revision > now && op.Resp.Revision <= rev
 		}
-		return i != skip && !r.used[i] && r.lb[i] < rev && touchesWithStep(s, op.Req, k, create, r.step)
+		return i != skip && !r.used[i] && r.lb[i] < rev && (!gap || !r.soleLeaseGone(s, i)) && touchesWithStep(s, op.Req, k, create, r.step)
 	}
 	acked := func(revs []int64) bool {
 		j := sort.Search(len(revs), func(j int) bool { return revs[j] > now })
@@ -745,6 +779,24 @@ func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) b
 		return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || slices.ContainsFunc(r.revokers, ok)
 	}
 	return acked(r.delRevs[k]) || slices.ContainsFunc(r.deleters[k], ok) || acked(r.revokeRevs) || r.mayRevoke(rev, skip)
+}
+
+// soleLeaseGone only refines standalone put creation. The post-trial
+// state's lease set and this branch's exact used identities are authoritative:
+// with its sole grant consumed, an absent lease cannot become live again.
+// Multiple/unused/unknown grants, transactions and lease-zero puts retain
+// the old upper bound. No result is cached across trial rollback or restore.
+func (r *revisionOrder) soleLeaseGone(s *state, i int) bool {
+	p := r.w.reqs[i].Put
+	if r.testNoSoleGrant || p == nil || p.Lease == 0 || s.hasLease(p.Lease) {
+		return false
+	}
+	g := r.grants[p.Lease]
+	gone := g.n == 1 && (g.op == imageGrant || g.op >= 0 && r.used[g.op])
+	if gone && r.testSoleGrant != nil {
+		r.testSoleGrant(i, int(g.op))
+	}
+	return gone
 }
 
 // mayRevoke reports whether an ambiguous revoke other than skip, not used
@@ -1755,6 +1807,9 @@ func (r *revisionOrder) dead(rev int64, err error) bool {
 	if r.w.stopped {
 		return false
 	}
+	if r.testRejection != nil {
+		r.testRejection(rev, err)
+	}
 	if r.failure == nil || rev >= r.at {
 		r.failure, r.at = err, rev
 	}
@@ -1997,7 +2052,7 @@ func (r *revisionOrder) candidates(rev int64) ([]int, eventCertificate) {
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
 		}
-		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.grants[l.ID] <= 1 && r.alive[l.ID] >= rev {
+		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.grants[l.ID].n <= 1 && r.alive[l.ID] >= rev {
 			// An answer shows the lease in use at rev or later (#237).
 			continue
 		}
@@ -2221,7 +2276,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 		if r.step() {
 			return false
 		}
-		if l := w.reqs[i].LeaseRevoke; l != nil && r.grants[l.ID] == 1 {
+		if l := w.reqs[i].LeaseRevoke; l != nil && r.grants[l.ID].n == 1 {
 			leases = append(leases, l.ID)
 		}
 	}

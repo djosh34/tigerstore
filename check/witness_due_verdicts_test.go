@@ -27,6 +27,14 @@ func TestDueRecordedVerdicts(t *testing.T) {
 			h.Ops[i].Effect = nil
 		}
 		err := Witnessed(h, FromRevisions, time.Minute, snapshotOracle(t))
+		old := runSoleOracle(h, true, false, 2_000_000)
+		verdict := "pass"
+		if err != nil {
+			verdict = err.Error()
+		}
+		if old.timeout || old.err != verdict {
+			t.Fatalf("%s: same-binary old rule %q, new %q", name, old.err, verdict)
+		}
 		got[name] = "pass"
 		if err != nil {
 			got[name] = err.Error()

@@ -169,10 +169,18 @@ func TestWeightedSavedMargins(t *testing.T) {
 			var used int64
 			h := budgetHistory(t, tc.name)
 			err := Witnessed(h, FromRevisions, time.Hour, StepsUsed(&used), snapshotOracle(t))
-			// Pin the unchanged main/#899 row as well as checking every
-			// snapshot against the independent old flags in this pass.
-			if used != tc.weighted {
-				t.Fatalf("changed ratio row: weighted %d, recorded %d", used, tc.weighted)
+			// The same-binary old rule must still match the recorded main
+			// row. Real pruning may reduce work, never hide added charges.
+			old := runSoleOracle(h, true, false, 2_000_000)
+			if old.timeout || old.steps != tc.weighted || used > old.steps {
+				t.Fatalf("ratio row: new %d, old %d, recorded %d", used, old.steps, tc.weighted)
+			}
+			verdict := "pass"
+			if err != nil {
+				verdict = err.Error()
+			}
+			if verdict != old.err {
+				t.Fatalf("saved-row verdict differs: new %q old %q", verdict, old.err)
 			}
 			if errors.Is(err, ErrWitnessTimeout) || used <= 0 || used*50_000_000 > tc.base*350_000_000 {
 				t.Fatalf("lost margin: %d weighted steps, base %d, ratio floor 350M/50M; %v", used, tc.base, err)
