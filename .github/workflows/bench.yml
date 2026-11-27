@@ -86,8 +86,73 @@ on:
         description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs) and alone (followers on tmpfs)
         default: ""
 
+      fetch_measure:
+        description: Run the isolated original fetch campaign instead of the ordinary bench grid (immutable baseline/candidate SHAs required)
+        type: boolean
+        default: false
+      fetch_race:
+        description: Build both original-workload binaries with the race detector
+        type: boolean
+        default: false
+      fetch_fsync_ms:
+        description: Additional delay per durable O_DSYNC WAL batch (original 5-ms diagnostic)
+        type: choice
+        options: ['0', '5']
+        default: '0'
+
 jobs:
+  fetch-original:
+    if: inputs.fetch_measure
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      ETCD_UNSAFE_LOG_RING_BYTES: '536870912'
+      FETCH_MEASURE_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Record isolated runner and safe disk settings
+        run: |
+          sudo mount -o remount,barrier=1 /
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          { uname -a; lscpu; free -b; go version; findmnt -T "$RUNNER_TEMP"; } > "$RUNNER_TEMP/fetch-runner.txt"
+      - name: Five isolated alternating pairs, extend borderline results, stop on a ruling
+        env:
+          BASELINE: ${{ inputs.baseline }}
+          CANDIDATE: ${{ inputs.candidate }}
+          RACE: ${{ inputs.fetch_race }}
+          SYNC_DELAY: ${{ inputs.fetch_fsync_ms }}
+        run: |
+          args=()
+          if [ "$RACE" = true ]; then args+=(--race); fi
+          python3 -B scripts/fetch-original-measure.py --baseline "$BASELINE" --candidate "$CANDIDATE" --sync-delay-ms "$SYNC_DELAY" "${args[@]}" --out "$RUNNER_TEMP/fetch-original-evidence"
+      - name: Preserve evidence and report the actual gate state
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/fetch-original-evidence"
+          rm -f "$RUNNER_TEMP/fetch-original-evidence/"*.test
+          cp "$RUNNER_TEMP/fetch-runner.txt" "$RUNNER_TEMP/fetch-original-evidence/runner.txt"
+          python3 -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'fetch-original-evidence/manifest.json'
+          report = json.loads(p.read_text()) if p.exists() else {'status':'INCOMPLETE', 'reason':'campaign failed before a manifest existed'}
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('## Original fetch measurement\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n')
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fetch-original-race${{ inputs.fetch_race }}-sync${{ inputs.fetch_fsync_ms }}
+          path: ${{ runner.temp }}/fetch-original-evidence
+          retention-days: 30
   plan:
+    if: ${{ !inputs.fetch_measure }}
     runs-on: ubuntu-24.04-arm
     outputs:
       jobs: ${{ steps.plan.outputs.jobs }}

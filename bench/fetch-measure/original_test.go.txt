@@ -1,0 +1,179 @@
+package wl
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+)
+
+// Portable measurement overlay for the immutable main and candidate refs.
+// Every original value/share/deadline/fetch assertion is retained. Run only
+// on Actions; the adapter archives this overlay and the exact source patch.
+func TestFetchOriginalMeasurement(t *testing.T) {
+	loopOf := watchLoops(t)
+	const budget = 96 << 20
+	const keys = 8000
+	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
+	c := tc.clientOf(t, tc.endpoints[0])
+	value := func(i int) string { return fmt.Sprintf("%04d", i) + strings.Repeat("v", 16<<10) }
+	puts, cancelPuts := context.WithTimeout(context.Background(), fetchSharePuts)
+	defer cancelPuts()
+	preload := time.Now()
+	for i := range keys {
+		if _, err := c.Put(puts, fmt.Sprintf("/f/%04d", i), value(i)); err != nil {
+			t.Fatalf("put %d of %d, %v into the puts' %v: %v", i+1, keys, time.Since(preload), fetchSharePuts, err)
+		}
+	}
+	l := loopOf(tc.ids[0])
+	type snapshot struct {
+		Owned        int64
+		Values, Jobs int
+		Routing      bool
+	}
+	inspect := func() snapshot {
+		got := make(chan snapshot, 1)
+		l.post(func() error {
+			got <- snapshot{fetchMeasureOwned(l.n), l.n.stats.fetched, l.n.stats.fetches, fetchMeasureRouting(l.n)}
+			return nil
+		})
+		return <-got
+	}
+	// Equal preparation on both refs: the ordinary slab is NOT disabled.
+	// Refused-NOWAIT is injected at the same syscall boundary, on both sides.
+	syncFiles(t, tc.dir)
+	dropPageCache(t, tc.dir)
+	before := inspect()
+	ioBefore := fetchMeasureIOSnapshot()
+	deviceBefore := fetchMeasureDeviceBytes(t)
+	var most atomic.Int64
+	stop, watched := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(watched)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if b := inspect().Owned; b > most.Load() {
+				most.Store(b)
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+	reads, cancelReads := context.WithTimeout(context.Background(), fetchShareReads)
+	defer cancelReads()
+	type outcome struct {
+		First     int     `json:"first"`
+		ElapsedMS float64 `json:"elapsed_ms"`
+		Retries   int     `json:"retries"`
+		Err       error   `json:"-"`
+	}
+	outcomes := make(chan outcome, keys/100)
+	started := time.Now()
+	for first := 0; first < keys; first += 100 {
+		go func() {
+			at := time.Now()
+			retries := 0
+			r, err := c.Get(reads, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			for err != nil && strings.Contains(err.Error(), errTooManyRequests.Error()) && reads.Err() == nil {
+				retries++
+				time.Sleep(20 * time.Millisecond)
+				r, err = c.Get(reads, fmt.Sprintf("/f/%04d", first), clientv3.WithRange(fmt.Sprintf("/f/%04d", first+100)), clientv3.WithSerializable())
+			}
+			elapsed := time.Since(at)
+			if err == nil && len(r.Kvs) != 100 {
+				err = fmt.Errorf("range from /f/%04d read %d keys, want 100", first, len(r.Kvs))
+			}
+			if err == nil {
+				for j, kv := range r.Kvs {
+					if string(kv.Value) != value(first+j) {
+						err = fmt.Errorf("%s reads back as %d bytes, not the %d it was put with", kv.Key, len(kv.Value), len(value(first+j)))
+						break
+					}
+				}
+			}
+			outcomes <- outcome{first, float64(elapsed) / float64(time.Millisecond), retries, err}
+		}()
+	}
+	var failed error
+	results := make([]outcome, 0, keys/100)
+	for range keys / 100 {
+		r := <-outcomes
+		results = append(results, r)
+		if r.Err != nil && failed == nil {
+			failed = r.Err
+			cancelReads()
+		}
+	}
+	wall := time.Since(started)
+	close(stop)
+	<-watched
+	after := inspect()
+	ioAfter := fetchMeasureIOSnapshot()
+	deviceAfter := fetchMeasureDeviceBytes(t)
+	if failed != nil {
+		t.Fatalf("the ranges, %v into their %v: %v", wall, fetchShareReads, failed)
+	}
+	if after.Values-before.Values < keys/2 {
+		t.Fatalf("reads fetched %d values off loop, want most of %d", after.Values-before.Values, keys)
+	}
+	if m := max(most.Load(), after.Owned); m > fetchedMax(budget) {
+		t.Fatalf("loop kept %d bytes fetched, past share %d", m, fetchedMax(budget))
+	}
+	slices.SortFunc(results, func(a, b outcome) int { return a.First - b.First })
+	latencies := make([]float64, len(results))
+	total, maximum := 0, 0
+	for i, r := range results {
+		latencies[i] = r.ElapsedMS
+		total += r.Retries
+		maximum = max(maximum, r.Retries)
+	}
+	slices.Sort(latencies)
+	report := map[string]any{
+		"schema": 1, "case": "original-80-range", "correct": true,
+		"routing": after.Routing, "memory_budget_bytes": budget,
+		"keys": keys, "value_bytes": (16 << 10) + 4, "ranges": 80,
+		"wall_ms":    float64(wall) / float64(time.Millisecond),
+		"throughput": 80 / wall.Seconds(), "outcomes": results,
+		"latency_ms":       map[string]float64{"p95": latencies[75], "p99": latencies[79], "max": latencies[79]},
+		"refusals":         map[string]int{"total": total, "max_per_range": maximum},
+		"fetch":            map[string]int{"jobs": after.Jobs - before.Jobs, "values": after.Values - before.Values},
+		"fetch_owned_peak": max(most.Load(), after.Owned), "fetch_owned_limit": fetchedMax(budget),
+		"io": ioAfter.sub(ioBefore), "device_read_bytes": deviceAfter - deviceBefore,
+		"nowait_refused": os.Getenv("FETCH_MEASURE_NOWAIT_REFUSED") == "1",
+	}
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("FETCH_MEASURE %s", data)
+}
+
+func fetchMeasureDeviceBytes(t *testing.T) uint64 {
+	t.Helper()
+	p, err := os.ReadFile("/proc/self/io")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(p), "\n") {
+		if strings.HasPrefix(line, "read_bytes:") {
+			n, err := strconv.ParseUint(strings.TrimSpace(strings.TrimPrefix(line, "read_bytes:")), 10, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+	}
+	t.Fatal("missing kernel physical-read counter")
+	return 0
+}

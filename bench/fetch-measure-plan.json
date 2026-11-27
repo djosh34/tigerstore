@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "status": "BLOCKED_NOT_RUN",
+  "status": "BLOCKED_CORRECTNESS",
   "purpose": "Predeclared seeds and immutable trace inventory; not measurement evidence",
-  "blocker": "https://github.com/djosh34/tigerstore/issues/912",
+  "blocker": "TestLeaseFreeForkTrace/1 pinned-main trace/history mismatch: https://github.com/djosh34/tigerstore/actions/runs/46024056534/job/140590955373",
   "trace_hashes_and_seed_files_verified": true,
   "seed_generator_ref": "a3cf2694d5b2fbc082438341e8c5713288b51f2e",
-  "baseline_ref": "0feb445bcf01710c04513e8d3697fe170ceb0203",
-  "candidate_ref": null,
+  "baseline_ref": "8c71a6f24cd590d0fde95373d9ec78becd9d9349",
+  "candidate_ref": "69dc0db59b773037b57d52fb01973c9f91f5b699",
   "pairs": {
     "initial": 5,
     "borderline_extra": 5,
