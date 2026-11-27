@@ -352,6 +352,9 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
 			double := doubleSeed(i, len(seeds), twice)
 			run := Run{Test: test, Seed: seed, Env: env}
+			if path := os.Getenv("SIM_DIAL_EVIDENCE"); path != "" {
+				run.Outputs = map[string]string{"dial-evidence": path}
+			}
 			if opts.wallLimit != nil {
 				run.WallLimit = opts.wallLimit(seed)
 			}

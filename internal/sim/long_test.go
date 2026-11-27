@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"slices"
@@ -66,7 +68,19 @@ func longSeeds(t *testing.T, config func(seed uint64) Config, wallLimit time.Dur
 	}
 	budget := longSeedBudget(wallLimit)
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
+		w, closeOutput, err := simrun.CreateOutput("dial-evidence")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = closeOutput() }()
+		dial876Output = w
+		dial876SimulationHook = func(s *Sim) {
+			measureDialClassification(t, &Result{records: s.records, Stats: s.stats})
+			dial876Line("simulation complete; history decoding begins")
+		}
+		dial876Line("simulation begins")
 		res := run(t, config(seed))
+		dial876Line("run/hash complete; independent checks begin")
 		longCheckers(t, res, budget)
 		t.Logf("%+v, %d committed writes", res.Stats, len(res.Log))
 		return res.Stats
@@ -91,6 +105,14 @@ func longCheckers(t *testing.T, res *Result, budget int64) {
 		t.Logf("revision witness used %d weighted steps (budget %d, native CPU %s, search wall %s, %.2f steps/s)", steps, budget, cpu, wall, float64(steps)/wall.Seconds())
 	}, budget); err != nil {
 		t.Fatal(err)
+	}
+}
+
+var dial876Output io.Writer
+
+func dial876Line(text string) {
+	if dial876Output != nil {
+		_, _ = fmt.Fprintln(dial876Output, text)
 	}
 }
 
@@ -166,6 +188,9 @@ func measureDialClassification(t *testing.T, res *Result) {
 		t.Fatal(err)
 	}
 	simrun.Artifact("sim-out/dial-evidence/classification.json", b)
+	var compact bytes.Buffer
+	_ = json.Compact(&compact, b)
+	dial876Line("classification " + compact.String())
 	t.Logf("dial classification: %+v; direct %+v; clientv3 %+v", out.Total, out.Direct, out.ClientV3)
 }
 
