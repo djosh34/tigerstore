@@ -407,16 +407,18 @@ func TestWLRefusesARottedValue(t *testing.T) {
 // TestWLRotCleanupKeepsOtherDamage exercises the bookkeeping, not wl's
 // checksums: the tiny disk has a checkpoint pointer past a rotted value,
 // and a checkpoint on which damageWL can lose a write. Recovered is called
-// directly with the store no longer naming that value. The final start
-// really refuses the checkpoint, and must fence the node, not fail the run.
+// directly with the store no longer naming that value, before a later
+// crash loses a write. Another Recovered must still notice that damage;
+// a real start that refuses the checkpoint must fence the node, not fail
+// the run.
 func TestWLRotCleanupKeepsOtherDamage(t *testing.T) {
 	if simrun.Drive(t, 1) {
 		return
 	}
-	for _, beforeRecovery := range []bool{false, true} {
+	for _, secondRecovery := range []bool{false, true} {
 		name := "trim then lost write then start"
-		if beforeRecovery {
-			name = "lost write then recovered"
+		if secondRecovery {
+			name = "lost write then second recovery"
 		}
 		t.Run(name, func(t *testing.T) {
 			s, err := newSim(CalmConfig(1))
@@ -468,29 +470,34 @@ func TestWLRotCleanupKeepsOtherDamage(t *testing.T) {
 			}
 			loseWrite := func() {
 				t.Helper()
+				if n.mayBeDamaged() {
+					t.Fatal("cannot inject a lost write while the disk is already damaged")
+				}
 				// No sealed log segments: this draw selects the checkpoint.
 				s.rng = rand.New(rand.NewPCG(0, 0))
 				if !s.damageWL(n, lostWrite) {
 					t.Fatal("lost write found no place")
 				}
 			}
-			if beforeRecovery {
-				loseWrite()
+			recoverNode := func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				p := &proc{n: n, ctx: ctx, cancel: cancel, wl: &wlProc{}}
+				n.proc = p
+				(&wlHooks{s: s, p: p}).Recovered(0, &raftpb.HardState{}, func() []wl.LogValue { return nil })
+				s.down(n)
 			}
-			ctx, cancel := context.WithCancel(context.Background())
-			p := &proc{n: n, ctx: ctx, cancel: cancel, wl: &wlProc{}}
-			n.proc = p
-			(&wlHooks{s: s, p: p}).Recovered(0, &raftpb.HardState{}, func() []wl.LogValue { return nil })
-			s.down(n)
-			if beforeRecovery {
+			recoverNode()
+			if s.err != nil || n.mayBeDamaged() || !n.rotted {
+				t.Fatalf("rot recovery: damaged %v, rotted %v, error %v", n.mayBeDamaged(), n.rotted, s.err)
+			}
+			if secondRecovery {
+				loseWrite()
+				recoverNode()
 				if s.err == nil || !strings.Contains(s.err.Error(), "started on a damaged disk without noticing") {
-					t.Fatalf("recovery forgot the lost write: %v", s.err)
+					t.Fatalf("second recovery forgot the lost write: %v", s.err)
 				}
 				t.Log(s.err)
 				return
-			}
-			if s.err != nil || n.mayBeDamaged() || !n.rotted {
-				t.Fatalf("rot recovery: damaged %v, rotted %v, error %v", n.mayBeDamaged(), n.rotted, s.err)
 			}
 			if err := n.disk.Remove(n.rotFile); err != nil {
 				t.Fatal(err)
