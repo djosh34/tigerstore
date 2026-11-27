@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -117,10 +118,15 @@ func (c *client) run() {
 			s.mu.Unlock()
 			continue
 		}
-		resp, err := s.call(s.nodes[i], r.req, s.cfg.ClientTimeout)
-		// A read that failed with "leader changed" goes again, as
-		// clientv3 retries it.
+		transport := new(callTransport)
+		resp, err := s.callObserved(s.nodes[i], r.req, s.cfg.ClientTimeout, transport)
+		// A call that failed with "leader changed" goes again. Keep
+		// its transport observation across these simulator retries too:
+		// an earlier attempt may have taken effect (wl/batch.go).
 		for errors.Is(err, rpctypes.ErrGRPCLeaderChanged) {
+			// The logical wrapper's outcome matters too, even if a
+			// transport without our stats handler supplied it.
+			transport.retried(err)
 			timeout := s.cfg.ClientTimeout
 			if timeout > 0 {
 				s.mu.Lock()
@@ -131,7 +137,7 @@ func (c *client) run() {
 					break
 				}
 			}
-			resp, err = s.call(s.nodes[i], r.req, timeout)
+			resp, err = s.callObserved(s.nodes[i], r.req, timeout, transport)
 		}
 		s.mu.Lock()
 		c.done(r, resp, err)
@@ -159,6 +165,13 @@ func (c *client) think(err error) int64 {
 // connection would, and returns its answer. A timeout of 0 waits for the
 // answer for as long as the connection lasts.
 func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, error) {
+	return s.callObserved(n, req, timeout, new(callTransport))
+}
+
+// callObserved shares transport evidence across the attempts of a call.
+func (s *Sim) callObserved(n *node, req proto.Message, timeout int64, transport *callTransport) (resp proto.Message, err error) {
+	transport.retainAttempt(transport.attempt.Load())
+	defer func() { err = transport.finish(err) }()
 	s.mu.Lock()
 	p, deadline := n.proc, s.now()+timeout
 	lat := s.clientLatency()
@@ -174,8 +187,7 @@ func (s *Sim) call(n *node, req proto.Message, timeout int64) (proto.Message, er
 		cancel()
 		ctx, cancel = context.WithTimeout(p.ctx, time.Duration(deadline-s.now()))
 	}
-	var resp proto.Message
-	var err error
+	ctx = context.WithValue(ctx, callTransportKey{}, transport)
 	resp, err = s.callWL(p, req, ctx)
 	cancel()
 	switch {
@@ -216,6 +228,9 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	if r.v3 && err == nil {
 		s.stats.V3OK++
 	}
+	if errors.Is(err, rpctypes.ErrGRPCNoSpace) {
+		s.stats.NoSpace++
+	}
 	switch {
 	case err == nil:
 		s.stats.OK++
@@ -226,9 +241,6 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 			s.stats.Compactions++
 		}
 		c.learn(resp)
-	case errors.Is(err, rpctypes.ErrGRPCNoSpace):
-		s.stats.NoSpace++
-		s.stats.Failed++
 	case r.Ambiguous:
 		s.stats.Ambiguous++
 	default:
@@ -236,9 +248,117 @@ func (c *client) done(r *Record, resp proto.Message, err error) {
 	}
 }
 
+// callTransport follows the whole logical call, including clientv3's
+// interceptor retries and gRPC's transparent retries. Begin proves our
+// stats handler observed the call; OutHeader conservatively rules out
+// the shortcut, even when that stream was subsequently unprocessed.
+// grpc-go v1.84.0 emits OutHeader synchronously from NewStream before
+// returning the stream to SendMsg. No header event across the call means
+// no request body could have been sent. Unknown/unobserved paths stay
+// ambiguous, as do timeouts and cancellations.
+type callTransport struct {
+	observed atomic.Bool
+	header   atomic.Bool
+	// prior is sticky once an earlier attempt may have taken effect.
+	// A rejection of a later attempt cannot erase that uncertainty.
+	prior   atomic.Bool
+	attempt atomic.Pointer[callAttempt]
+}
+
+// Each gRPC attempt has its own header/outcome evidence. A rejection
+// with no effect is definite only for that attempt, not the whole call.
+// An unfinished/successful sent attempt is conservatively possibly
+// applied if another attempt starts before the logical call ends.
+type callAttempt struct {
+	header   atomic.Bool
+	definite atomic.Bool
+}
+
+type callTransportKey struct{}
+
+type callAttemptKey struct{}
+
+func (t *callTransport) retainAttempt(a *callAttempt) {
+	if a != nil && a.header.Load() && !a.definite.Load() {
+		t.prior.Store(true)
+	}
+}
+
+func (t *callTransport) retried(err error) {
+	if err != nil && ambiguous(err) {
+		t.prior.Store(true)
+	}
+}
+
+func observeCallTransport(ctx context.Context) (context.Context, *callTransport) {
+	t := new(callTransport)
+	return context.WithValue(ctx, callTransportKey{}, t), t
+}
+
+// refusedDialMessage is exactly grpc-go's ConnectionError.Error at the
+// picker boundary. Its internal transport error type is lost when pick
+// converts it into a public Unavailable status. Do not match a loose
+// substring, another Unavailable, or this text without transport evidence.
+var refusedDialMessage = fmt.Sprintf("connection error: desc = %q", "transport: Error while dialing: "+errConnRefused.Error())
+
+func (t *callTransport) finish(err error) error {
+	if err != nil && t.prior.Load() {
+		if ambiguous(err) {
+			return err
+		}
+		return &ambiguousCallError{err}
+	}
+	if err == nil || !t.observed.Load() || t.header.Load() {
+		return err
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.Unavailable && st.Message() == refusedDialMessage {
+		return &unsentDialError{err}
+	}
+	return err
+}
+
+// unsentDialError carries the call-path proof without changing the
+// original status, description or error chain.
+type unsentDialError struct{ error }
+
+func (e *unsentDialError) Unwrap() error              { return e.error }
+func (e *unsentDialError) GRPCStatus() *status.Status { return status.Convert(e.error) }
+
+// Equal proof-bearing statuses must be equal both ways for recordLog's
+// error interning, without equating a bare status to a transport proof.
+func (e *unsentDialError) Is(target error) bool {
+	other, ok := target.(*unsentDialError)
+	return ok && other != nil && errors.Is(e.error, other.error)
+}
+
+// Preserve the final error's representation and identity while retaining
+// a previous attempt's possible effect. Equal wrappers must intern in
+// recordLog just as equal unsentDialErrors do.
+type ambiguousCallError struct{ error }
+
+func (e *ambiguousCallError) Unwrap() error { return e.error }
+func (e *ambiguousCallError) GRPCStatus() *status.Status {
+	st, ok := status.FromError(e.error)
+	if !ok {
+		return nil
+	}
+	return st
+}
+
+func (e *ambiguousCallError) Is(target error) bool {
+	other, ok := target.(*ambiguousCallError)
+	return ok && other != nil && errors.Is(e.error, other.error)
+}
+
 // ambiguous reports whether a failed call may still have taken effect.
 func ambiguous(err error) bool {
+	var unsent *unsentDialError
+	var prior *ambiguousCallError
 	switch {
+	case errors.As(err, &prior):
+		return true
+	case errors.As(err, &unsent):
+		return false
 	case errors.Is(err, errConnRefused),
 		errors.Is(err, rpctypes.ErrGRPCNoLeader),
 		errors.Is(err, rpctypes.ErrGRPCKeyNotFound),
