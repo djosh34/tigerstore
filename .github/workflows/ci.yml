@@ -99,18 +99,28 @@ jobs:
           fi
           printf '%s\n' "$packages" | xargs go test -race 2>&1 | tee -a "$RUNNER_TEMP/test.log" || status=1
           go test -race -skip "$slow" ./internal/wl 2>&1 | tee -a "$RUNNER_TEMP/test.log" || status=1
+          # wlcost builds the tree's work counters, for the two
+          # large-directory tests alone (#907); every other wl test runs the
+          # production build above. Its own log keeps its replay flags.
+          go test -race -tags wlcost -run '^(TestInsertsIntoALargeDirectoryStayCheap|TestDeletesFromALargeDirectoryStayCheap)$' ./internal/wl 2>&1 | tee "$RUNNER_TEMP/test-wlcost.log" || status=1
           exit "$status"
       # wl's nodes on simos and simfs need the simulator's seam, the tag
       # simio (internal/wl/sys.go).
       - shell: bash
         run: go test -race -tags simio ./internal/simos 2>&1 | tee -a "$RUNNER_TEMP/test.log"
       - if: failure()
-        run: scripts/replay.sh "$RUNNER_TEMP/test.log" -race
+        run: |
+          scripts/replay.sh "$RUNNER_TEMP/test.log" -race
+          if [ -f "$RUNNER_TEMP/test-wlcost.log" ]; then
+            scripts/replay.sh "$RUNNER_TEMP/test-wlcost.log" -race -tags wlcost
+          fi
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: test-log
-          path: ${{ runner.temp }}/test.log
+          path: |
+            ${{ runner.temp }}/test.log
+            ${{ runner.temp }}/test-wlcost.log
           retention-days: 30
 
   # check took 467-490 s under -race on main, above 70% of Go's 600 s
