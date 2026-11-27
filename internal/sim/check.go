@@ -890,7 +890,7 @@ func (s *Sim) checkRecoverable() error {
 		}
 		floor := n.floor()
 		d, err := s.logOn(n)
-		if err != nil && n.rotted && n.corrupted && refusesDamage(err) {
+		if err != nil && n.rotDamaged && !n.corrupted && refusesDamage(err) {
 			// Its next start refuses the rotted log, as it must.
 			continue
 		}

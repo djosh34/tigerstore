@@ -240,18 +240,18 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState, values func() []w
 		n.disk.Fault = nil
 	}
 	s.wlSyncFailStarted(n)
-	if n.corrupted && n.rotted {
+	if n.rotDamaged {
 		if ptr, err := wlPointer(n.disk); err == nil && n.rotOff < ptr.LogFrom && !namesByte(values(), n.rotOff) {
 			// The start reads the log from the checkpoint's place on,
 			// past the rotted byte, and checks the values its store
 			// names before it, which the rotted one no longer is:
 			// nothing reads it.
-			n.corrupted = false
+			n.rotDamaged = false
 			s.tracef("node %d: started; its store no longer names the rotted value", n.id)
 		}
 	}
 	switch {
-	case n.corrupted:
+	case n.damaged():
 		// The run damaged the disk where the start reads it.
 		s.fail("node %d started on a damaged disk without noticing", n.id)
 	case n.misread:
@@ -949,16 +949,16 @@ func (s *Sim) wlRefused(n *node, err error) bool {
 		s.restartLater(n, 1+s.rng.Int64N(Second))
 		return true
 	}
-	if injected(err) && (!n.corrupted || !errors.Is(err, simfs.ErrBadSector)) {
+	if injected(err) && (!n.damaged() || !errors.Is(err, simfs.ErrBadSector)) {
 		return false
 	}
-	if n.tornCrash && !n.corrupted && refusesDamage(err) {
+	if n.tornCrash && !n.damaged() && refusesDamage(err) {
 		// A crash tore writes so that the log looks damaged.
 		n.corrupted = true
 		s.stats.TornRefusals++
 		s.tracef("node %d: its torn crash image looks damaged: %v", n.id, err)
 	}
-	if !n.corrupted {
+	if !n.damaged() {
 		return false
 	}
 	if !refusesDamage(err) && !errors.Is(err, simfs.ErrBadSector) {
