@@ -91,7 +91,7 @@ on:
         type: boolean
         default: false
       fetch_final_profiles:
-        description: PR897 named/Kubernetes five-pair profiles and per-job602 ceilings on immutable main55/head9f
+        description: PR897 named/Kubernetes five-pair profiles and per-job602 ceilings on frozen main55/resident-option-A head
         type: boolean
         default: false
       fetch_measure:

@@ -34,7 +34,9 @@ type fakeServer struct {
 	maxSeen   atomic.Int64
 	slowReads time.Duration
 	// rev is the last revision answered; every write gets the next one.
-	rev atomic.Int64
+	rev       atomic.Int64
+	busyEvery atomic.Int64
+	requests  atomic.Int64
 }
 
 const fakeMaxStreams = 8
@@ -84,6 +86,11 @@ func (fs *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", "application/grpc")
 	switch r.URL.Path {
 	case "/ok", "/etcdserverpb.KV/Put":
+		if every := fs.busyEvery.Load(); every > 0 && fs.requests.Add(1)%every == 0 {
+			h.Set("Grpc-Status", "8")
+			h.Set("Grpc-Message", "etcdserver: too many requests")
+			return
+		}
 		h.Set("Trailer", "Grpc-Status")
 		hdr := newMsg()
 		rev := fs.rev.Add(1)

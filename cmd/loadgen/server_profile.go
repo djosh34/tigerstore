@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,7 +20,7 @@ func serverProfile(scheme string, endpoints []string, start, stop int64) <-chan 
 		return done
 	}
 	if len(endpoints) == 0 {
-		done <- fmt.Errorf("leader profile needs a metric endpoint")
+		done <- errors.New("leader profile needs a metric endpoint")
 		return done
 	}
 	go func() {

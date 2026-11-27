@@ -177,6 +177,13 @@ step() {
 	cat "$run.stderr" >&2
 	if [ "$status" -ne 0 ]; then
 		echo "$name exited $status: $(grep -v '^$' "$run.stderr" | tail -n 1)" >"$run.failed"
+		# Ruling 2's measurement-only exception. Keep native valid:false,
+		# its exit status and errors; never skip the subsequent leader check.
+		if [ "${FETCH_MEASURE_BUSY_REPORT:-}" = 1 ] && [ "$name" = loadgen ] && [ "$status" -eq 1 ] &&
+			python3 "$here/../scripts/fetch-busy-result.py" "$run.json"; then
+			mv "$run.failed" "$run.busy"
+			status=0
+		fi
 	fi
 	rm "$run.stderr"
 	return "$status"

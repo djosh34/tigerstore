@@ -19,7 +19,7 @@ import urllib.request
 HERE=Path(__file__).parent
 s=importlib.util.spec_from_file_location('resident',HERE/'fetch-resident-measure.py');resident=importlib.util.module_from_spec(s);s.loader.exec_module(resident)
 policy=resident.policy
-BASE='55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4';HEAD='9fad820b8f02882e47952d17013c6541f62734e7'
+BASE='55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4';HEAD='0c41156a5dc285c1cffc79f80c11b725235031fd'
 CACHES=('past-ram-560m','tmpfs-nowait-refused','evicted-cache')
 COHORTS=('get-get','list-get','overlapping-list','failed-cas-get','overlapping-prev-kv')
 NAMES=('member','budget','routing','jobs','values','loads','cache_entries','blocking_reads','blocking_bytes','nowait_calls','nowait_bytes','nowait_refusals','live_bytes','slab_used')+tuple(f'{key}_{name}' for key in ('a','b') for name in ('off_hi','off_lo','mod','size','sum','cached','at_sec','at_nsec'))

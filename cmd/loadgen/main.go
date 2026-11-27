@@ -135,9 +135,12 @@ func parseFlags(args []string) (config, error) {
 // result is the JSON output of one run. Latencies are in microseconds.
 type result struct {
 	// Valid is false if anything went wrong: a request error, a phase
-	// that did not finish, or a CPU sample that failed. Reports must
-	// reject invalid results.
-	Valid          bool     `json:"valid"`
+	// that did not finish, or a CPU sample that failed. Ordinary reports
+	// reject invalid results; measurement exceptions never set Valid true.
+	Valid bool `json:"valid"`
+	// Measurement consumers may accept busy-only invalid runs, never an
+	// unrelated phase/CPU/watch/trace failure masked by concurrent busy errors.
+	InvalidCauses  []string `json:"invalid_causes"`
 	Label          string   `json:"label"`
 	Workload       string   `json:"workload"`
 	ValueSize      int      `json:"value_size"`
@@ -164,8 +167,9 @@ type result struct {
 	ServiceLatency latency                 `json:"service_latency_us"`
 	// Cohort counts the requests that arrived in the window, which the
 	// latencies describe, and CohortFailed those of them that failed.
-	Cohort       int64 `json:"cohort"`
-	CohortFailed int64 `json:"cohort_failed"`
+	Cohort                  int64 `json:"cohort"`
+	CohortFailed            int64 `json:"cohort_failed"`
+	ResourceExhaustedCohort int64 `json:"resource_exhausted_cohort"`
 	// Unsent counts open-loop arrivals never sent by the end of the drain;
 	// any makes the result invalid.
 	Unsent int64        `json:"unsent"`
@@ -620,11 +624,14 @@ func (s *session) measure(streams int) (*result, error) {
 	}
 
 	var errs []error
+	causes := []string{}
 	if phaseErr != nil {
 		errs = append(errs, phaseErr)
+		causes = append(causes, "phase")
 	}
 	if sampleErr != nil {
 		errs = append(errs, fmt.Errorf("server CPU: %w", sampleErr))
+		causes = append(causes, "server_cpu")
 	}
 	if metricsErr != nil {
 		fmt.Fprintf(os.Stderr, "loadgen: no peer bytes: %v\n", metricsErr)
@@ -632,6 +639,7 @@ func (s *session) measure(streams int) (*result, error) {
 	if cfg.workload == "delete" {
 		for _, l := range s.loads {
 			if l.exhausted() {
+				causes = append(causes, "delete_exhausted")
 				errs = append(errs, fmt.Errorf("delete ran out of its %d keys; raise -keys", cfg.keys))
 				break
 			}
@@ -639,21 +647,26 @@ func (s *session) measure(streams int) (*result, error) {
 	}
 	if len(s.watches) > 0 {
 		if err := awaitWatches(s.workers, s.watchConns, s.watches); err != nil {
+			causes = append(causes, "watch")
 			errs = append(errs, err)
 		}
 	}
 	if s.trace != nil {
 		if err := s.k8sErrors(); err != nil {
+			causes = append(causes, "k8s")
 			errs = append(errs, err)
 		}
 	}
 	res := s.summarize(streams, samples)
 	if len(res.Errors) > 0 {
+		causes = append(causes, "request_errors")
 		errs = append(errs, fmt.Errorf("%d kinds of request errors, see the result", len(res.Errors)))
 	}
 	if len(cfg.pids) == 0 {
+		causes = append(causes, "missing_server_cpu")
 		errs = append(errs, errors.New("no -pids, so no server CPU"))
 	}
+	res.InvalidCauses = causes
 	res.Valid = len(errs) == 0
 	return res, errors.Join(errs...)
 }
@@ -845,6 +858,7 @@ func (s *session) summarize(streams int, samples [2]cpuSample) *result {
 		res.Acked += st.acked
 		res.Cohort += st.cohort
 		res.CohortFailed += st.cohortFailed
+		res.ResourceExhaustedCohort += st.resourceExhaustedCohort
 		written += st.written
 		resp.merge(&st.resp)
 		service.merge(&st.service)

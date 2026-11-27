@@ -26,11 +26,12 @@ type stats struct {
 	// completions inside it. Latency counts the requests that arrived
 	// inside it, however late they complete, so a slow tail is not cut
 	// off at the end of the window.
-	winStart, winStop int64
-	ops               int64 // successful completions in the window
-	acked             int64 // successful completions in the whole phase
-	cohort            int64 // requests that arrived in the window, by outcome below
-	cohortFailed      int64 // of those, the ones that failed
+	winStart, winStop       int64
+	ops                     int64 // successful completions in the window
+	acked                   int64 // successful completions in the whole phase
+	cohort                  int64 // requests that arrived in the window, by outcome below
+	cohortFailed            int64 // of those, the ones that failed
+	resourceExhaustedCohort int64 // gRPC status 8 in the SAME intended-send window
 	// written sums stream.written over the successful completions in the
 	// window.
 	written int64
@@ -65,6 +66,10 @@ func (s *stats) complete(st *stream, at int64, err error) {
 		s.errs[err.Error()]++
 		if inCohort {
 			s.cohortFailed++
+			var status *grpcStatus
+			if errors.As(err, &status) && status.code == 8 {
+				s.resourceExhaustedCohort++
+			}
 		}
 		return
 	}
