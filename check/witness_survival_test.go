@@ -130,12 +130,13 @@ func survivalReference(h *history.History) map[string]int64 {
 type survivalRun struct {
 	*soleRun
 	items     int64
+	soleHits  int
 	pruned    map[int]bool
 	deadlines map[string]int64
 }
 
 func runSurvival(h *history.History, off, trace bool, budget int64) *survivalRun {
-	out := &survivalRun{soleRun: &soleRun{rejections: map[soleRejection]bool{}}, pruned: map[int]bool{}}
+	out := &survivalRun{soleRun: newSoleRun(h), pruned: map[int]bool{}}
 	want := survivalReference(h)
 	var r *revisionOrder
 	active := -1
@@ -143,6 +144,7 @@ func runSurvival(h *history.History, off, trace bool, budget int64) *survivalRun
 		o.testRevision = func(v *revisionOrder) {
 			r = v
 			r.testNoSurvival = off
+			r.testSoleGrant = func(_, _ int) { out.soleHits++ }
 			r.testRejection = func(rev int64, err error) {
 				out.rejections[soleRejection{rev, err.Error()}] = true
 				if trace {
@@ -329,9 +331,10 @@ func TestSurvivalOracleRejectsMutations(t *testing.T) {
 	bad := *got
 	copyRun := *got.soleRun
 	bad.soleRun = &copyRun
-	bad.failure += " invented"
+	bad.err = "invented explanation: " + got.err
+	bad.publicErr = errors.New(bad.err)
 	if _, err := survivalCheck(old, &bad); err == nil {
-		t.Fatal("invented rejection accepted")
+		t.Fatal("invented returned explanation accepted")
 	}
 	bad = *got
 	copyRun = *got.soleRun
@@ -352,6 +355,39 @@ func TestSurvivalOracleRejectsMutations(t *testing.T) {
 	bad.nodes[0].state.op++
 	if _, err := survivalCheck(old, &bad); err == nil {
 		t.Fatal("changed retained trace accepted")
+	}
+}
+
+// These mutate only the public return, leaving failure, dead evidence and
+// every semantic boundary untouched. Internal membership alone approves
+// them, which was the reviewer's counterexample on the 69 -> 3 history.
+func TestSurvivalReturnedExplanation(t *testing.T) {
+	h := survivalAstra(false, 1, false)
+	old, got := runSurvival(h, true, true, 100000), runSurvival(h, false, true, 100000)
+	if n, err := survivalCheck(old, got); err != nil || n != 1 {
+		t.Fatalf("69 -> 3 baseline: prunes %d, error %v", n, err)
+	}
+	if old.at != 69 || got.at != 3 || !old.rejections[soleRejection{got.at, got.failure}] {
+		t.Fatal("counterexample requires genuine internal membership")
+	}
+	for _, tc := range []struct{ name, returned string }{
+		{"invented", "invented explanation: " + got.err},
+		{"wrong-wrapper", strings.Replace(got.err, "(revisions)", "(log)", 1)},
+		{"old-text-wrong-revision", old.err},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := *got
+			copyRun := *got.soleRun
+			bad.soleRun = &copyRun
+			bad.err = tc.returned
+			bad.publicErr = errors.New(tc.returned)
+			if bad.failure != got.failure || !maps.Equal(bad.rejections, got.rejections) || !reflect.DeepEqual(bad.nodes, got.nodes) {
+				t.Fatal("return-only mutation changed internal evidence")
+			}
+			if _, err := survivalCheck(old, &bad); err == nil {
+				t.Fatal("oracle approved mutated public return")
+			}
+		})
 	}
 }
 

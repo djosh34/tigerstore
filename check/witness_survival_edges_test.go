@@ -128,14 +128,18 @@ func TestSurvivalOnlyPlainUnresolvedDeletes(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.stack = []*frame{{rev: 3}}
-	fits := 0
+	attempts, invocations, hits := 0, 0, 0
 	r.testTrace = func(phase string, _ int) {
-		if phase == "fit" {
-			fits++
+		switch phase {
+		case "fit":
+			invocations++
+		case "fits-attempt":
+			attempts++
 		}
 	}
-	if r.fitsGranted(0, 3) || fits != 1 {
-		t.Fatal("survival delete must fail once without a grant retry")
+	r.testSurvival = func(_ int, _ int64, _ string) { hits++ }
+	if r.fitsGranted(0, 3) || invocations != 1 || attempts != 1 || hits != 1 {
+		t.Fatalf("survival rejection: fitsGranted calls %d, actual fits attempts %d, hits %d; want 1/1/1", invocations, attempts, hits)
 	}
 	r.resolved[3] = 0
 	if !r.fitsGranted(0, 3) {
@@ -162,6 +166,33 @@ func TestSurvivalOnlyPlainUnresolvedDeletes(t *testing.T) {
 	r.stack[0].rev = 69
 	if r.survivalBlocked(0, 69, "b000") {
 		t.Fatal("deadline extended to at+1")
+	}
+}
+
+// Positive control: a real trial grant must produce two underlying fits
+// attempts in one fitsGranted call, even when the granted trial rolls back.
+func TestSurvivalFitAttemptsIncludeRetry(t *testing.T) {
+	h := soleAstraHistory()
+	h.Start.Leases = nil
+	h.Ops[0] = history.Op{Client: 0, Call: 1, Return: 2, Req: history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 9, TTL: 10}}, Err: errUnavailable}
+	w := newWitness(h, time.Now().Add(time.Minute))
+	r := newRevisionOrder(w)
+	w.search = r
+	if err := r.index(); err != nil {
+		t.Fatal(err)
+	}
+	r.deleted = r.add(r.deleted, 3, w.live.index("a"))
+	invocations, attempts := 0, 0
+	r.testTrace = func(phase string, _ int) {
+		switch phase {
+		case "fit":
+			invocations++
+		case "fits-attempt":
+			attempts++
+		}
+	}
+	if r.fitsGranted(2, 3) || invocations != 1 || attempts != 2 || r.used[0] || w.live.hasLease(9) {
+		t.Fatalf("trial-grant rollback: invocations %d, fits attempts %d, grant used %v, live %v", invocations, attempts, r.used[0], w.live.hasLease(9))
 	}
 }
 

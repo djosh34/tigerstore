@@ -2178,6 +2178,11 @@ func (r *revisionOrder) grant(grants []int) {
 // no key that a client saw unchanged at rev, and an acked revoke gets its
 // answer.
 func (r *revisionOrder) fits(i int, rev int64) bool {
+	// Unlike "fit" (one fitsGranted invocation), this test-only event also
+	// observes a second model trial after granting. No production tracing.
+	if r.testTrace != nil {
+		r.testTrace("fits-attempt", i)
+	}
 	if r.step() {
 		return false
 	}
