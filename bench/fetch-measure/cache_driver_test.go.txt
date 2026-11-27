@@ -1,0 +1,27 @@
+package main
+
+import (
+	"fmt"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
+	"strings"
+	"testing"
+)
+
+func TestPreloadTransactionFitsUnchangedNativeReceiveLimit(t *testing.T) {
+	size := func(n int) int {
+		tx := &pb.TxnRequest{}
+		for i := range n {
+			tx.Success = append(tx.Success, &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(fmt.Sprintf("/population/%08d", i)), Value: []byte(strings.Repeat("p", 65536))}}})
+		}
+		return proto.Size(tx)
+	}
+	const limit = 2 << 20
+	if old := size(32); old <= limit {
+		t.Fatalf("old batch unexpectedly fits: %d", old)
+	}
+	if got := size(preloadBatch); got > limit {
+		t.Fatalf("batch%d protobuf %d exceeds unchanged limit%d", preloadBatch, got, limit)
+	}
+	t.Logf("old32=%d, corrected%d=%d, unchanged cap=%d", size(32), preloadBatch, size(preloadBatch), limit)
+}

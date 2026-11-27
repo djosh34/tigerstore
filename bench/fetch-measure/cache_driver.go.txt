@@ -24,6 +24,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Keep protobuf overhead below the unchanged 2-MiB native receive cap.
+const preloadBatch = 16
+
 type sample map[string]float64
 type outcome struct {
 	ID      int     `json:"request_id"`
@@ -185,9 +188,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	val := strings.Repeat("p", 65536)
 	datasetHash := sha256.New()
-	for i := 0; i < *preload; i += 32 {
+	for i := 0; i < *preload; i += preloadBatch {
 		ops := []clientv3.Op{}
-		for j := i; j < min(i+32, *preload); j++ {
+		for j := i; j < min(i+preloadBatch, *preload); j++ {
 			key := fmt.Sprintf("/population/%08d", j)
 			_, _ = datasetHash.Write([]byte(key))
 			_, _ = datasetHash.Write([]byte(val))
