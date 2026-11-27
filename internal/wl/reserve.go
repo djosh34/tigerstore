@@ -108,21 +108,19 @@ func (n *node) giveRoom(c *client, closed bool) {
 // revision and compacted revision stay the same. The tag identifies the
 // store without keeping its tables alive after a snapshot install.
 type roomRead struct {
-	awayRead
+	h               handle
+	msg             []byte
 	c               *client // owns the charge even after the stream ends
 	tag             *byte
 	rev, compactRev int64
 	share           int64 // a shrink can change rangeKVs' pieces threshold
-	body            int
-	physical        bool
-	wireExtra       int
+	body            int   // complemented for a physical framed-size hint
 }
 
 func (n *node) waitFillRoom(c *client, s *stream, msg []byte, body, extra int) {
 	n.waitRoom(c, s, msg, body)
 	r := &n.roomWait[len(n.roomWait)-1]
-	r.physical = true
-	r.wireExtra = extra
+	r.body = ^(body + extra)
 }
 
 func (n *node) fillRoomFits(c *client, msg []byte, wire int64) bool {
@@ -251,11 +249,13 @@ func (n *node) serveRoomWait() {
 			// A small return of room need not fit this reply. Checking
 			// first avoids reading and rebuilding its records just to
 			// discard them again (#833). The header and share are current.
-			m := int64(5 + sizeBytesField(1, n.hdrSize()) + r.body)
-			if r.physical {
-				m += int64(r.wireExtra)
+			body := r.body
+			physical := body < 0
+			if physical {
+				body = ^body
 			}
-			if r.physical && !n.cannotFit(m) && !n.fillRoomFits(c, r.msg, m) {
+			m := int64(5 + sizeBytesField(1, n.hdrSize()) + body)
+			if physical && !n.cannotFit(m) && !n.fillRoomFits(c, r.msg, m) {
 				n.stats.roomWaits++
 				n.roomWait = append(n.roomWait, r)
 				continue

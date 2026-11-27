@@ -78,7 +78,7 @@ func TestPhysicalFillWaitKeepsItsHintAndLetsAFundedReaderPass(t *testing.T) {
 	msg := appendBytesField(nil, 1, []byte("/k/"))
 	msg = appendBytesField(msg, 2, prefixEnd([]byte("/k/")))
 	serveRoomRange(t, c, s, msg)
-	if len(n.roomWait) != 1 || !n.roomWait[0].physical || n.stats.rangeFillScans != 1 {
+	if len(n.roomWait) != 1 || n.roomWait[0].body >= 0 || n.stats.rangeFillScans != 1 {
 		t.Fatal("large request did not retain a physical admission hint")
 	}
 	for range 32 {

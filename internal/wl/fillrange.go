@@ -61,9 +61,6 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 		n.startBig(c, s, msg)
 		return true
 	}
-	if !cold {
-		return false
-	}
 	more := r.limit > 0 && matched > r.limit
 	body := sizeBytesField(1, n.hdrSizeAt(st.rev)) + bytesOut + sizeVarintField(4, uint64(count))
 	if more {
@@ -84,6 +81,11 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 	wire := body + 5
 	if s.kind == kRangeStream {
 		wire = n.streamFillWire(st, r, view, st.rev, selected, count, more)
+	}
+	// Resident values may use the ordinary within-share fast path. A
+	// logical output loan still needs P backing even without disk I/O.
+	if !cold && n.roomNeeded(c, int64(wire)) == 0 {
+		return false
 	}
 	meta := stageUnit + int((int64(len(msg))+stageUnit-1)/stageUnit)*stageUnit
 	n.stageCredits.limit = n.sizes.clientPool

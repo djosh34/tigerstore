@@ -233,7 +233,7 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.beginLegacyRange(c, s, r, msg)
 		defer func() { n.legacyReading = legacyOwner{}; n.dropCollectingLegacy() }()
 	}
-	if n.legacyRetry != nil && n.legacyRetry.material {
+	if n.legacyRetry != nil {
 		defer func() { clear(n.kvs); n.kvs = nil }()
 	}
 	st.noWait = true

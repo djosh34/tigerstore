@@ -802,9 +802,26 @@ func (l *loop) takeHandoffs() {
 	hs := l.handoffs
 	l.handoffs = nil
 	l.mu.Unlock()
-	l.turnHandoffs += len(hs)
 	n := l.n
+	deferred := hs[:0]
+	claimed := n.clients
 	for _, h := range hs {
+		if n.cursorFetch && h.kind == kindClient {
+			if claimed >= n.sizes.maxClients() {
+				n.stats.clientsRefused++
+				_ = sysClose(h.fd)
+				continue
+			}
+			claimed++
+			// Handshake-owned leftovers stay in the existing handoff until
+			// normal input and connection credit exist. They cannot bypass
+			// the read half and allocate over an irrevocable output loan.
+			need := int64(clientInBuf + clientPtBuf + slotBytes + max(0, len(h.left)-clientInBuf))
+			if n.stageCredits.used+n.stageOther(idleConn) > n.sizes.clientPool || len(h.left) > 0 && n.cpool+need > n.sizes.clientInBufs() {
+				deferred = append(deferred, h)
+				continue
+			}
+		}
 		idx := l.slot()
 		var s *sock
 		switch h.kind {
@@ -878,6 +895,13 @@ func (l *loop) takeHandoffs() {
 		if s.iw > s.ir || s.pw > s.pr {
 			l.input(idx, false)
 		}
+	}
+	l.turnHandoffs += len(hs) - len(deferred)
+	clear(hs[len(deferred):])
+	if len(deferred) > 0 {
+		l.mu.Lock()
+		l.handoffs = append(deferred, l.handoffs...)
+		l.mu.Unlock()
 	}
 }
 
@@ -1191,6 +1215,9 @@ func (l *loop) run() error {
 		}
 		t3 := time.Now()
 		l.flush()
+		if n.cursorFetch {
+			l.takeHandoffs()
+		}
 		if len(n.waiting) > 0 {
 			l.serveWaiting()
 		}

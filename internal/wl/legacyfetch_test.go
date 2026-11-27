@@ -336,6 +336,9 @@ func TestLegacyDenseMetadataUsesBoundedMaterializationLookup(t *testing.T) {
 	msg = appendVarintField(msg, 8, 1)
 	serveRoomRange(t, c, s, msg)
 	n := c.node
+	if b := n.legacyPending; b != nil && n.legacyFinishBound(b) > n.sizes.clientPool {
+		t.Fatalf("UNRESOLVED dense-sort budget: unchanged materialization/scratch needs %d bytes before dispatch; P=%d; main sort admission/handling is frozen", n.legacyFinishBound(b), n.sizes.clientPool)
+	}
 	for step := 0; n.legacyPending != nil || n.legacyRunning != nil || n.legacyMemo != nil && n.legacyMemo.needed; step++ {
 		if step > 1200 {
 			t.Fatal("dense view did not make finite progress")
@@ -418,6 +421,7 @@ func TestSharedLegacyCursorRuntimeBudgetMatrix(t *testing.T) {
 						t.Fatal("main held-reply consumer was not queued")
 					}
 					peak := n.fillBook.used
+					peakP := n.stageCredits.used + n.stageOther(0)
 					if cancelRunning {
 						before := n.fillBook.used
 						if first == "cursor" {
@@ -435,6 +439,10 @@ func TestSharedLegacyCursorRuntimeBudgetMatrix(t *testing.T) {
 							t.Fatal("shared consumers did not finish")
 						}
 						peak = max(peak, n.fillBook.peak)
+						peakP = max(peakP, n.stageCredits.used+n.stageOther(0))
+						if peakP > n.sizes.clientPool {
+							t.Fatalf("combined paths overspent independently backed P: %d > %d", peakP, n.sizes.clientPool)
+						}
 						if n.fillBook.used > n.fillBook.limit {
 							t.Fatal("shared W exceeded")
 						}
@@ -488,7 +496,7 @@ func TestSharedLegacyCursorRuntimeBudgetMatrix(t *testing.T) {
 							t.Fatal("cursor did not independently complete")
 						}
 					}
-					t.Logf("W peak=%d limit=%d blocked=%v", peak, n.fillBook.limit, blocked)
+					t.Logf("W peak=%d limit=%d P peak=%d limit=%d blocked=%v", peak, n.fillBook.limit, peakP, n.sizes.clientPool, blocked)
 				})
 			}
 		}

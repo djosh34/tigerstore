@@ -46,6 +46,7 @@ func stageWindow(inc uint32) []byte {
 func TestAStagedReplyCannotSpendTheLogicalInputTurn(t *testing.T) {
 	n, a, b, l, feed, _ := partNode(t)
 	n.sizes, n.connOut = sizeFor(83<<20), 64<<10
+	n.cursorFetch = true
 	n.connIn = n.sizes.connIn(n.active)
 	n.cpool = n.sizes.clientInBufs()
 	st, log := newTestStore(t)
@@ -121,6 +122,7 @@ func TestAnUnbackedOutputCannotBorrowTheInputGuarantee(t *testing.T) {
 	c, _ := flowClient(t)
 	n := c.node
 	n.sizes, n.connOut = sizeFor(83<<20), 64<<10
+	n.cursorFetch = true
 	n.cpool = n.sizes.clientPool
 	if n.admitStage(c, (64<<10)+(1<<20)) != nil {
 		t.Fatal("output was admitted without independent client-pool backing")

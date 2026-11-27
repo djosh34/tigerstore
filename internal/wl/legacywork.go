@@ -40,6 +40,7 @@ type legacyOwner struct {
 	msg          []byte
 	req          rangeReq
 	view, header int64
+	share        int64 // invalidates the cached answer bound on share changes
 	candidates   int64
 	term         uint64
 	wire         int

@@ -45,13 +45,21 @@ func (n *node) admitStage(c *client, size int) *replyStage {
 // stageOther excludes only actual input debt backed by the independent
 // input-turn reserve. Its logical unused grant is never spare output P.
 func (n *node) stageOther(promise int64) int64 {
-	other := n.cpool + n.cout - n.stageCredits.used + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + n.legacyPromises + promise
-	if n.cursorFetch {
-		other -= n.mainCaptureCount()
-	}
+	input := n.cpool
 	if n.inTurn != nil {
 		base := n.turnLimit - n.turnRoom + n.looseGrown - n.turnLoose
-		other -= min(n.turnRoom, max(0, n.cpool-base))
+		input -= min(n.turnRoom, max(0, n.cpool-base))
+	}
+	if n.cursorFetch {
+		// Normal input admission remains entitled to the full read half.
+		// Only actual active-turn debt belongs to the separate reserve.
+		read := n.sizes.clientInBufs()
+		future := max(0, int(read/int64(clientInBuf+clientPtBuf+slotBytes))-n.active)
+		input = max(input, read) + n.headerSpare + int64(future)*maxHeaderBlock
+	}
+	other := input + n.cout - n.stageCredits.used + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + n.legacyPromises + promise
+	if n.cursorFetch {
+		other -= n.mainCaptureCount()
 	}
 	return other
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"unsafe"
 )
 
 func roundedFetch(n int64) int64 { return (n + stageUnit - 1) &^ (stageUnit - 1) }
@@ -122,7 +123,7 @@ func (n *node) freezeLegacy() {
 }
 
 func (n *node) legacyOutputBound(b *legacyBatch) int {
-	if b.owner.wire > 0 {
+	if b.owner.wire > 0 && (b.owner.hr != nil || b.owner.share == n.connOut) {
 		return b.owner.wire
 	}
 	r := &b.owner.req
@@ -169,13 +170,30 @@ func (n *node) legacyOutputBound(b *legacyBatch) int {
 	if _, s := n.clientOf(b.owner.h); s != nil && s.kind == kRangeStream {
 		body += 32 * (returned/initialStreamChunk + 1)
 	}
-	return int(min(body, n.connOut+n.sizes.reserve()))
+	b.owner.share = n.connOut
+	b.owner.wire = int(min(body, n.connOut+n.sizes.reserve()))
+	return b.owner.wire
+}
+
+func (n *node) legacySortScratch(b *legacyBatch) int64 {
+	if b.owner.hr != nil {
+		return 0
+	}
+	count := b.owner.candidates
+	// The unchanged append-based candidate array can grow while its old
+	// backing is live. Retained high-water capacity is not free either.
+	need := roundedFetch(max(4*count, int64(cap(n.kvs))) * int64(unsafe.Sizeof([]byte{})))
+	if b.owner.req.sortsOther() || b.owner.req.filters() {
+		need += roundedFetch(count * int64(unsafe.Sizeof(kvRec{})))
+	}
+	return need
 }
 
 func (n *node) legacyFinishBound(b *legacyBatch) int64 {
 	wire := n.legacyOutputBound(b)
+	scratch := n.legacySortScratch(b)
 	if b.material {
-		return roundedFetch(b.payload) + (64 << 10) + 2*stageUnit
+		return roundedFetch(b.payload) + (64 << 10) + 2*stageUnit + scratch
 	}
 	material := int64(0)
 	if b.material {
@@ -195,9 +213,8 @@ func (n *node) legacyFinishBound(b *legacyBatch) int64 {
 		candidates = b.owner.candidates
 	}
 	if !b.material {
-		material += candidates * 24
-		if b.owner.hr == nil && b.owner.req.sortsOther() {
-			material += candidates * 96
+		if b.owner.hr != nil {
+			material += candidates * 24
 		}
 	}
 	f := int64(wire)
@@ -205,7 +222,7 @@ func (n *node) legacyFinishBound(b *legacyBatch) int64 {
 	// The old socket is still counted while its replacement is copied.
 	need := f + (f/maxFrame+2)*9 + (f/maxPlain+2)*(recOverhead+8) + maxPlain + recOverhead + 8
 	out := max(64<<10, max(roundedFetch(f), roundedFetch(int64(len(b.owner.c.out))+need)))
-	return roundedFetch(material) + out + (64 << 10) + stageUnit
+	return roundedFetch(material) + out + (64 << 10) + stageUnit + scratch
 }
 
 func (n *node) prepareLegacy(b *legacyBatch) bool {
@@ -221,7 +238,7 @@ func (n *node) prepareLegacy(b *legacyBatch) bool {
 		}
 	}
 	need := n.legacyFinishBound(b)
-	physical := n.cpool + n.cout + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + n.legacyPromises - n.mainCaptureCount()
+	physical := n.stageCredits.used + n.stageOther(0)
 	if physical+need > n.sizes.clientPool {
 		n.legacyWaitP = true
 		return false

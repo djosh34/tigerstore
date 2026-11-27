@@ -395,10 +395,25 @@ func (c *client) addBlock(p []byte, first bool) error {
 	if len(c.block)+len(p) > maxHeaderBlock {
 		return errHeaderBlock
 	}
-	before := cap(c.block)
+	before, spare := cap(c.block), c.headerSlack()
+	if c.node.cursorFetch && cap(c.block) < maxHeaderBlock {
+		b := make([]byte, len(c.block), maxHeaderBlock)
+		copy(b, c.block)
+		c.block = b
+	}
 	c.block = append(c.block, p...)
 	c.growLoose(cap(c.block) - before)
+	if c.in != nil {
+		c.node.headerSpare += c.headerSlack() - spare
+	}
 	return nil
+}
+
+func (c *client) headerSlack() int64 {
+	if cap(c.block) < maxHeaderBlock {
+		return maxHeaderBlock
+	}
+	return 0
 }
 
 // slotBytes are a client's stream slots, taken with its other buffers.
@@ -419,6 +434,7 @@ func (c *client) bufNeed() int64 {
 func (c *client) takeBufs() {
 	c.grow(int(c.bufNeed()))
 	c.node.active++
+	c.node.headerSpare += c.headerSlack()
 	c.in, c.pt = make([]byte, clientInBuf), make([]byte, clientPtBuf)
 	if c.slots == nil {
 		c.slots = make([]stream, streamSlots)
@@ -437,6 +453,7 @@ func (c *client) idle() bool {
 func (c *client) giveBufs() {
 	if c.in != nil {
 		c.node.active--
+		c.node.headerSpare -= c.headerSlack()
 	}
 	c.grow(-cap(c.in) - cap(c.pt))
 	c.growOut(-cap(c.out))
@@ -452,6 +469,7 @@ func (c *client) giveBufs() {
 func (c *client) dropAll() {
 	if c.in != nil {
 		c.node.active--
+		c.node.headerSpare -= c.headerSlack()
 	}
 	c.node.dropClientWaits(c)
 	if (c.stages > 0 || c.fillOwners > 0) && !c.stageOrphan {
@@ -753,8 +771,12 @@ func (c *client) frames(n *node) error {
 				c.inBlock = false
 				err := c.headers(n, c.block, true)
 				// The block goes back with the client's other buffers.
+				spare := c.headerSlack()
 				c.grow(-cap(c.block))
 				c.block = nil
+				if c.in != nil {
+					c.node.headerSpare += c.headerSlack() - spare
+				}
 				if err != nil {
 					return err
 				}

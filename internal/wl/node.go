@@ -145,8 +145,10 @@ type node struct {
 	// the values fetches read (fetch.go).
 	awayReads []awayRead
 	fetching  map[int64]bool
-	// cursorFetch stays disabled until the shared legacy allocator and
-	// complete physical-credit gate are connected.
+	// Production remains disabled because unchanged legacy sort scratch
+	// can exceed P+R on main-admitted input; bounding it prevents progress.
+	// See TestMainAdmittedSortScratchExceedsTheUnchangedClientCeiling.
+	// Do not enable by exempting that scratch under capture-only #904.
 	cursorFetch                                                          bool
 	fills                                                                []*replyFill
 	fillActive                                                           *replyFill
@@ -171,6 +173,7 @@ type node struct {
 	// irrevocably in the client pool. Input turns do not borrow it.
 	coveredRoom   int64
 	stageCredits  stageCredit
+	headerSpare   int64 // unmaterialized bounded CONTINUATION backing
 	stagePromises int64
 	stageOrphans  int // closed clients retained only by quarantined loans
 	roomWait      []roomRead
