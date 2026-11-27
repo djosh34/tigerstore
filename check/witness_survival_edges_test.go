@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"testing"
 	"time"
@@ -187,12 +188,34 @@ func TestSurvivalNestedExpiry(t *testing.T) {
 	}
 }
 
+func TestSurvivalRevisionLimit(t *testing.T) {
+	h := &history.History{Start: &history.Start{Rev: math.MaxInt64 - 2, KVs: []history.KeyValue{{Key: "a", CreateRevision: 2, ModRevision: 2, Version: 1}}}, Ops: []history.Op{survivalRead("a", "", math.MaxInt64-1, math.MaxInt64, 1)}}
+	r := survivalIndex(h)
+	r.top = math.MaxInt64
+	r.indexSurvival()
+	if !maps.Equal(r.survives, survivalReference(h)) || r.survives["a"] != math.MaxInt64-1 {
+		t.Fatal("revision-limit deadline differs")
+	}
+	r.w.reqs = append(r.w.reqs, history.Request{Delete: &history.DeleteRequest{Key: "a"}})
+	r.stack = []*frame{{rev: math.MaxInt64 - 1}}
+	if !r.survivalBlocked(1, math.MaxInt64-1, "a") {
+		t.Fatal("lost inclusive int64 deadline")
+	}
+	r.stack[0].rev = math.MaxInt64
+	if r.survivalBlocked(1, math.MaxInt64, "a") {
+		t.Fatal("overflow extended deadline")
+	}
+}
+
 func TestSurvivalNoImageWorkAndConstructionStop(t *testing.T) {
 	for _, st := range []*history.Start{nil, {}, {Rev: 2, Leases: []int64{9}}} {
 		h := &history.History{Start: st}
 		r := survivalIndex(h)
 		if r.survivalItems != 0 || r.survives != nil {
 			t.Fatal("no image keys must do no new work or allocation")
+		}
+		if n := testing.AllocsPerRun(100, r.indexSurvival); n != 0 {
+			t.Fatalf("empty-image construction allocated %g times", n)
 		}
 	}
 	h := survivalAstra(false, 1, false)
