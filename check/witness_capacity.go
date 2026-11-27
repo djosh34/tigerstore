@@ -210,14 +210,16 @@ func (r *revisionOrder) indexRoom() {
 	// The revisions an acked or resolved writer holds, in order.
 	// held is kept by revision from the history's first, as writers.
 	held := slices.Clone(r.writers)
-	for rev, i := range r.resolved {
+	// This map pass only marks revision-indexed slots. Credit below in
+	// ascending revision order: appending in map order would change the
+	// charged adaptive sorts of puts/deletes/revokes.
+	for rev := range r.resolved {
 		if r.indexStep() {
 			return
 		}
 		if _, ok := r.writer(rev); !ok {
 			held = at(held, rev-r.first)
 			held[rev-r.first] = -1
-			credit(rev, r.w.reqs[i])
 		}
 	}
 	for j, i := range held {
@@ -229,7 +231,9 @@ func (r *revisionOrder) indexRoom() {
 		}
 		rev := r.first + int64(j)
 		x.fixed = append(x.fixed, rev)
-		if i > 0 && r.w.reqs[i-1].LeaseRevoke != nil {
+		if i < 0 {
+			credit(rev, r.w.reqs[r.resolved[rev]])
+		} else if r.w.reqs[i-1].LeaseRevoke != nil {
 			credit(rev, r.w.reqs[i-1])
 		}
 	}
@@ -252,6 +256,9 @@ func (r *revisionOrder) indexRoom() {
 		}
 		indexSort(r, revs, cmp.Compare[int64])
 	}
+	// Each lease's input list is now deterministic. Sorting independent
+	// lists has a fixed additive total charge, irrespective of map order;
+	// an interrupted index always returns a timeout, never partial data.
 	for _, revs := range x.revokes {
 		if r.indexStep() {
 			return

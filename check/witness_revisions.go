@@ -130,6 +130,9 @@ type revisionOrder struct {
 	dueWork    *dueWork
 	workLeft   uint8
 	budgetLeft uint16
+	// diagnosticLeft carries paid-for JSON bytes across writes and across
+	// messages, so small explanations do not each round up to a whole step.
+	diagnosticLeft int
 	// counts are, per revision, how many keys of a range clients saw
 	// then, and countRevs those revisions in order. putRevs and delRevs
 	// are, per key, the revisions whose acked writer may create or delete
@@ -493,8 +496,11 @@ func (r *revisionOrder) index() error {
 			r.lives[key] = append(r.lives[key], l.lifeTo)
 		}
 	}
-	// An ambiguous op seen writing two revisions wrote neither for sure.
-	revOf := map[int]int64{}
+	// An ambiguous op seen writing multiple revisions holds none for sure.
+	// Count first, then remove only the current entry in a separate pass.
+	// Removing pairs during map traversal left an order-dependent survivor
+	// when three or more revisions named the same op.
+	revOf := map[int]int{}
 	for rev, i := range r.resolved {
 		if r.indexStep() {
 			return ErrWitnessTimeout
@@ -503,19 +509,21 @@ func (r *revisionOrder) index() error {
 			delete(r.resolved, rev)
 			continue
 		}
-		if other, ok := revOf[i]; ok {
-			delete(r.resolved, rev)
-			delete(r.resolved, other)
-			continue
-		}
-		revOf[i] = rev
+		revOf[i]++
 	}
 	for rev, i := range r.resolved {
 		if r.indexStep() {
 			return ErrWitnessTimeout
 		}
+		if revOf[i] > 1 {
+			delete(r.resolved, rev)
+			continue
+		}
 		r.reserved[i] = rev
 	}
+	// Each key's spans have deterministic input order and are merged
+	// independently. Map traversal changes neither the summed charge nor
+	// another key's result; a stopped index discards all partial results.
 	for k, ss := range r.covered {
 		if r.indexStep() {
 			return ErrWitnessTimeout
@@ -550,6 +558,11 @@ func (r *revisionOrder) indexCounts() {
 	h, s := r.w.h, r.w.live
 	add := func(rev int64, key, end string, n int64) {
 		lo, hi := s.span(key, end)
+		if len(r.counts[rev]) == 0 {
+			// Preserve history order: a charged adaptive sort must not
+			// receive the nondeterministic traversal order of a Go map.
+			r.countRevs = append(r.countRevs, rev)
+		}
 		r.counts[rev] = append(r.counts[rev], count{rev: rev, lo: lo, hi: hi, n: n})
 	}
 	n := len(s.keys)
@@ -636,11 +649,10 @@ func (r *revisionOrder) indexCounts() {
 		indexSort(r, revs, cmp.Compare[int64])
 	}
 	indexSort(r, r.revokeRevs, cmp.Compare[int64])
-	for rev := range r.counts {
+	for range r.countRevs {
 		if r.indexStep() {
 			return
 		}
-		r.countRevs = append(r.countRevs, rev)
 	}
 	indexSort(r, r.countRevs, cmp.Compare[int64])
 }
@@ -1721,6 +1733,7 @@ func (r *revisionOrder) search() (err error) {
 	defer func() { w.sorter.step = nil }()
 	w.sorter.step = r.step
 	w.live.stop = r.step
+	w.live.mutate = r.mutationStep
 	if r.step() {
 		return ErrWitnessTimeout
 	}
@@ -1808,7 +1821,7 @@ func (r *revisionOrder) write(rev int64) bool {
 			return false
 		}
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
-			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, outputOf(o), w.around(len(w.events))))
+			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, w.outputOf(o), w.around(len(w.events))))
 		}
 		return true
 	}
@@ -2182,7 +2195,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 			return false
 		}
 		if o.err != nil || !w.gives(i, o) {
-			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
+			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), w.outputOf(o), w.around(len(w.events))))
 		}
 		r.use(i)
 		r.insertOptional(rev)
