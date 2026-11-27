@@ -133,7 +133,7 @@ func measureDialClassification(t *testing.T, res *Result) {
 		Direct        counts
 		ClientV3      counts
 	}
-	out.Base, out.FinalRevision, out.Stats = "ab939940", res.FinalRev, res.Stats
+	out.Base, out.FinalRevision, out.Stats = "3f2c382d", res.FinalRev, res.Stats
 	simrun.Aside(func() {
 		old := make([]bool, len(res.records.errs))
 		for i, err := range res.records.errs {
