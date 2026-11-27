@@ -67,6 +67,15 @@ func (m WitnessMode) String() string {
 // The store must be empty at the start of the history, or be h.Start. Not
 // finishing within timeout, or within MaxSteps, is a failure, never a
 // pass.
+// Heap878Phase is scratch-only heap instrumentation, never to merge.
+var Heap878Phase func(string)
+
+func heap878Phase(phase string) {
+	if Heap878Phase != nil {
+		Heap878Phase(phase)
+	}
+}
+
 func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts ...Option) error {
 	o := optionsOf(opts)
 	if o.stepsUsed != nil {
@@ -79,7 +88,10 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration, opts
 		return fmt.Errorf("witness check needs a positive timeout, got %s", timeout)
 	}
 	started := wallclock.Now()
+	heap878Phase(fmt.Sprintf("witness-%v-before-new", mode))
 	w := newWitness(h, time.Now().Add(timeout))
+	heap878Phase(fmt.Sprintf("witness-%v-after-new", mode))
+	defer heap878Phase(fmt.Sprintf("witness-%v-return", mode))
 	if o.stepsUsed != nil {
 		defer func() { *o.stepsUsed = w.steps }()
 	}
@@ -292,10 +304,15 @@ func newWitness(h *history.History, deadline time.Time) *witness {
 	w.reqs = make([]history.Request, len(h.Ops))
 	w.calls, w.returns = make([]int64, len(h.Ops)), make([]int64, len(h.Ops))
 	for i := range h.Ops {
+		if i%131072 == 0 {
+			heap878Phase("new-witness-requests")
+		}
 		w.reqs[i] = modelRequest(&h.Ops[i])
 		w.calls[i], w.returns[i] = h.Ops[i].Call, h.Ops[i].Return
 	}
+	heap878Phase("new-witness-before-keys")
 	w.keys = keysOf(slices.Concat(w.reqs, h.Log), h.Start)
+	heap878Phase("new-witness-after-keys")
 	w.live = newState(w.keys, h.Start)
 	w.past.add(startEvents(h.Start))
 	w.live.past = w.past

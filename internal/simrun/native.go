@@ -352,6 +352,12 @@ func each[T any](t *testing.T, seeds []uint64, set []string, forksOf func(uint64
 			env := append([]string{fmt.Sprintf("SIM_SEED=%d", seed), "SIM_SEEDS=1"}, passedEnv...)
 			double := doubleSeed(i, len(seeds), twice)
 			run := Run{Test: test, Seed: seed, Env: env}
+			if dir := os.Getenv("SIM_HEAP878"); dir != "" {
+				run.Outputs = map[string]string{"heap878-stats": filepath.Join(dir, "stats.jsonl")}
+				for i := range 64 {
+					run.Outputs[fmt.Sprintf("heap878-%02d", i)] = filepath.Join(dir, fmt.Sprintf("heap-%02d.pprof", i))
+				}
+			}
 			if opts.wallLimit != nil {
 				run.WallLimit = opts.wallLimit(seed)
 			}

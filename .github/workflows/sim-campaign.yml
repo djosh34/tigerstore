@@ -91,7 +91,14 @@ jobs:
           PROCESSES: ${{ toJSON(matrix.processes) }}
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
-        run: bash scripts/sim-campaign.sh
+          SIM_HEAP878: ${{ runner.temp }}/heap878
+        run: |
+          mkdir -p "$SIM_HEAP878"
+          touch "$SIM_HEAP878/stats.jsonl"
+          tail -F "$SIM_HEAP878/stats.jsonl" &
+          reader=$!
+          trap 'kill "$reader" 2>/dev/null || true' EXIT
+          bash scripts/sim-campaign.sh
       # Even successful seeds retain hashes for replay. A dead runner may
       # upload nothing: the summary must still account for its seeds.
       - if: always()
@@ -101,6 +108,11 @@ jobs:
           path: |
             ${{ runner.temp }}/seeds-*.log
             ${{ runner.temp }}/memory.log
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: heap878-${{ matrix.shard }}
+          path: ${{ runner.temp }}/heap878
       - if: always()
         uses: actions/upload-artifact@v6
         with:

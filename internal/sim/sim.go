@@ -1032,6 +1032,9 @@ func Run(cfg Config) (*Result, error) { return runInspect(cfg, nil) }
 
 // runInspect runs cfg, then calls inspect, if set, while the nodes still
 // hold still for the checks.
+// Scratch-only phase diagnostics; never to merge.
+var heap878PhaseHook func(string)
+
 func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	var f *Sim
 	if cfg.from != nil {
@@ -1098,6 +1101,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 		d.BadReads += c.BadReads
 		d.Misreads += c.Misreads
 	}
+	if heap878PhaseHook != nil {
+		heap878PhaseHook("simulation-complete-before-history-decode")
+	}
 	var history []*Record
 	var herr error
 	simrun.Aside(func() { history, herr = s.records.records() })
@@ -1111,6 +1117,9 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 	res.nodes, res.values, res.stacks, res.records, res.chunks = s.nodes, s.values, s.wallStacks, s.records, s.chunks
 	res.LoadCPU, res.LoadFired, res.LoadTime = s.loadCPU, s.loadFired, s.loadTime
 	s.mu.Unlock()
+	if heap878PhaseHook != nil {
+		heap878PhaseHook("history-decoded-before-end-checks")
+	}
 	if err == nil {
 		if err = s.checkWL(res); err != nil {
 			err = fmt.Errorf("seed %d: %w", cfg.Seed, err)

@@ -69,6 +69,7 @@ func runWith(t *testing.T, cfg Config, inspect func(*Sim) error) (*Result, error
 	// An hour more than the run's length, which a run of hours needs.
 	simrun.BubbleFor(t, time.Duration(cfg.length())+time.Hour, func(*testing.T) { res, err = runInspect(cfg, inspect) })
 	if simrun.InGosim && res != nil {
+		heap878Phase("before-history-hash")
 		hashLines = append(hashLines, fmt.Sprintf("seed %d: %s", cfg.Seed, runHashes(res)))
 		simrun.Artifact("hashes", []byte(strings.Join(hashLines, "\n")+"\n"))
 		// The driver's double runs keep both runs' files, for when they
@@ -771,7 +772,7 @@ const (
 var (
 	witnessSteps   = check.MaxSteps(witnessStepLimit)
 	porcupineSteps = check.MaxSteps(1_000_000)
-	wallStop       = check.StopWhen(simrun.WallLimitPassed)
+	wallStop       = check.StopWhen(func() bool { return simrun.WallLimitPassed() || heap878Poll() })
 )
 
 // independent runs the durability, revision and watch checkers of package
@@ -790,21 +791,39 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 	if res.long {
 		runHashes(res)
 	}
+	heap878Phase("history-conversion-start")
 	h, err := res.checkable(res.long)
+	heap878Phase("history-conversion-end")
+	if heap878Stopped {
+		return errors.New("heap878 diagnostic memory threshold")
+	}
 	if err != nil {
 		return err
 	}
 	var errs []error
+	heap878Phase("durability-start")
 	if err := check.Durable(h); err != nil {
 		errs = append(errs, fmt.Errorf("durability: %w", err))
+	}
+	heap878Phase("durability-end-revisions-start")
+	if heap878Stopped {
+		return errors.New("heap878 diagnostic memory threshold")
 	}
 	if err := check.Revisions(h); err != nil {
 		errs = append(errs, fmt.Errorf("revisions: %w", err))
 	}
+	heap878Phase("revisions-end-watches-start")
+	if heap878Stopped {
+		return errors.New("heap878 diagnostic memory threshold")
+	}
 	if err := check.Watches(h); err != nil {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
+	heap878Phase("watches-end")
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
+		if heap878Stopped {
+			return errors.New("heap878 diagnostic memory threshold")
+		}
 		var steps int64
 		var cpuFrom time.Duration
 		var wallFrom int64
@@ -815,6 +834,9 @@ func independentWithSteps(res *Result, report func(int64, time.Duration, time.Du
 			wallFrom = wallclock.Now()
 		}
 		err := check.Witnessed(h, mode, time.Minute, check.MaxSteps(budget), wallStop, check.StepsUsed(&steps))
+		if heap878Stopped {
+			return fmt.Errorf("heap878 diagnostic memory threshold: %w", err)
+		}
 		if measure {
 			// Timing is diagnostic: a failed counter must not change a
 			// check's verdict. Zero means the counter was unavailable.

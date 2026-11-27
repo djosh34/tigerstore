@@ -28,10 +28,15 @@ import (
 func (w *witness) fromRevisions() error {
 	r := newRevisionOrder(w)
 	w.search = r
+	heap878Phase("revision-index-start")
 	if err := r.index(); err != nil {
+		heap878Phase("revision-index-stopped")
 		return err
 	}
-	return r.search()
+	heap878Phase("revision-index-complete-search-start")
+	err := r.search()
+	heap878Phase("revision-search-return")
+	return err
 }
 
 func newRevisionOrder(w *witness) *revisionOrder {

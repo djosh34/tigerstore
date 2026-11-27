@@ -2,9 +2,14 @@ package sim
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"reflect"
+	"runtime"
+	"runtime/pprof"
 	"slices"
 	"testing"
 	"time"
@@ -13,6 +18,9 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/simrun"
+	"github.com/djosh34/tigerstore/internal/wallclock"
+
+	"github.com/djosh34/tigerstore/check"
 )
 
 // Run 45803627951 on 116ba5f4 used 219,708,153 weighted steps in about
@@ -65,7 +73,17 @@ func longSeeds(t *testing.T, config func(seed uint64) Config, wallLimit time.Dur
 	}
 	budget := longSeedBudget(wallLimit)
 	simrun.Seeds(t, 1, 0, func(t *testing.T, seed uint64) Stats {
+		w, closeOutput, err := simrun.CreateOutput("heap878-stats")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = closeOutput() }()
+		heap878Writer = w
+		check.Heap878Phase = heap878Phase
+		heap878PhaseHook = heap878Phase
+		heap878Phase("simulation-start")
 		res := run(t, config(seed))
+		heap878Phase("simulation-and-end-checks-complete")
 		longCheckers(t, res, budget)
 		t.Logf("%+v, %d committed writes", res.Stats, len(res.Log))
 		return res.Stats
@@ -86,8 +104,72 @@ func longCheckers(t *testing.T, res *Result, budget int64) {
 	if err := independentWithSteps(res, func(steps int64, cpu, wall time.Duration) {
 		t.Logf("revision witness used %d weighted steps (budget %d, native CPU %s, search wall %s, %.2f steps/s)", steps, budget, cpu, wall, float64(steps)/wall.Seconds())
 	}, budget); err != nil {
+		if heap878Stopped {
+			t.Logf("HEAP878 DIAGNOSTIC STOP (not full-seed evidence): %v", err)
+			return
+		}
 		t.Fatal(err)
 	}
+}
+
+// Scratch-only heap diagnostics. No GC tuning and no forced GC: observe
+// the current heap, then stop the diagnostic before the runner is lost.
+var heap878Writer io.Writer
+var heap878Current string
+var heap878Profile int
+var heap878NextGrowth uint64
+var heap878LastPoll int64
+var heap878Stopped bool
+
+func heap878Phase(phase string) {
+	if heap878Writer == nil {
+		return
+	}
+	force := phase != heap878Current
+	heap878Current = phase
+	heap878Snapshot(force)
+}
+
+func heap878Snapshot(force bool) {
+	simrun.Aside(func() { heap878Sample(force) })
+}
+
+func heap878Sample(force bool) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	if !force && m.HeapInuse < heap878NextGrowth {
+		return
+	}
+	heap878NextGrowth = (m.HeapInuse/(1<<30) + 1) << 30
+	if m.HeapInuse >= 10<<30 {
+		heap878Stopped = true
+	}
+	if heap878Profile >= 64 {
+		return
+	}
+	name := fmt.Sprintf("heap878-%02d", heap878Profile)
+	heap878Profile++
+	w, closeOutput, err := simrun.CreateOutput(name)
+	if err == nil {
+		err = pprof.WriteHeapProfile(w)
+		err = errors.Join(err, closeOutput())
+	}
+	_ = json.NewEncoder(heap878Writer).Encode(struct {
+		Profile, Phase                         string
+		HostNS                                 int64
+		HeapInuse, HeapAlloc, Sys, HeapObjects uint64
+		NumGC                                  uint32
+		Stopped                                bool
+		Error                                  string
+	}{name, heap878Current, wallclock.Now(), m.HeapInuse, m.HeapAlloc, m.Sys, m.HeapObjects, m.NumGC, heap878Stopped, fmt.Sprint(err)})
+}
+
+func heap878Poll() bool {
+	if heap878Writer != nil && !heap878Stopped && wallclock.Now()-heap878LastPoll >= int64(500*time.Millisecond) {
+		heap878LastPoll = wallclock.Now()
+		heap878Snapshot(false)
+	}
+	return heap878Stopped
 }
 
 // TestHostErrorComesFirst checks that a run whose pages on the runner's
