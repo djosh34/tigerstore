@@ -43,7 +43,7 @@ func oldEventCandidates(r *revisionOrder, rev int64) []int {
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
 		}
-		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.grants[l.ID] <= 1 && r.alive[l.ID] >= rev {
+		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.grants[l.ID].n <= 1 && r.alive[l.ID] >= rev {
 			continue
 		}
 		if !r.used[i] && r.lb[i] < rev {
