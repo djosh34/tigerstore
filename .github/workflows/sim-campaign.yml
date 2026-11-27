@@ -85,13 +85,16 @@ jobs:
           go-version-file: go.mod
       # Builds the gosim and native test binaries, and runs no test.
       - run: scripts/sim.sh ./internal/sim '^$'
+      - name: Verify the unchanged lease-free fork trace and history pin
+        env:
+          SIM_OUT: ${{ runner.temp }}/hash-pin
+        run: scripts/sim.sh ./internal/sim '^TestLeaseFreeForkTrace$' -test.v
       - name: Run the planned process queues
         env:
           TEST: ${{ inputs.test }}
           PROCESSES: ${{ toJSON(matrix.processes) }}
           SHARD: ${{ matrix.shard }}
           SIM_OUT: ${{ runner.temp }}/sim-out
-          GOMEMLIMIT: 9GiB
           SIM_DIAL_EVIDENCE: ${{ runner.temp }}/dial-progress.log
         run: |
           touch "$SIM_DIAL_EVIDENCE"
