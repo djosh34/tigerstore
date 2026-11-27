@@ -227,7 +227,22 @@ func (n *node) tryResidentPoint(c *client, s *stream, r *rangeReq) bool {
 	if found && (st.keys[id].rec == 0 || r.rev > 0 && st.keys[id].mod > r.rev) {
 		return false
 	}
-	kvs, count, more, err := n.keyRangeKVs(r, n.kvs[:0], id, found)
+	var kvs [][]byte
+	var count int64
+	var more bool
+	var err error
+	if !r.keysOnly && !r.countOnly && !r.filters() {
+		// With no projection/filter/sort, this is exactly live's resident
+		// record. Avoid entering historical lookup and no-op sort observers.
+		kvs = n.kvs[:0]
+		if found && st.keys[id].create != 0 {
+			k := &st.keys[id]
+			kvs = append(kvs, st.slab.bytes(k.rec, int(k.rlen)))
+			count = 1
+		}
+	} else {
+		kvs, count, more, err = n.keyRangeKVs(r, n.kvs[:0], id, found)
+	}
 	if r.keysOnly {
 		for i, kv := range kvs {
 			kvs[i] = keysOnly(kv, r)
@@ -242,7 +257,9 @@ func (n *node) tryResidentPoint(c *client, s *stream, r *rangeReq) bool {
 		body += sizeBytesField(2, len(kv))
 	}
 	wire := int64(5 + body)
-	if err != nil || n.cannotFit(wire) || n.roomNeeded(c, wire) != 0 || !n.msgRoom(c, wire) {
+	// msgRoom returns true without changing any state when roomNeeded is
+	// zero. This is that exact within-share admission, not an output loan.
+	if err != nil || n.cannotFit(wire) || n.roomNeeded(c, wire) != 0 {
 		clear(kvs)
 		n.kvs = kvs[:0]
 		return false
@@ -662,6 +679,9 @@ const (
 // etcd does, with the same sort, so that keys that tie come out in the
 // same order. A range that does neither keeps them as they are.
 func (n *node) shapeKVs(kvs [][]byte, k0 int, r *rangeReq) [][]byte {
+	if !r.sortsOther() && !r.filters() {
+		return kvs
+	}
 	if n.measureSort == nil {
 		return shapeKVs(kvs, k0, r)
 	}

@@ -95,7 +95,16 @@ the preflight gone but additional flat time in the large handler. The refined
 shortcut separates the no-fetch/no-loan point handler from that frame and
 shares main's selector and byte writer with the slow path.
 
-Resident point ranges reuse main's unchanged single-key selector directly
+The separated handler (2be57712) also has a retained failed fresh campaign:
+https://github.com/djosh34/tigerstore/actions/runs/46059490947 , pair1 ratio
+1.021963483900 and pair2 **0.979882117979 <0.98**. The near-threshold loss is
+still a failure, not rounded up or waived. Further hot-path removal avoids
+calling no-op sort observers and historical lookup for a plain, proven-live
+record and avoids evaluating `roomNeeded` twice. Its zero result is exactly
+`msgRoom`'s side-effect-free within-share success branch; no loan admission
+is bypassed. Actual sort/filter storage and operations remain unchanged.
+
+Resident point ranges reuse main's unchanged single-key selection semantics
 when the selected record is already live in the slab (or the key is absent),
 with no active fetch/materialization/protected-P context or output loan. Cold or genuinely
 historical values still use the cursor path. There is no new persistent cache,
