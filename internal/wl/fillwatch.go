@@ -281,6 +281,7 @@ func (n *node) publishFillWatch(q *replyFill) bool {
 	if x.syncRev > n.st.rev {
 		x.syncRev = 0
 	}
+	x.deliveryPlant.retire(x.syncRev)
 	x.fetchWait = false
 	x.sent = true
 	n.gs.calls[s.kind].sent += int64(q.watch.messages)

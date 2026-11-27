@@ -50,8 +50,9 @@ type watcher struct {
 	// liveBytes is the size of its events of the apply; past replyRoom
 	// it catches up instead (bigwatch.go). big: a revision of its events
 	// is sent in pieces.
-	liveBytes int
-	big       bool
+	deliveryPlant watchDeliveryPlant // zero-sized outside planted builds
+	liveBytes     int
+	big           bool
 }
 
 type event struct {
@@ -114,6 +115,7 @@ func (w *watches) add(x watcher) int32 {
 }
 
 func (w *watches) remove(i int32) {
+	w.ws[i].deliveryPlant.reset()
 	w.ws[i].active = false
 	w.gen++
 	w.rebuildOther()
@@ -536,6 +538,9 @@ func (n *node) flushEvents() {
 			size += sizeBytesField(11, n.eventSize(x, &w.events[e]))
 		}
 		if n.cursorFetch || c.slow() || !n.msgRoom(c, int64(5+size)) {
+			if n.cursorFetch {
+				x.deliveryPlant.capture(n, c, w, first, size)
+			}
 			// Its client takes nothing now, or the reserve has no room
 			// for what passes its share: the watch catches up from these
 			// events once it does.

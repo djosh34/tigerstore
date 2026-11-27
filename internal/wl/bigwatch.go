@@ -97,6 +97,13 @@ func revStart(st *store, rev int64) int {
 // first change is st.changes[j], from the from-th change of it on, and
 // each one's place among the revision's changes, until f returns false.
 func (n *node) eachRevEvent(st *store, x *watcher, j, from int, f func(off int, ev bigEv) bool) error {
+	if handled, err := x.deliveryPlant.each(n, st, x, j, from, f); handled {
+		return err
+	}
+	return n.eachUnmutatedRevEvent(st, x, j, from, f)
+}
+
+func (n *node) eachUnmutatedRevEvent(st *store, x *watcher, j, from int, f func(off int, ev bigEv) bool) error {
 	if j >= len(st.changes) {
 		return nil
 	}
@@ -340,6 +347,7 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 				if x != nil && !b.canceled {
 					// Its catch-up goes on after the revision.
 					x.syncRev = b.rev + 1
+					x.deliveryPlant.retire(x.syncRev)
 					x.sent = true
 				}
 				return false
@@ -414,6 +422,7 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 		// None left: a revision whose events ended with the last message.
 		if x != nil {
 			x.syncRev = b.rev + 1
+			x.deliveryPlant.retire(x.syncRev)
 		}
 		return false
 	}
