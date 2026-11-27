@@ -34,6 +34,8 @@ type sock struct {
 	rec     int    // offset of the open record's header, -1 for none
 	wantOut bool   // registered for EPOLLOUT
 	noIn    bool   // registered without EPOLLIN: a paused client
+	outHold *int   // retain backing while protected output owns it
+	dropOut bool   // release an empty protected socket without a shrink-copy
 	outBase int    // the send buffer's size as it started
 	dirty   bool   // in the loop's list of sockets to flush
 	stats   *counters
@@ -442,6 +444,15 @@ func (s *sock) flush() (bool, error) {
 	}
 	s.out = s.out[:0]
 	s.ow = 0
+	if s.outHold != nil && *s.outHold > 0 {
+		return true, nil
+	}
+	if s.dropOut {
+		s.growOut(-cap(s.out))
+		s.out = nil
+		s.dropOut = false
+		return true, nil
+	}
 	if cap(s.out) > 2*s.outBase {
 		// A large reply grew it; it need not keep that much. Kept to
 		// four times its base, what a client's share leaves past its

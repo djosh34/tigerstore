@@ -233,6 +233,9 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.beginLegacyRange(c, s, r, msg)
 		defer func() { n.legacyReading = legacyOwner{}; n.dropCollectingLegacy() }()
 	}
+	if n.legacyRetry != nil && n.legacyRetry.material {
+		defer func() { clear(n.kvs); n.kvs = nil }()
+	}
 	st.noWait = true
 	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0], n.oneShot())
 	st.noWait = false
@@ -246,6 +249,11 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		clear(kvs)
 		n.kvs = kvs[:0]
 		n.awaitValues(mkHandle(c, s.id), msg)
+		return
+	}
+	if err == nil && n.legacyRetry != nil && n.legacyRetry.material {
+		defer func() { clear(kvs); n.kvs = nil }()
+		n.publishMaterialRange(n.legacyRetry, c, s, r, kvs, count, more)
 		return
 	}
 	if err == nil && r.keysOnly {
@@ -383,9 +391,13 @@ func nextChunk(last int64, lastSize, target int) int64 {
 // rangeChunk writes one RangeStreamResponse: kvs, and with last the
 // header, more and count.
 func (n *node) rangeChunk(c *client, s *stream, kvs [][]byte, last, more bool, count int64) {
+	header, term := n.st.rev, n.term
+	if b := n.legacyRetry; b != nil && b.owner.h == mkHandle(c, s.id) {
+		header, term = b.owner.header, b.owner.term
+	}
 	body := 0
 	if last {
-		body += sizeBytesField(1, n.hdrSize()) + sizeVarintField(4, uint64(count))
+		body += sizeBytesField(1, n.hdrSizeTerm(header, term)) + sizeVarintField(4, uint64(count))
 		if more {
 			body += 2
 		}
@@ -397,7 +409,7 @@ func (n *node) rangeChunk(c *client, s *stream, kvs [][]byte, last, more bool, c
 	w.begin(c, s, sizeBytesField(1, body))
 	w.lenField(1, body)
 	if last {
-		n.writeHdr(&w)
+		n.writeHdrTerm(&w, header, term)
 	}
 	for _, kv := range kvs {
 		w.bytesField(2, kv)

@@ -221,15 +221,16 @@ type client struct {
 	linePass, seenPass uint64
 	// roomHeld is the room of the reserve it holds, and roomWaiters how
 	// many of its messages wait for room (reserve.go).
-	roomHeld     int64
-	roomWaiters  int
-	roomWake     bool  // queued in node.roomClients
-	coveredRoom  int64 // output quota backed by the client pool, not input reserve
-	stagePending int64 // unpublished wire bytes, including worker quarantine
-	stagePromise int64 // protected socket/finish capacity
-	stages       int
-	stageOrphan  bool
-	fillOwners   int
+	roomHeld      int64
+	roomWaiters   int
+	roomWake      bool  // queued in node.roomClients
+	coveredRoom   int64 // output quota backed by the client pool, not input reserve
+	stagePending  int64 // unpublished wire bytes, including worker quarantine
+	stagePromise  int64 // protected socket/finish capacity
+	socketPromise int64 // stagePromise consumed by actual socket backing
+	stages        int
+	stageOrphan   bool
+	fillOwners    int
 	// heldCounted is what its held replies and its ranges waiting for
 	// room keep: past its share with what waits for window, its new
 	// requests are refused, as etcd refuses too many (#689's re-check, B6).
@@ -278,6 +279,7 @@ func newClient(h *handoff, n *node) *client {
 		fd: h.fd, rd: h.rd, wr: h.wr, plain: h.plain, rec: -1, stats: &n.stats, pool: &n.cpool, outPool: &n.cout, loose: &n.looseGrown, outBase: clientOutBuf, creditWake: &n.fillCreditWake,
 		hdrCache: map[string]hdrInfo{}, flow: newFlow(), identity: identityBytes(h.cn), cn: h.cn, node: n,
 	}
+	c.outHold = &c.stages
 	if len(h.left) > 0 {
 		// What its handshake read past its end is taken with no check
 		// of the buffers' room.
@@ -426,7 +428,7 @@ func (c *client) takeBufs() {
 // idle reports whether the client holds nothing it read, nothing to send
 // and no request in part, so that its buffers may go back.
 func (c *client) idle() bool {
-	return c.ir == c.iw && c.pr == c.pw && len(c.out) == c.ow && c.rec < 0 &&
+	return c.stages == 0 && c.fillOwners == 0 && c.ir == c.iw && c.pr == c.pw && len(c.out) == c.ow && c.rec < 0 &&
 		len(c.flow.held) == 0 && c.partial == 0 && !c.paused && c.tokenWait == 0
 }
 

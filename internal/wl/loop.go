@@ -1452,9 +1452,11 @@ type counters struct {
 	// buffers to read, and partsWaited the times a request's part waited
 	// for room in them (partwait.go).
 	clientsWaited, partsWaited uint64
-	// fetches counts the reads of values off the loop, and fetched the
-	// values they read (fetch.go).
+	// fetches counts off-loop jobs, and fetched their cold KV pieces.
+	// A byte-cursor continuation can count another piece of one value;
+	// these are work counters, not distinct-request reuse measurements.
 	fetches, fetched int
+	rangeFillScans   uint64
 	// fetchMost is the most bytes one fetch read.
 	fetchMost int64
 	// bigRanges counts the range replies sent in pieces (bigrange.go).

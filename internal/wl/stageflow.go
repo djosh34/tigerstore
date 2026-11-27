@@ -23,6 +23,10 @@ func (n *node) admitStage(c *client, size int) *replyStage {
 		return nil
 	}
 	stage.owner = c
+	if c.stages == 0 && cap(c.out) < 64<<10 {
+		c.socketPromise = 64 << 10
+	}
+	c.dropOut = true
 	c.growOut(int(stage.charged))
 	// Physical capacity belongs to outPool, not heldCounted (parked
 	// requests/captures). An unpublished fill must not manufacture a
@@ -81,7 +85,7 @@ func (c *client) hasStageOutput() bool {
 		return false
 	}
 	for _, h := range c.flow.held {
-		if h.stage != nil || h.flatCharge > 0 {
+		if h.stage != nil || h.flatCharge > 0 || h.material != nil {
 			return true
 		}
 	}
@@ -95,6 +99,7 @@ func (c *client) releaseFlatOutput(h *held) {
 	if c.stages == 0 {
 		c.node.stagePromises -= c.stagePromise
 		c.stagePromise = 0
+		c.socketPromise = 0
 	}
 	if c.stages == 0 && c.fillOwners == 0 && c.stageOrphan {
 		c.stageOrphan = false
@@ -117,9 +122,20 @@ func (c *client) stageSocket() {
 	if cap(c.out) < 64<<10 {
 		b := make([]byte, len(c.out), 64<<10)
 		copy(b, c.out)
+		local, total := c.promiseLocal, c.promiseTotal
+		if c.socketPromise > 0 {
+			c.promiseLocal, c.promiseTotal = nil, nil
+		}
 		c.growOut(cap(b) - cap(c.out))
+		c.promiseLocal, c.promiseTotal = local, total
 		c.out = b
 	}
+	if c.socketPromise > 0 {
+		c.stagePromise -= c.socketPromise
+		c.node.stagePromises -= c.socketPromise
+		c.socketPromise = 0
+	}
+	c.dropOut = true
 }
 
 func (c *client) drainStage(h *held) {
@@ -148,6 +164,10 @@ func (c *client) drainStage(h *held) {
 func (c *client) dropStageOutput() {
 	for i := range c.flow.held {
 		h := &c.flow.held[i]
+		if h.material != nil {
+			c.flow.bytes -= h.material.remaining
+			c.releaseMaterial(h)
+		}
 		if h.flatCharge > 0 {
 			c.flow.bytes -= int64(len(h.data))
 			c.releaseFlatOutput(h)

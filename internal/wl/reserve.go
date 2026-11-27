@@ -114,6 +114,27 @@ type roomRead struct {
 	rev, compactRev int64
 	share           int64 // a shrink can change rangeKVs' pieces threshold
 	body            int
+	physical        bool
+	wireExtra       int
+}
+
+func (n *node) waitFillRoom(c *client, s *stream, msg []byte, body, extra int) {
+	n.waitRoom(c, s, msg, body)
+	r := &n.roomWait[len(n.roomWait)-1]
+	r.physical = true
+	r.wireExtra = extra
+}
+
+func (n *node) fillRoomFits(c *client, msg []byte, wire int64) bool {
+	meta := stageUnit + roundedFetch(int64(len(msg)))
+	promise := int64(0)
+	if c.stages == 0 {
+		promise = stageUnit
+		if cap(c.out) < 64<<10 {
+			promise += 64 << 10
+		}
+	}
+	return n.stageCredits.used+meta+stageCapacity(int(wire))+n.stageOther(promise) <= n.sizes.clientPool
 }
 
 // waitRoom keeps range request msg of stream s of client c until the
@@ -231,6 +252,14 @@ func (n *node) serveRoomWait() {
 			// first avoids reading and rebuilding its records just to
 			// discard them again (#833). The header and share are current.
 			m := int64(5 + sizeBytesField(1, n.hdrSize()) + r.body)
+			if r.physical {
+				m += int64(r.wireExtra)
+			}
+			if r.physical && !n.cannotFit(m) && !n.fillRoomFits(c, r.msg, m) {
+				n.stats.roomWaits++
+				n.roomWait = append(n.roomWait, r)
+				continue
+			}
 			if past := n.roomNeeded(c, m); past > 0 && n.reserved+n.coveredRoom+past > n.sizes.reserve() && !n.cannotFit(m) {
 				n.stats.roomWaits++
 				n.roomShort = true

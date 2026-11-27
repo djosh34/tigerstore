@@ -94,6 +94,47 @@ func (w *fetchWorker) stop() {
 	<-w.exited
 }
 
+func (a *fillArena) fetchShape() (values int, bytes int64) {
+	cold := false
+	for i := range a.n {
+		p := &a.spans[i]
+		if p.flags&fillContinue == 0 {
+			cold = false
+		}
+		if p.flags&fillReady != 0 {
+			continue
+		}
+		bytes += int64(len(p.dst))
+		if !cold {
+			values++
+			cold = true
+		}
+	}
+	return
+}
+
+func (b *legacyBatch) fetchShape() (values int, bytes int64) {
+	last := ^uint32(0)
+	for i := range b.planN {
+		p := &b.plan[i]
+		if p.source == ^uint32(1) {
+			continue
+		}
+		bytes += int64(p.len)
+		if last != p.entry {
+			values++
+			last = p.entry
+		}
+	}
+	return
+}
+
+func (n *node) recordFetch(values int, bytes int64) {
+	n.stats.fetches++
+	n.stats.fetched += values
+	n.stats.fetchMost = max(n.stats.fetchMost, bytes)
+}
+
 // Test shells execute queued closures deterministically rather than
 // starting real workers. The production shell always takes this branch.
 func (n *node) queueFetchTask(task *fetchTask) bool {

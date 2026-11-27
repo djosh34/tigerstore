@@ -3,6 +3,7 @@ package wl
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"math"
 )
 
@@ -39,6 +40,9 @@ func (n *node) beginLegacyHeld(hr *heldReply) {
 }
 
 func (n *node) collectLegacy(id uint32, mod int64, size, sum uint32) {
+	if n.legacyReading.c == nil {
+		return
+	}
 	if n.legacyPending != nil || n.legacyRunning != nil {
 		n.legacyAgain = true
 		return
@@ -56,6 +60,7 @@ func (n *node) collectLegacy(id uint32, mod int64, size, sum uint32) {
 		}
 		n.fillSequence++
 		b = &legacyBatch{st: n.st, owner: n.legacyReading, lease: lease, op: n.fillSequence, needed: true}
+		b.owner.c.fillOwners++
 		n.legacyCollect = b
 	}
 	b.add(id, mod, size, sum)
@@ -161,13 +166,21 @@ func (n *node) legacyOutputBound(b *legacyBatch) int {
 		returned = min(returned, r.limit)
 	}
 	body := int64(5+sizeBytesField(1, n.hdrSizeTerm(b.owner.header, math.MaxUint64))+12) + returned*int64(sizeBytesField(2, maxSize))
+	if _, s := n.clientOf(b.owner.h); s != nil && s.kind == kRangeStream {
+		body += 32 * (returned/initialStreamChunk + 1)
+	}
 	return int(min(body, n.connOut+n.sizes.reserve()))
 }
 
 func (n *node) legacyFinishBound(b *legacyBatch) int64 {
 	wire := n.legacyOutputBound(b)
+	if b.material {
+		return roundedFetch(b.payload) + (64 << 10) + 2*stageUnit
+	}
 	material := int64(0)
-	if b.owner.hr == nil {
+	if b.material {
+		material = b.payload
+	} else if b.owner.hr == nil {
 		for i := range b.n {
 			e := b.entry(i)
 			ks, ok := b.st.putStateAt(e.key, e.mod)
@@ -181,9 +194,11 @@ func (n *node) legacyFinishBound(b *legacyBatch) int64 {
 	if b.owner.hr == nil {
 		candidates = b.owner.candidates
 	}
-	material += candidates * 24
-	if b.owner.hr == nil && b.owner.req.sortsOther() {
-		material += candidates * 96
+	if !b.material {
+		material += candidates * 24
+		if b.owner.hr == nil && b.owner.req.sortsOther() {
+			material += candidates * 96
+		}
 	}
 	f := int64(wire)
 	// A flat held result and a growFor replacement are alternatives.
@@ -200,6 +215,11 @@ func (n *node) prepareLegacy(b *legacyBatch) bool {
 	if b.full || b.st != n.st || b.owner.c == nil || b.owner.c.dead {
 		return false
 	}
+	if !b.material && b.owner.hr == nil && fetchCoreWork+b.lease.bytes+roundedFetch(b.payload) > n.fillBook.limit {
+		if !n.convertLegacyMaterial(b) {
+			return false
+		}
+	}
 	need := n.legacyFinishBound(b)
 	physical := n.cpool + n.cout + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + n.legacyPromises - n.mainCaptureCount()
 	if physical+need > n.sizes.clientPool {
@@ -207,15 +227,17 @@ func (n *node) prepareLegacy(b *legacyBatch) bool {
 		return false
 	}
 	payload := roundedFetch(b.payload)
-	if !b.lease.grow(payload) {
+	if !b.material && !b.lease.grow(payload) {
 		return false
 	}
 	wire := n.legacyOutputBound(b)
 	if !n.msgRoom(b.owner.c, int64(wire)) {
 		// The payload has not been allocated. Return only this new
 		// reservation; high-water metadata remains owned and counted.
-		b.lease.book.used -= payload
-		b.lease.bytes -= payload
+		if !b.material {
+			b.lease.book.used -= payload
+			b.lease.bytes -= payload
+		}
 		n.legacyWaitP = true
 		return false
 	}
@@ -233,11 +255,23 @@ func (n *node) prepareLegacy(b *legacyBatch) bool {
 		b.st.holdRead(b.owner.view)
 		b.readHeld = true
 	}
-	b.payloadCharge = payload
+	if b.material {
+		b.materialCharge = payload
+		local, total := c.promiseLocal, c.promiseTotal
+		c.promiseLocal, c.promiseTotal = &b.promise, &n.legacyPromises
+		c.growOut(int(payload))
+		c.promiseLocal, c.promiseTotal = local, total
+	} else {
+		b.payloadCharge = payload
+	}
 	b.data = make([]byte, int(payload))
 	b.prepared = true
-	if b.held && b.err == nil {
-		b.initHeldData()
+	if b.err == nil {
+		if b.held {
+			b.initHeldData()
+		} else if b.material {
+			b.initMaterialData()
+		}
 	}
 	return true
 }
@@ -247,6 +281,8 @@ func (n *node) retryLegacyOwner(b *legacyBatch) {
 		b.cancelled = true
 		return
 	}
+	wasPending := b.pending
+	b.retryBlocked = false
 	if b.pending > 0 {
 		b.owner.c.stagePending -= b.pending
 		b.pending = 0
@@ -264,6 +300,11 @@ func (n *node) retryLegacyOwner(b *legacyBatch) {
 	}
 	n.legacyRetry = nil
 	b.owner.c.promiseLocal, b.owner.c.promiseTotal = nil, nil
+	if b.retryBlocked {
+		b.pending = wasPending
+		b.owner.c.stagePending += wasPending
+		return
+	}
 	b.needed = false
 	if b.promise > 0 {
 		n.legacyPromises -= b.promise
@@ -274,6 +315,25 @@ func (n *node) retryLegacyOwner(b *legacyBatch) {
 		b.readHeld = false
 	}
 	b.owner.c.node.giveRoom(b.owner.c, b.owner.c.dead)
+	if b.linked {
+		if b.st.legacyView == b {
+			b.st.legacyView = nil
+		}
+		if n.legacyMemo == b {
+			n.legacyMemo = nil
+		}
+		c := b.owner.c
+		if b.owner.msgCharge > 0 {
+			c.growOut(-b.owner.msgCharge)
+			c.heldCounted -= int64(b.owner.msgCharge)
+		}
+		c.fillOwners--
+		b.owner.msg = nil
+		b.owner.msgCharge = 0
+		b.owner.req = rangeReq{}
+		b.st = nil
+		b.lease.release()
+	}
 }
 
 func (n *node) finishLegacyPiece(b *legacyBatch, token fillToken, err error) error {
@@ -281,14 +341,25 @@ func (n *node) finishLegacyPiece(b *legacyBatch, token fillToken, err error) err
 		return nil
 	}
 	b.lease.acknowledge()
+	if err != nil && errors.Is(err, ErrBadValue) && !b.cancelled && b.st == n.st && n.st.bad == nil {
+		n.st.bad = err
+	}
 	b.running = false
 	n.legacyRunning = nil
 	n.releaseFetchSources(&b.fetchSources)
 	if err == nil {
-		if b.held {
+		if b.held || b.material {
+			prefix := int64(4)
+			if b.material {
+				prefix = materialPrefix
+			}
 			for i := b.cursor; i < b.resultCursor; i++ {
 				size := int64(binary.LittleEndian.Uint32(b.data[b.recordOffset:b.recordOffset+4]) &^ legacyRecordReady)
-				b.recordOffset += 4 + size
+				if b.material && !b.cancelled && b.st == n.st {
+					start := b.recordOffset + prefix
+					b.st.promoteCanonical(b.data[start : start+size])
+				}
+				b.recordOffset += prefix + size
 			}
 		}
 		b.cursor, b.valuePos, b.crc = b.resultCursor, b.resultPos, b.resultCRC
@@ -319,9 +390,16 @@ func (n *node) pumpLegacy() bool {
 		return true
 	}
 	if b := n.legacyMemo; b != nil {
-		if b.cancelled || b.st != n.st || b.held && !b.needed {
+		if b.restart {
+			n.recollectLegacyBatch(b)
+			return true
+		}
+		if b.cancelled || b.st != n.st || (b.held || b.material) && !b.needed {
 			n.dropLegacyBatch(b)
 		} else if b.needed {
+			if n.legacyWaitP {
+				return false
+			}
 			n.retryLegacyOwner(b)
 			return true
 		}
@@ -336,6 +414,10 @@ func (n *node) pumpLegacy() bool {
 			return false
 		}
 	}
+	if b.restart {
+		n.recollectLegacyBatch(b)
+		return true
+	}
 	if b.cancelled || b.st != n.st || b.owner.c.dead {
 		n.dropLegacyBatch(b)
 		return true
@@ -345,10 +427,17 @@ func (n *node) pumpLegacy() bool {
 		return true
 	}
 	if b.full {
-		if n.fillBook.active == nil && n.fillActive == nil {
-			n.recollectLegacyBatch(b)
+		if n.fillBook.used == fetchCoreWork+b.lease.bytes && n.fillBook.active == nil {
+			if !b.fullAlone {
+				n.recollectLegacyBatch(b)
+				return true
+			}
+			if !n.convertLegacyMaterial(b) {
+				return true
+			}
+		} else {
+			return false
 		}
-		return false
 	}
 	if !n.prepareLegacy(b) {
 		if n.legacyMemo != nil && !n.legacyMemo.needed {
@@ -358,9 +447,16 @@ func (n *node) pumpLegacy() bool {
 		return false
 	}
 	if err := n.planLegacyPiece(b); err != nil {
+		n.releaseFetchSources(&b.fetchSources)
+		if errors.Is(err, ErrBadValue) && n.st.bad == nil {
+			n.st.bad = err
+		}
 		b.err = err
 		b.ready = true
 		n.legacyPending = nil
+		if n.legacyMemo != nil && n.legacyMemo != b {
+			n.dropLegacyBatch(n.legacyMemo)
+		}
 		n.legacyMemo = b
 		b.st.legacyView = b
 		return true
@@ -381,11 +477,14 @@ func (n *node) pumpLegacy() bool {
 		_ = n.finishLegacyPiece(b, token, nil)
 		return true
 	}
+	values, readBytes := b.fetchShape()
 	if !n.queueFetchTask(&fetchTask{work: func() error { return b.executePiece(false) }, done: func(err error) error { return n.finishLegacyPiece(b, token, err) }}) {
 		b.lease.acknowledge()
 		b.running = false
 		n.legacyRunning = nil
 		n.releaseFetchSources(&b.fetchSources)
+	} else {
+		n.recordFetch(values, readBytes)
 	}
 	return true
 }
@@ -416,11 +515,20 @@ func (n *node) dropLegacyBatch(b *legacyBatch) {
 	if b.promise > 0 {
 		n.legacyPromises -= b.promise
 	}
+	if b.materialCharge > 0 {
+		b.owner.c.growOut(-int(b.materialCharge))
+		b.materialCharge = 0
+	}
 	if b.owner.msgCharge > 0 {
 		b.owner.c.growOut(-b.owner.msgCharge)
 		b.owner.c.heldCounted -= int64(b.owner.msgCharge)
 	}
 	c := b.owner.c
+	c.fillOwners--
+	if c.fillOwners == 0 && c.stages == 0 && c.stageOrphan {
+		c.stageOrphan = false
+		n.stageOrphans--
+	}
 	for index := &b.index; index != nil; {
 		clear(index.pages[:])
 		next := index.next
@@ -482,9 +590,24 @@ func (n *node) recollectLegacy() {
 }
 
 func (n *node) cancelLegacy(c *client, sid uint32) {
+	k := 0
+	for _, r := range n.awayReads {
+		if r.c == c && (sid == 0 || r.h == mkHandle(c, sid)) {
+			c.growOut(-r.charge)
+			c.heldCounted -= int64(r.charge)
+			continue
+		}
+		n.awayReads[k] = r
+		k++
+	}
+	clear(n.awayReads[k:])
+	n.awayReads = n.awayReads[:k]
 	for _, b := range []*legacyBatch{n.legacyCollect, n.legacyPending, n.legacyRunning, n.legacyMemo} {
-		if b != nil && b.owner.c == c && (sid == 0 || b.owner.h == mkHandle(c, sid)) {
+		if b != nil && b != n.legacyRetry && b.owner.c == c && (sid == 0 || b.owner.h == mkHandle(c, sid)) {
 			b.cancelled = true
+			if !b.running {
+				n.dropLegacyBatch(b)
+			}
 		}
 	}
 }
@@ -492,13 +615,18 @@ func (n *node) cancelLegacy(c *client, sid uint32) {
 func (n *node) invalidateLegacy(st *store) {
 	for _, b := range []*legacyBatch{n.legacyCollect, n.legacyPending, n.legacyRunning, n.legacyMemo} {
 		if b != nil && b.st == st {
+			n.legacyWaitP = false
+			n.fillCreditWake = true
 			if b.readHeld {
 				st.releaseRead(b.owner.view)
 				b.readHeld = false
 			}
+			b.restart = !b.held && b.needed && !b.cancelled
 			b.st = nil
 			b.owner.hr = nil
-			b.cancelled = true
+			if !b.restart {
+				b.cancelled = true
+			}
 		}
 	}
 }

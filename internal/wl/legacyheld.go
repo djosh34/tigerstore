@@ -36,6 +36,7 @@ func (n *node) queueLegacyHeld(hr *heldReply) {
 	}
 	n.fillSequence++
 	b := &legacyBatch{st: n.st, owner: n.legacyReading, lease: lease, op: n.fillSequence, needed: true, held: true}
+	hr.c.fillOwners++
 	n.legacyCollect = b
 	n.freezeLegacy()
 }
@@ -147,13 +148,26 @@ func (b *legacyBatch) initHeldData() {
 func (n *node) planLegacyHeld(b *legacyBatch) error {
 	b.planN = 0
 	at := b.recordOffset
+	prefix := int64(4)
+	if b.material {
+		prefix = materialPrefix
+	}
 	idx, pos := b.cursor, b.valuePos
 	for idx < b.n && b.planN < len(b.plan) {
-		r := b.owner.hr.refs[idx]
 		word := binary.LittleEndian.Uint32(b.data[at : at+4])
 		size := int64(word &^ legacyRecordReady)
-		start := at + 4
+		start := at + prefix
 		p := parseKV(b.data[start : start+size])
+		var r recRef
+		if b.material {
+			id, ok := b.st.find(p.key)
+			if !ok {
+				return errLogCut
+			}
+			r = recRef{id: id, mod: p.mod}
+		} else {
+			r = b.owner.hr.refs[idx]
+		}
 		total := len(p.value)
 		if total == 0 {
 			idx++

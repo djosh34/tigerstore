@@ -16,7 +16,8 @@ const defaultWindow = 65535
 type held struct {
 	sid        uint32
 	flatCharge int64
-	data       []byte      // the gRPC message bytes still to send
+	data       []byte // the gRPC message bytes still to send
+	material   *materialReply
 	stage      *replyStage // complete, independently releasable cursor output
 	trailer    []byte      // a header block that ends the stream once data is out
 }
@@ -64,12 +65,14 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 			promise = stageUnit
 			if cap(c.out) < 64<<10 {
 				promise += 64 << 10
+				c.socketPromise = 64 << 10
 			}
 		}
 		c.takeOutputPromise(promise)
 		c.stagePromise += promise
 		c.node.stagePromises += promise
 		c.stages++
+		c.dropOut = true
 	}
 	f.held = append(f.held, h)
 	f.bytes += int64(len(data) + len(trailer))
@@ -182,6 +185,9 @@ func (c *client) drain() {
 		if h.stage != nil {
 			c.drainStage(h)
 		}
+		if h.material != nil {
+			c.drainMaterial(h)
+		}
 		limit := int64(len(h.data))
 		if h.flatCharge > 0 {
 			c.stageSocket()
@@ -199,7 +205,7 @@ func (c *client) drain() {
 			f.streams[h.sid] -= m
 			n.markDirty(&c.sock)
 		}
-		if len(h.data) > 0 || h.stage != nil && h.stage.read < h.stage.size {
+		if len(h.data) > 0 || h.material != nil || h.stage != nil && h.stage.read < h.stage.size {
 			if blocked == nil {
 				blocked = map[uint32]bool{}
 			}
@@ -273,6 +279,10 @@ func (c *client) dropHeld(sid uint32) {
 			continue
 		}
 		f.bytes -= int64(len(h.data) + len(h.trailer))
+		if h.material != nil {
+			f.bytes -= h.material.remaining
+			c.releaseMaterial(&h)
+		}
 		if h.flatCharge > 0 {
 			c.releaseFlatOutput(&h)
 			c.growOut(-len(h.trailer))

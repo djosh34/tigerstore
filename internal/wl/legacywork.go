@@ -72,6 +72,11 @@ type legacyBatch struct {
 	full, frozen, prepared, running, ready, needed, cancelled bool
 	readHeld                                                  bool
 	held                                                      bool
+	material                                                  bool
+	fullAlone                                                 bool
+	linked, retryBlocked                                      bool
+	restart                                                   bool
+	materialCharge                                            int64
 	err                                                       error
 }
 
@@ -94,6 +99,7 @@ func (b *legacyBatch) add(key uint32, mod int64, n, sum uint32) bool {
 		}
 		if !b.lease.grow(extra) {
 			b.full = true
+			b.fullAlone = b.lease.book.used == fetchCoreWork+b.lease.bytes
 			return false
 		}
 		r := &b.index
@@ -122,6 +128,10 @@ func (b *legacyBatch) Less(i, j int) bool {
 func (b *legacyBatch) Swap(i, j int) { a, z := b.entry(i), b.entry(j); *a, *z = *z, *a }
 
 func (b *legacyBatch) freeze() {
+	if b.full {
+		b.frozen = true
+		return
+	}
 	if b.owner.hr != nil {
 		b.freezeHeld()
 		return
@@ -152,8 +162,8 @@ func (b *legacyBatch) freeze() {
 }
 
 func (b *legacyBatch) lookup(id uint32, mod int64) ([]byte, error, bool) {
-	if b.owner.hr != nil {
-		rec, err, ok := b.heldRecord(id, mod)
+	if b.owner.hr != nil || b.material {
+		rec, err, ok := b.canonicalRecord(id, mod)
 		if err != nil || !ok {
 			return nil, err, ok
 		}
@@ -211,7 +221,7 @@ func (b *legacyBatch) executePiece(nowait bool) error {
 			crc = 0
 		}
 	}
-	if b.held {
+	if b.held || b.material {
 		idx, pos = b.plannedCursor, b.plannedPos
 	}
 	b.resultCursor, b.resultPos, b.resultCRC = idx, pos, crc
@@ -219,7 +229,7 @@ func (b *legacyBatch) executePiece(nowait bool) error {
 }
 
 func (n *node) planLegacyPiece(b *legacyBatch) error {
-	if b.owner.hr != nil {
+	if b.owner.hr != nil || b.material {
 		return n.planLegacyHeld(b)
 	}
 	b.planN = 0

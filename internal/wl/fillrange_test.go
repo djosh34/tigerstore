@@ -59,6 +59,126 @@ func stagedRangeResponse(t *testing.T, c *client) *pb.RangeResponse {
 	return nil
 }
 
+func TestPhysicalFillWaitKeepsItsHintAndLetsAFundedReaderPass(t *testing.T) {
+	c, s, st, log, l := fillRangeFixture(t)
+	n := c.node
+	other := partClient(t, n, 1)
+	other.flow.conn = 0
+	n.socks, n.gens = []any{c, other}, []uint16{1, 1}
+	t.Cleanup(other.dropAll)
+	for i := range 100 {
+		putValue(t, st, log, fmt.Sprintf("/k/%03d", i), string(bytes.Repeat([]byte("v"), 16<<10)))
+	}
+	putValue(t, st, log, "/small", string(bytes.Repeat([]byte("s"), 8<<10)))
+	for i := range st.keys[:st.nkeys] {
+		st.keys[i].rec = 0
+	}
+	extra := n.sizes.clientPool - n.stageOther(0) - 128<<10
+	c.growOut(int(extra))
+	msg := appendBytesField(nil, 1, []byte("/k/"))
+	msg = appendBytesField(msg, 2, prefixEnd([]byte("/k/")))
+	serveRoomRange(t, c, s, msg)
+	if len(n.roomWait) != 1 || !n.roomWait[0].physical || n.stats.rangeFillScans != 1 {
+		t.Fatal("large request did not retain a physical admission hint")
+	}
+	for range 32 {
+		n.roomFreed = true
+		n.serveRoomWait()
+	}
+	if n.stats.rangeFillScans != 1 {
+		t.Fatal("insufficient physical credits rebuilt the metadata plan")
+	}
+	before := n.now
+	little := other.newStream(1, kRange)
+	serveRoomRange(t, other, little, appendBytesField(nil, 1, []byte("/small")))
+	for len(n.fills) > 0 {
+		n.pumpFills()
+		if n.fillActive != nil {
+			awaitFetchResult(t, l)
+			if err := l.runPosts(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if n.now != before || len(n.roomWait) != 1 || len(fillQueuedBytes(t, other)) == 0 || n.stageCredits.used+n.stageOther(0) > n.sizes.clientPool {
+		t.Fatal("independently funded small reader stalled or overspent P")
+	}
+	c.growOut(-int(extra))
+	n.roomFreed = true
+	n.serveRoomWait()
+	if len(n.roomWait) != 0 || len(n.fills) != 1 || n.stats.rangeFillScans != 3 {
+		t.Fatal("funded large retry did not rebuild exactly once")
+	}
+}
+
+func TestCompletedCursorWaitsForSocketWithoutReserializing(t *testing.T) {
+	c, s, st, log, l := fillRangeFixture(t)
+	c.plain = true
+	putValue(t, st, log, "/ready", "value")
+	id, _ := st.find([]byte("/ready"))
+	st.keys[id].rec = 0
+	msg := appendBytesField(nil, 1, []byte("/ready"))
+	serveRoomRange(t, c, s, msg)
+	n := c.node
+	n.pumpFills()
+	awaitFetchResult(t, l)
+	if err := l.runPosts(); err != nil {
+		t.Fatal(err)
+	}
+	q := n.fills[0]
+	if !q.ready {
+		t.Fatal("private message is incomplete")
+	}
+	other := c.newStream(5, kRange)
+	other.win = 1 << 30
+	c.flow.conn = 1 << 30
+	wire := stageRangeBytes(t, 80<<10)
+	stage := n.admitStage(c, len(wire))
+	if stage == nil {
+		t.Fatal("other stream lacks funding")
+	}
+	stage.append(wire)
+	if !c.holdStage(other, stage) {
+		t.Fatal("other stream did not commit")
+	}
+	for range 2 {
+		c.writeFrame(frPing, flAck, make([]byte, 8))
+	}
+	if cap(c.out)-len(c.out) >= maxPlain+recOverhead+64 {
+		t.Fatal("other stream did not occupy the bounded socket")
+	}
+	before := append([]byte(nil), c.out...)
+	fetches := n.stats.fetches
+	for range 3 {
+		n.pumpFills()
+		if q.cancelled || !q.ready || q.stage == nil || q.stage.flags&stageBroken != 0 || q.stage.written != q.stage.size || n.fillActive != nil || n.fillBook.used != fetchCoreWork || n.stats.fetches != fetches || !bytes.Equal(c.out, before) {
+			t.Fatal("complete message was fetched/serialized again while its socket was busy")
+		}
+	}
+	c.out = c.out[:0]
+	c.ow = 0
+	c.rec = -1
+	c.flow.conn = 0
+	n.pumpFills()
+	var data []byte
+	for _, h := range c.flow.held {
+		if h.sid != s.id || h.stage == nil {
+			continue
+		}
+		stage := h.stage
+		for at := stage.read; at < stage.size; {
+			p := stage.page(at)
+			take := min(stage.size-at, stagePayload-at%stagePayload)
+			data = append(data, p[stageHead+at%stagePayload:stageHead+at%stagePayload+take]...)
+			at += take
+		}
+	}
+	var response pb.RangeResponse
+	if len(data) < 5 || proto.Unmarshal(data[5:], &response) != nil || len(response.Kvs) != 1 || string(response.Kvs[0].Value) != "value" {
+		t.Fatal("complete message did not publish intact after socket progress")
+	}
+}
+
 func TestCursorFulfillmentPromotesForAnotherRequest(t *testing.T) {
 	c, s, st, log, l := fillRangeFixture(t)
 	putValue(t, st, log, "/reuse", "original")

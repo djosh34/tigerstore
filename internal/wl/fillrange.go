@@ -8,6 +8,7 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 	if !n.cursorFetch || (s.kind != kRange && s.kind != kRangeStream) || r.keysOnly || r.countOnly || r.sortsOther() {
 		return false
 	}
+	n.stats.rangeFillScans++
 	st := n.st
 	view := st.rev
 	if r.rev > 0 {
@@ -88,7 +89,7 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 	n.stageCredits.limit = n.sizes.clientPool
 	other := n.stageOther(0)
 	if !n.stageCredits.take(int64(meta), other) {
-		n.waitRoom(c, s, msg, body-sizeBytesField(1, n.hdrSizeAt(st.rev)))
+		n.waitFillRoom(c, s, msg, body-sizeBytesField(1, n.hdrSizeAt(st.rev)), wire-body-5)
 		return true
 	}
 	c.growOut(meta)
@@ -96,7 +97,7 @@ func (n *node) tryFillRange(c *client, s *stream, r *rangeReq, msg []byte) bool 
 	if stage == nil {
 		c.growOut(-meta)
 		n.stageCredits.give(int64(meta))
-		n.waitRoom(c, s, msg, body-sizeBytesField(1, n.hdrSizeAt(st.rev)))
+		n.waitFillRoom(c, s, msg, body-sizeBytesField(1, n.hdrSizeAt(st.rev)), wire-body-5)
 		return true
 	}
 	n.fillSequence++
@@ -273,7 +274,7 @@ func (n *node) fillsReady() bool {
 	if n.fillActive != nil || n.legacyRunning != nil {
 		return false
 	}
-	if n.legacyMemo != nil && (n.legacyMemo.needed || n.legacyMemo.cancelled || n.legacyMemo.held) {
+	if b := n.legacyMemo; b != nil && (b.cancelled || (b.held || b.material) && !b.needed || b.needed && !n.legacyWaitP) {
 		return true
 	}
 	if !n.legacyWaitP && (n.legacyPending != nil || n.legacyAgain) {

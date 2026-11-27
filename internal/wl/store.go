@@ -482,6 +482,9 @@ func (st *store) readValueRef(id uint32, mod, off int64, n, sum uint32) ([]byte,
 				return nil, err
 			}
 			if err := checkValue(val, off, sum); err != nil {
+				if st.bad == nil {
+					st.bad = err
+				}
 				return nil, err
 			}
 			return val, nil
@@ -1192,6 +1195,11 @@ func (st *store) at(id uint32, rev int64) ([]byte, error) {
 	if rev == 0 || k.mod <= rev || planted.On("B31") {
 		// Planted (B31): a lookup that ignores the revision returns the
 		// value that overwrote the one asked for.
+		if b := st.legacyView; b != nil && b.material {
+			if rec, err, ok := b.canonicalRecord(id, k.mod); ok {
+				return rec, err
+			}
+		}
 		return st.live(id)
 	}
 	for h := k.hist; h != 0; h = st.hist[h].prev {
@@ -1203,7 +1211,7 @@ func (st *store) at(id uint32, rev int64) ([]byte, error) {
 			return nil, nil
 		}
 		if b := st.legacyView; b != nil {
-			if rec, err, ok := b.heldRecord(id, e.mod); ok {
+			if rec, err, ok := b.canonicalRecord(id, e.mod); ok {
 				return rec, err
 			}
 		}
@@ -1300,7 +1308,7 @@ func (st *store) putAt(id uint32, rev int64) ([]byte, error) {
 			break
 		}
 		if b := st.legacyView; b != nil {
-			if rec, err, ok := b.heldRecord(id, e.mod); ok {
+			if rec, err, ok := b.canonicalRecord(id, e.mod); ok {
 				return rec, err
 			}
 		}

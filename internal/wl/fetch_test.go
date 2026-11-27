@@ -280,6 +280,14 @@ const fetchSharePuts, fetchShareReads = 2 * time.Minute, 3 * time.Minute
 // in Go's heap on a 560 MiB budget, and the member's cgroup killed it.
 // The ranges still get every value whole.
 func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
+	testFetchedValuesStayWithinTheirShare(t, false)
+}
+
+func TestCursorFetchedValuesStayWithinTheirShare(t *testing.T) {
+	testFetchedValuesStayWithinTheirShare(t, true)
+}
+
+func testFetchedValuesStayWithinTheirShare(t *testing.T, cursor bool) {
 	loopOf := watchLoops(t)
 	const budget = 96 << 20
 	tc := newTestClusterOf(t, 1, func(tc *testCluster) { tc.budget = budget })
@@ -298,10 +306,19 @@ func TestFetchedValuesStayWithinTheirShare(t *testing.T) {
 	}
 	t.Logf("the %d puts took %v", keys, time.Since(started).Round(time.Millisecond))
 	l := loopOf(tc.ids[0])
+	if cursor {
+		ready := make(chan struct{})
+		l.post(func() error { l.n.cursorFetch = true; close(ready); return nil })
+		<-ready
+	}
 	fetched := func() (bytes int64, n int) {
 		got := make(chan [2]int64, 1)
 		l.post(func() error {
-			got <- [2]int64{l.n.st.fetchedBytes, int64(l.n.stats.fetched)}
+			owned := l.n.st.fetchedBytes
+			if cursor && l.n.fillBook != nil {
+				owned = l.n.fillBook.used
+			}
+			got <- [2]int64{owned, int64(l.n.stats.fetched)}
 			return nil
 		})
 		r := <-got

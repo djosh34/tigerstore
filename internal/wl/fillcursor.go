@@ -3,6 +3,7 @@ package wl
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 )
 
@@ -456,6 +457,9 @@ func (n *node) finishFillPiece(q *replyFill, token fillToken, err error) error {
 	q.stage.acknowledge()
 	n.fillActive = nil
 	if err != nil && !q.cancelled && q.st == n.st {
+		if errors.Is(err, ErrBadValue) && n.st.bad == nil {
+			n.st.bad = err
+		}
 		q.cancelled = true
 		if q.raw {
 			n.failRawFill(q)
@@ -527,11 +531,24 @@ func (n *node) pumpFills() {
 	if len(n.fills) == 0 || len(n.fetching) > 0 || len(n.st.fetched) > 0 {
 		return
 	}
+	// Completed private destinations can wait for the socket. Planning
+	// one again would append another footer to the complete message.
+	index := -1
+	for i, q := range n.fills {
+		if !q.ready {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		n.pumpLegacy()
+		return
+	}
 	if n.fillBook == nil {
 		b := newFetchWorkBook(n.st.budget)
 		n.fillBook = &b
 	}
-	q := n.fills[0]
+	q := n.fills[index]
 	lease := n.fillBook.reserve(fetchCursorWork - fetchCoreWork)
 	if lease == nil && n.legacyMemo != nil && !n.legacyMemo.needed {
 		n.dropLegacyBatch(n.legacyMemo)
@@ -580,6 +597,7 @@ func (n *node) pumpFills() {
 	} else {
 		lease.start()
 		a := q.arena
+		values, readBytes := a.fetchShape()
 		if !n.queueFetchTask(&fetchTask{work: a.execute, done: func(err error) error { return n.finishFillPiece(q, token, err) }}) {
 			// A busy/stopping worker is a scheduling wait, not a new
 			// client-visible error. The destination is still private.
@@ -595,11 +613,13 @@ func (n *node) pumpFills() {
 			a.n = 0
 			lease.acknowledge()
 			_ = n.finishFillPiece(q, token, nil)
+		} else {
+			n.recordFetch(values, readBytes)
 		}
 	}
 	// Rotate after this bounded piece, including resident completion.
-	if len(n.fills) > 1 {
-		copy(n.fills, n.fills[1:])
+	if index < len(n.fills)-1 {
+		copy(n.fills[index:], n.fills[index+1:])
 		n.fills[len(n.fills)-1] = q
 	}
 }
