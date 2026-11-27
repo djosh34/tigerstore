@@ -14,7 +14,7 @@ spec.loader.exec_module(m)
 def row(side='candidate'):
     sample = dict(zip((m.PREFIX+n for n in m.NAMES), (0,0,7,12000000,3<<30,0,int(side=='candidate'))))
     return dict(valid=True, errors={}, workload='range',value_size=1024,keys=10000,conns=6,streams_per_conn=256,
-                offered_rate=0,duration_s=10,client_cores=.4,ops=1000,throughput=100,
+                offered_rate=0,duration_s=10,client_cores=.4,server_cores_by_node=[1,.04,.04],ops=1000,cohort=1000,throughput=100,
                 latency_us=dict(count=1000,p95=100,p99=120,max=130),per_op=dict(kvs=1),
                 fetch_measure=[[copy.deepcopy(sample) for _ in range(3)] for _ in range(2)])
 
@@ -66,6 +66,18 @@ class ResidentMeasure(unittest.TestCase):
                 m.adapt(data,'candidate')
         data=row();data['per_op']['kvs']=.99
         with self.assertRaises(ValueError):
+            m.adapt(data,'candidate')
+
+    def test_completion_window_and_intended_cohort_are_not_equated(self):
+        data=row();data['ops']=1001;data['throughput']=100.1
+        self.assertEqual(m.adapt(data,'candidate')['throughput'],100.1)
+        data['cohort']=999
+        with self.assertRaises(ValueError):
+            m.adapt(data,'candidate')
+
+    def test_max_load_requires_the_actual_fixed_leader_to_be_saturated(self):
+        data=row();data['server_cores_by_node'][0]=.5
+        with self.assertRaisesRegex(ValueError,'not CPU-saturated'):
             m.adapt(data,'candidate')
 
     def test_unique_overlay_anchors_fail_closed(self):

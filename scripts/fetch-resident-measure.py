@@ -63,8 +63,14 @@ def adapt(data, side):
         raise ValueError(f'{side}: fixed cohort/load not preserved')
     if not 0 <= data.get('client_cores', float('inf')) <= .8:
         raise ValueError(f'{side}: generator-limited; not qualifying evidence')
-    if data.get('ops', 0) <= 0 or data['latency_us']['count'] != data['ops'] or data['per_op'].get('kvs') != 1:
+    # stats.complete counts throughput by completion time, but latencies by
+    # intended-send cohort; the warmup/window/drain boundary need not give
+    # identical Ops and Cohort. Preserve the driver's exact cohort definition.
+    if data.get('ops', 0) <= 0 or data.get('cohort', 0) <= 0 or data['latency_us']['count'] != data['cohort'] or data['per_op'].get('kvs') != 1:
         raise ValueError(f'{side}: incomplete successful RPC/value cohort')
+    cores = data.get('server_cores_by_node')
+    if not isinstance(cores, list) or len(cores) != 3 or any(not isinstance(c, (int,float)) or not math.isfinite(c) or c < 0 for c in cores) or cores[0] < .9:
+        raise ValueError(f'{side}: fixed leader is not CPU-saturated; max-load control not qualified')
     q = data['latency_us']
     if any(not isinstance(q.get(k), (int, float)) or not math.isfinite(q[k]) or q[k] <= 0 for k in ('p95', 'p99', 'max')) or not q['p95'] <= q['p99'] <= q['max']:
         raise ValueError(f'{side}: invalid latency quantiles')
@@ -131,7 +137,7 @@ def run(args):
     env = dict(os.environ, CERTS=str(certs), BINS=str(bins), LOADGEN=str(bins/'loadgen'),
                NULLSTORE=str(bins/'nullstore'), BENCH_GOMEMLIMIT='3GiB',
                BENCH_FLAGS='--memory-budget-bytes 3221225472', ETCD_UNSAFE_LOG_RING_BYTES='536870912',
-               FETCH_MEASURE_FIXED_LOAD='1', MODES='max', SEEDS='94125874', REPS='1', LAYOUT='3 0 1 2', LAYOUTS='')
+               FETCH_MEASURE_FIXED_LOAD='1', MODES='max', SEEDS='94125874', REPS='1', LAYOUT='3 0 1 2', LAYOUTS='', LEAD='1')
     calibration = out / 'generator'
     with (out / 'generator.log').open('w') as log:
         subprocess.run(['bash','bench/run.sh','range-1k',str(calibration)],env=dict(env,MODES='generator'),
@@ -140,9 +146,10 @@ def run(args):
     ceiling = json.loads(ceiling_file.read_text())
     if ceiling.get('valid') is not True or ceiling.get('errors') or ceiling.get('throughput',0) <= 0:
         raise ValueError('invalid generator calibration')
-    manifest['generator_calibration'] = dict(raw_file=str(ceiling_file.relative_to(out)),
+    manifest['nullstore_diagnostic'] = dict(raw_file=str(ceiling_file.relative_to(out)),
         raw_sha256=hashlib.sha256(ceiling_file.read_bytes()).hexdigest(),throughput=ceiling['throughput'],
-        qualification='neither side may reach 80% of the calibrated generator ceiling or exceed 0.8 client core')
+        client_cores=ceiling['client_cores'],server_cores_by_node=ceiling['server_cores_by_node'],
+        qualification='diagnostic only: nullstore can be server-limited; actual targets require <=0.8 client core and >=0.9 fixed-leader core')
     save()
     for number in range(1,6):
         order = 'AB' if number % 2 else 'BA'
@@ -153,16 +160,15 @@ def run(args):
             with logfile.open('w') as log:
                 result = subprocess.run(['bash','bench/run.sh','range-1k',str(destination)],env=dict(env,TARGETS=side),
                                         stdout=log,stderr=subprocess.STDOUT,check=False)
-            if result.returncode:
-                manifest.update(status='RULING', reasons=[f'{side} benchmark failed'],failed_log=logfile.name)
+            failures = [str(p.relative_to(out)) for p in destination.rglob('*.failed')]
+            if result.returncode or failures:
+                manifest.update(status='RULING', reasons=[f'{side} benchmark or leader check failed'],failed_log=logfile.name,failed_steps=failures)
                 save()
                 return 1
             rawpath = destination / f'range-1k/{side}-max-94125874.1.json'
             try:
                 raw = rawpath.read_bytes()
                 pair[side] = adapt(json.loads(raw),side)
-                if pair[side]['throughput'] >= .8 * ceiling['throughput']:
-                    raise ValueError(f'{side}: generator-ceiling limited; not qualifying evidence')
                 pair[side].update(raw_file=str(rawpath.relative_to(out)),raw_sha256=hashlib.sha256(raw).hexdigest())
             except (OSError, KeyError, TypeError, ValueError) as error:
                 manifest.update(status='INCOMPLETE',reasons=[str(error)],failed_log=logfile.name)
