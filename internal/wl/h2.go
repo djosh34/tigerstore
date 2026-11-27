@@ -229,6 +229,7 @@ type client struct {
 	stagePromise int64 // protected socket/finish capacity
 	stages       int
 	stageOrphan  bool
+	fillOwners   int
 	// heldCounted is what its held replies and its ranges waiting for
 	// room keep: past its share with what waits for window, its new
 	// requests are refused, as etcd refuses too many (#689's re-check, B6).
@@ -451,7 +452,7 @@ func (c *client) dropAll() {
 		c.node.active--
 	}
 	c.node.dropClientWaits(c)
-	if c.stages > 0 && !c.stageOrphan {
+	if (c.stages > 0 || c.fillOwners > 0) && !c.stageOrphan {
 		c.stageOrphan = true
 		c.node.stageOrphans++
 	}

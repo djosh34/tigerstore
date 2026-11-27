@@ -148,6 +148,7 @@ func (n *node) installSnapshot(sn *pb.Snapshot) error {
 	// if it held what the snapshot does.
 	keepOld := planted.On("B27")
 	if !keepOld {
+		n.invalidateFills(old)
 		// The old store goes before the new one is built: both at once
 		// held two stores' tables, past the budget on a large store
 		// (#719). A load that fails stops the node, which starts again

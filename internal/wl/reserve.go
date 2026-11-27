@@ -135,6 +135,7 @@ func (n *node) cannotFit(m int64) bool { return m-n.connOut > n.sizes.reserve() 
 // dropClientWaits lets go of the ranges client c, closed, waited for room
 // with: their requests count in the pool.
 func (n *node) dropClientWaits(c *client) {
+	n.cancelFills(c, 0)
 	k := 0
 	for _, r := range n.roomWait {
 		if idx, gen, _ := r.h.parts(); idx == c.idx && gen == c.gen {
@@ -153,6 +154,7 @@ func (n *node) dropClientWaits(c *client) {
 // dropWaits lets go of what stream sid of client c waits for room with:
 // the client reset it.
 func (n *node) dropWaits(c *client, sid uint32) {
+	n.cancelFills(c, sid)
 	h := mkHandle(c, sid)
 	k := 0
 	for _, r := range n.roomWait {

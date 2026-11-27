@@ -196,7 +196,7 @@ func (s *replyStage) free() {
 		if c.stages == 0 {
 			c.node.stagePromises -= c.stagePromise
 			c.stagePromise = 0
-			if c.stageOrphan {
+			if c.stageOrphan && c.fillOwners == 0 {
 				c.stageOrphan = false
 				c.node.stageOrphans--
 			}

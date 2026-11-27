@@ -217,6 +217,9 @@ func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
 		n.replyError(c, s.id, codeOutOfRange, msgFuture)
 		return
 	}
+	if n.tryFillRange(c, s, r, msg) {
+		return
+	}
 	st.noWait = true
 	kvs, count, more, err := n.rangeKVs(r, n.kvs[:0], n.oneShot())
 	st.noWait = false

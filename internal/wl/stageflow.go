@@ -17,12 +17,7 @@ func (n *node) admitStage(c *client, size int) *replyStage {
 		}
 	}
 	n.stageCredits.limit = n.sizes.clientPool
-	other := n.cpool + n.cout - n.stageCredits.used + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + promise
-	if n.inTurn != nil {
-		base := n.turnLimit - n.turnRoom + n.looseGrown - n.turnLoose
-		other -= min(n.turnRoom, max(0, n.cpool-base))
-	}
-	stage := newReplyStage(&n.stageCredits, size, other)
+	stage := newReplyStage(&n.stageCredits, size, n.stageOther(promise))
 	if stage == nil {
 		n.giveRoom(c, false)
 		return nil
@@ -41,6 +36,17 @@ func (n *node) admitStage(c *client, size int) *replyStage {
 	n.coveredRoom += covered
 	n.reserved -= covered
 	return stage
+}
+
+// stageOther excludes only actual input debt backed by the independent
+// input-turn reserve. Its logical unused grant is never spare output P.
+func (n *node) stageOther(promise int64) int64 {
+	other := n.cpool + n.cout - n.stageCredits.used + int64(max(n.clients, n.active)+n.stageOrphans)*idleConn + n.stagePromises + promise
+	if n.inTurn != nil {
+		base := n.turnLimit - n.turnRoom + n.looseGrown - n.turnLoose
+		other -= min(n.turnRoom, max(0, n.cpool-base))
+	}
+	return other
 }
 
 // holdStage is the complete-small-message commit point. Publication and

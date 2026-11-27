@@ -67,12 +67,13 @@ type loop struct {
 	// recvSeq numbers the snapshots received, for their files' names.
 	recvSeq atomic.Uint64
 	// posts are what other goroutines hand the loop to run.
-	posts   []func() error
-	dials   map[uint64]*dialer // by member, while it is one
-	peerTLS *tls.Config        // to dial peers
-	http1   *http1             // serves the clients that chose HTTP/1.1
-	self    *clientv3.Client   // the node's client of itself, for the gateway and side calls
-	selfTLS *tls.Config        // its TLS configuration
+	posts       []func() error
+	fetchWorker *fetchWorker
+	dials       map[uint64]*dialer // by member, while it is one
+	peerTLS     *tls.Config        // to dial peers
+	http1       *http1             // serves the clients that chose HTTP/1.1
+	self        *clientv3.Client   // the node's client of itself, for the gateway and side calls
+	selfTLS     *tls.Config        // its TLS configuration
 	// metricsSrvs serve --listen-metrics-urls.
 	metricsSrvs []*http.Server
 	side        *sideServers
@@ -729,6 +730,9 @@ func (l *loop) leave() bool {
 
 // runPosts runs what other goroutines posted.
 func (l *loop) runPosts() error {
+	if err := l.runFetchCompletion(); err != nil {
+		return err
+	}
 	l.mu.Lock()
 	ps := l.posts
 	l.posts = nil
@@ -779,6 +783,12 @@ func (l *loop) shut(listeners ...net.Listener) {
 		}
 	}
 	l.n.abortCkpt()
+	// A source descriptor cannot close beneath the fetch worker.
+	if l.fetchWorker != nil {
+		l.fetchWorker.stop()
+		_ = l.runFetchCompletion()
+		l.n.pumpFills()
+	}
 	l.n.wal.close()
 	if l.n.rm != nil {
 		l.n.rm.close()
@@ -1046,7 +1056,7 @@ func (l *loop) run() error {
 				wake = t
 			}
 		}
-		if d := time.Until(wake); d > 0 && !n.syncReady() && !n.bigReady() && !n.bigWatchReady() {
+		if d := time.Until(wake); d > 0 && !n.syncReady() && !n.bigReady() && !n.bigWatchReady() && !n.fillsReady() {
 			timeout = int((d + time.Millisecond - 1) / time.Millisecond)
 		}
 		l.watch.wait()
@@ -1165,6 +1175,7 @@ func (l *loop) run() error {
 		}
 		n.pumpBig()
 		n.pumpBigWatches()
+		n.pumpFills()
 		n.turnCkpt = ckptTurn{}
 		if err := n.ckptStep(false); err != nil {
 			return err
