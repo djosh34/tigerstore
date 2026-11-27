@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -18,10 +19,14 @@ type soleRejection struct {
 	rev  int64
 	text string
 }
+type soleCountProof struct{ rev, need, oldMaybe, newMaybe int64 }
+
 type soleNode struct {
-	state         eligibilitySearchStep
-	leases        [][]int64
-	hit, accepted bool
+	state     eligibilitySearchStep
+	leases    [][]int64
+	accepted  bool
+	proof     *soleCountProof
+	rejection string
 }
 type soleRun struct {
 	err        string
@@ -31,6 +36,79 @@ type soleRun struct {
 	rejections map[soleRejection]bool
 	nodes      []soleNode
 	hits       int
+	extraUnits int64
+	oracleErr  error
+}
+
+type soleGrantSource struct {
+	n, op  int
+	usable bool
+}
+
+// Build grant provenance independently from history, not r.grants. A
+// production metadata mutation must not contaminate its own reference.
+func soleReferenceGrants(h *history.History) map[int64]soleGrantSource {
+	out := map[int64]soleGrantSource{}
+	add := func(id int64, op int, usable bool) { g := out[id]; g.n++; g.op = op; g.usable = usable; out[id] = g }
+	if h.Start != nil {
+		for _, id := range h.Start.Leases {
+			add(id, imageGrant, true)
+		}
+	}
+	for i, op := range h.Ops {
+		if q := op.Req.LeaseGrant; q != nil {
+			id := q.ID
+			if op.Resp != nil {
+				id = op.Resp.LeaseGrant.ID
+			}
+			add(id, i, op.Err == nil || op.Err.Ambiguous)
+		}
+	}
+	return out
+}
+
+// This is the old creator enumeration with an independent, optional
+// sole-grant predicate. It has no charged callbacks or mutable caches.
+// Work includes each visited putter and its charged txn-predicate items.
+func soleReferenceCreate(r *revisionOrder, s *state, k int, rev int64, skip int, rule bool, grants map[int64]soleGrantSource) (bool, int64) {
+	ats := r.putRevs[k]
+	j := sort.Search(len(ats), func(j int) bool { return ats[j] > s.rev })
+	if j < len(ats) && ats[j] <= rev {
+		return true, 0
+	}
+	gap := rule && len(r.stack) > 0 && r.stack[len(r.stack)-1].rev == s.rev
+	var work int64
+	for _, i := range r.putters[k] {
+		work += ordinaryUnits
+		op := &r.w.h.Ops[i]
+		if op.Resp != nil {
+			if op.Resp.Revision > s.rev && op.Resp.Revision <= rev {
+				return true, work
+			}
+			continue
+		}
+		if i == skip || r.used[i] || r.lb[i] >= rev {
+			continue
+		}
+		if p := op.Req.Put; gap && p != nil && p.Lease != 0 && !s.hasLease(p.Lease) {
+			g := grants[p.Lease]
+			if g.n == 1 && g.usable && (g.op == imageGrant || g.op >= 0 && r.used[g.op]) {
+				continue
+			}
+		}
+		if touchesWithStep(s, op.Req, k, true, func() bool { work += ordinaryUnits; return false }) {
+			return true, work
+		}
+	}
+	return false, work
+}
+
+func soleStepCheck(old, got *soleRun) error {
+	allowance := (got.extraUnits + workUnitsPerStep - 1) / workUnitsPerStep
+	if got.steps > old.steps+allowance {
+		return fmt.Errorf("new %d steps exceed old %d plus newly charged putter allowance %d (%d units)", got.steps, old.steps, allowance, got.extraUnits)
+	}
+	return nil
 }
 
 // A trace boundary keeps the entire committed prefix, not only the next
@@ -41,6 +119,14 @@ type soleRun struct {
 func soleBoundary(r *revisionOrder, phase string, op int) soleNode {
 	x := eventTraceStep(r, "sole-boundary", op)
 	x.phase = phase
+	// Empty restored backing slices and never-allocated slices are the
+	// same prefix, not different applications.
+	if len(x.events) == 0 {
+		x.events = nil
+	}
+	if len(x.placed) == 0 {
+		x.placed = nil
+	}
 	for i, f := range x.firsts {
 		if f.at < 0 || f.at >= len(r.w.states) || f.id != r.w.states[f.at].id {
 			x.firsts[i] = firstAnswer{}
@@ -62,15 +148,55 @@ func soleBoundary(r *revisionOrder, phase string, op int) soleNode {
 func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 	out := &soleRun{rejections: map[soleRejection]bool{}}
 	var r *revisionOrder
+	grants := soleReferenceGrants(h)
+	activeFit := -1
 	setup := func(o *options) {
 		o.testRevision = func(v *revisionOrder) {
 			r = v
 			r.testNoSoleGrant = old
-			r.testRejection = func(rev int64, err error) { out.rejections[soleRejection{rev, err.Error()}] = true }
-			r.testSoleGrant = func(_, _ int) {
-				out.hits++
-				if len(out.nodes) > 0 {
-					out.nodes[len(out.nodes)-1].hit = true
+			r.testRejection = func(rev int64, err error) {
+				out.rejections[soleRejection{rev, err.Error()}] = true
+				if trace {
+					n := soleBoundary(r, "dead", -1)
+					n.rejection = err.Error()
+					out.nodes = append(out.nodes, n)
+				}
+			}
+			r.testSoleGrant = func(_, _ int) { out.hits++ }
+			if !old || trace {
+				r.testCreate = func(s *state, k int, rev int64, skip int) func(bool) {
+					want, work := soleReferenceCreate(r, s, k, rev, skip, !old, grants)
+					_, oldWork := soleReferenceCreate(r, s, k, rev, skip, false, grants)
+					steps, left := r.w.steps, int64(r.budgetLeft)
+					return func(got bool) {
+						actual := (r.w.steps-steps)*workUnitsPerStep + left - int64(r.budgetLeft)
+						if r.w.stopped && r.w.maxSteps > 0 && r.w.steps > r.w.maxSteps {
+							actual -= workUnitsPerStep - ordinaryUnits
+						}
+						out.extraUnits += max(0, actual-oldWork)
+						if !r.w.stopped && (got != want || actual != work) {
+							out.oracleErr = fmt.Errorf("creator query key %s after %d, count %d: got %v/%d units, reference %v/%d", s.keys[k], s.rev, rev, got, actual, want, work)
+						}
+					}
+				}
+				r.testCountFailure = func(s *state, skip int, c count, sure, maybe int64) {
+					var before, after int64
+					for k := c.lo; k < c.hi; k++ {
+						was, _ := soleReferenceCreate(r, s, k, c.rev, skip, false, grants)
+						now, _ := soleReferenceCreate(r, s, k, c.rev, skip, !old, grants)
+						if s.kvs[k].Version != 0 || was {
+							before++
+						}
+						if s.kvs[k].Version != 0 || now {
+							after++
+						}
+					}
+					if after != maybe {
+						out.oracleErr = fmt.Errorf("decisive count %d rejected with maybe=%d but independent creators give %d", c.rev, maybe, after)
+					}
+					if !old && trace && activeFit >= 0 && sure <= c.n && after < c.n && before >= c.n {
+						out.nodes[activeFit].proof = &soleCountProof{c.rev, c.n, before, after}
+					}
 				}
 			}
 			if trace {
@@ -78,9 +204,16 @@ func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 					switch phase {
 					case "fit", "exhaust":
 						out.nodes = append(out.nodes, soleBoundary(r, phase, op))
+						if phase == "fit" {
+							activeFit = len(out.nodes) - 1
+						}
 					case "fit-accepted":
-						if len(out.nodes) > 0 {
-							out.nodes[len(out.nodes)-1].accepted = true
+						if activeFit >= 0 {
+							out.nodes[activeFit].accepted = true
+						}
+					case "apply":
+						if op >= 0 && h.Ops[op].Resp != nil {
+							out.nodes = append(out.nodes, soleBoundary(r, phase, op))
 						}
 					}
 				}
@@ -109,8 +242,17 @@ func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 // A stopped reference cannot establish either rejection membership or
 // subtree exhaustion. Callers must not treat a pair of timeouts as proof.
 func soleVerdictCheck(old, got *soleRun) error {
+	if old.oracleErr != nil {
+		return old.oracleErr
+	}
+	if got.oracleErr != nil {
+		return got.oracleErr
+	}
 	if old.timeout || got.timeout {
 		return errors.New("stopped oracle is inconclusive")
+	}
+	if err := soleStepCheck(old, got); err != nil {
+		return err
 	}
 	if (old.err == "pass") != (got.err == "pass") {
 		return fmt.Errorf("verdict differs: old %s new %s", old.err, got.err)
@@ -122,6 +264,9 @@ func soleVerdictCheck(old, got *soleRun) error {
 }
 
 func soleContinuation(root, next soleNode) bool {
+	if next.state.phase != "fit" && next.state.phase != "exhaust" && next.state.phase != "done" {
+		return false
+	}
 	f := root.state.frames
 	if next.state.phase == "done" && len(f) == 0 {
 		return true
@@ -151,12 +296,12 @@ func soleTraceCheck(old, got *soleRun) (int, error) {
 			return 0, fmt.Errorf("new trace has extra boundary %d", j)
 		}
 		a := old.nodes[i]
-		if !reflect.DeepEqual(a.state, n.state) || !reflect.DeepEqual(a.leases, n.leases) {
+		if !reflect.DeepEqual(a.state, n.state) || !reflect.DeepEqual(a.leases, n.leases) || a.rejection != n.rejection {
 			return 0, fmt.Errorf("retained boundary %d differs: old %s op %d rev %d, new %s op %d rev %d", j, a.state.phase, a.state.op, a.state.searchRev, n.state.phase, n.state.op, n.state.searchRev)
 		}
 		i++
 		if a.accepted != n.accepted {
-			if !a.accepted || n.accepted || !n.hit {
+			if !a.accepted || n.accepted || n.proof == nil || n.proof.oldMaybe < n.proof.need || n.proof.newMaybe >= n.proof.need {
 				return 0, errors.New("trace difference is not a sole-grant subtree rejection")
 			}
 			pruned++
@@ -254,6 +399,12 @@ func TestSoleGrantWholeSearchOracle(t *testing.T) {
 	}
 	if histories != 2048 {
 		t.Fatal(histories)
+	}
+	moreHits, morePrunes := soleReviewCorpus(t)
+	hits += moreHits
+	prunes += morePrunes
+	if hits == 0 || prunes == 0 {
+		t.Fatal("large oracle must see genuine pruning")
 	}
 	t.Logf("%d full verdicts/explanations and retained traces; %d capability hits, %d pruned subtrees", histories, hits, prunes)
 }
@@ -456,8 +607,8 @@ func TestSoleGrantPrunedBranchesAndCaps(t *testing.T) {
 		}
 		for cap := int64(1); cap <= old.steps+2; cap++ {
 			a, b := runSoleOracle(h, true, true, cap), runSoleOracle(h, false, true, cap)
-			if b.steps > a.steps {
-				t.Fatalf("cap %d: new %d > old %d", cap, b.steps, a.steps)
+			if err := soleStepCheck(a, b); err != nil {
+				t.Fatalf("cap %d: %v", cap, err)
 			}
 			if !a.timeout && !b.timeout {
 				compareSoleTrace(t, a, b)
@@ -493,7 +644,17 @@ func TestSoleGrantTraceRejectsMissingRetainedWork(t *testing.T) {
 	}
 	bad := *got
 	bad.nodes = slices.Clone(got.nodes)
-	bad.nodes[0].hit = false
+	marked := false
+	for i := range bad.nodes {
+		if bad.nodes[i].proof != nil {
+			bad.nodes[i].proof = nil
+			marked = true
+			break
+		}
+	}
+	if !marked {
+		t.Fatal("test needs a decisive count proof")
+	}
 	if _, err := soleTraceCheck(old, &bad); err == nil {
 		t.Fatal("trace accepted an unmarked subtree omission")
 	}
@@ -575,7 +736,12 @@ func TestSoleGrantLeasedOracle(t *testing.T) {
 		compareSoleTrace(t, old, got)
 		hits += got.hits
 	}
-	t.Logf("256 lease histories, %d capability hits", hits)
+	moreHits, prunes := soleReviewCorpus(t)
+	hits += moreHits
+	if hits == 0 || prunes == 0 {
+		t.Fatal("leased-history oracle must see genuine pruning")
+	}
+	t.Logf("256 lease histories plus 64 lease families, %d capability hits, %d pruned subtrees", hits, prunes)
 }
 
 func TestSoleGrantNestedExpiry(t *testing.T) {

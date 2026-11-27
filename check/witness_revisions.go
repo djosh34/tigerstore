@@ -205,6 +205,10 @@ type revisionOrder struct {
 	testNoSoleGrant bool
 	testSoleGrant   func(put, grant int)
 	testRejection   func(rev int64, err error)
+	// Test-only, nil in production: observe completed creator queries and
+	// the decisive failed count before its borrowed trial state is undone.
+	testCreate       func(s *state, k int, rev int64, skip int) func(possible bool)
+	testCountFailure func(s *state, skip int, c count, sure, maybe int64)
 	// The certificate oracle replays an isolated witness with independent
 	// pre-certificate enumeration, never the fused candidate slice.
 	testCandidates         func(int64) []int
@@ -740,6 +744,9 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 				}
 			}
 			if sure > c.n || maybe < c.n {
+				if r.testCountFailure != nil && !r.w.stopped {
+					r.testCountFailure(s, skip, c, sure, maybe)
+				}
 				return false
 			}
 		}
@@ -752,7 +759,11 @@ func (r *revisionOrder) reachable(s *state, skip int) bool {
 // s's, or an ambiguous mutation other than skip not yet placed whose lower
 // bound is below rev and that may still write k (touches). Any revoke may
 // delete a key.
-func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) bool {
+func (r *revisionOrder) may(s *state, k int, rev int64, skip int, create bool) (possible bool) {
+	if create && r.testCreate != nil {
+		done := r.testCreate(s, k, rev, skip)
+		defer func() { done(possible) }()
+	}
 	now := s.rev
 	// Gap exhaustion is a rejection the unpruned search also makes.
 	// A mandatory writer has no such continuation: keep its old path
