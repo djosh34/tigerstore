@@ -406,7 +406,7 @@ func TestSoleGrantWholeSearchOracle(t *testing.T) {
 	if hits == 0 || prunes == 0 {
 		t.Fatal("large oracle must see genuine pruning")
 	}
-	t.Logf("%d full verdicts/explanations and retained traces; %d capability hits, %d pruned subtrees", histories, hits, prunes)
+	t.Logf("%d baseline histories plus 64 lease families: exact full verdicts/explanations and retained traces; %d capability hits, %d pruned subtrees", histories, hits, prunes)
 }
 
 func TestSoleGrantOracleRejectsTimeout(t *testing.T) {
