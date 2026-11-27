@@ -272,6 +272,10 @@ func txnChanges(t *history.TxnRequest, resp *history.TxnResponse) bool {
 }
 
 func describeRequest(r history.Request) string {
+	return describeRequestWithJSON(r, jsonOf)
+}
+
+func describeRequestWithJSON(r history.Request, jsonOf func(any) string) string {
 	switch {
 	case r.Range != nil:
 		return "range " + jsonOf(r.Range)

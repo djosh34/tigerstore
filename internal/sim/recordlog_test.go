@@ -10,6 +10,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -110,6 +112,111 @@ func TestRecordLog(t *testing.T) {
 	}
 	if &got[1].req.(*pb.TxnRequest).Success[2].GetRequestTxn().Success[0].GetRequestPut().Value[0] != &got[0].req.(*pb.PutRequest).Value[0] {
 		t.Error("two calls with the same value hold two copies of it")
+	}
+}
+
+// Each call gets a fresh proof wrapper and status error. Those equal
+// statuses must occupy one record-log entry, not one shared hash chain
+// whose insertions get quadratically more expensive (#900 review).
+func TestRecordLogUnsentDialErrorsShareEntry(t *testing.T) {
+	l, err := newRecordLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const refusals = 64
+	for i := range refusals {
+		err := &unsentDialError{status.Error(codes.Unavailable, refusedDialMessage)}
+		if err := l.add(&Record{Call: int64(i), Err: err, Ambiguous: ambiguous(err)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(l.errs) != 1 {
+		t.Fatalf("%d identical refused dials occupy %d error entries, want 1", refusals, len(l.errs))
+	}
+	for _, rec := range l.recs {
+		if rec.err != 0 {
+			t.Fatalf("identical refusal has error index %d, want 0", rec.err)
+		}
+	}
+	// A raw status has no transport proof; neither it nor another status
+	// may be merged with the proven-unsent refusals.
+	for _, err := range []error{
+		status.Error(codes.Unavailable, refusedDialMessage),
+		&unsentDialError{status.Error(codes.Unavailable, "another description")},
+		&unsentDialError{status.Error(codes.Internal, refusedDialMessage)},
+	} {
+		if err := l.add(&Record{Err: err, Ambiguous: ambiguous(err)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(l.errs) != 4 {
+		t.Fatalf("distinct errors occupy %d entries, want 4", len(l.errs))
+	}
+	recs, err := l.records()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range recs[:refusals] {
+		want := &unsentDialError{status.Error(codes.Unavailable, refusedDialMessage)}
+		if r.Ambiguous || ambiguous(r.Err) || !errors.Is(r.Err, want) || !errors.Is(want, r.Err) || r.Err.Error() != want.Error() {
+			t.Fatalf("refusal %d changed after decoding: %+v", i, r)
+		}
+	}
+	if !recs[refusals].Ambiguous || !ambiguous(recs[refusals].Err) {
+		t.Fatal("the raw status acquired an unsent proof during recording")
+	}
+}
+
+// Sticky ambiguity wrappers must also intern in constant space, retain
+// raw/status error formatting, and stay distinct from a first rejection.
+func TestRecordLogAmbiguousRetryErrorsShareEntry(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		newError func() error
+	}{
+		{"status", func() error { return status.Error(codes.Unavailable, "etcdserver: no leader") }},
+		{"raw", func() error { return errConnRefused }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l, err := newRecordLog()
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport := new(callTransport)
+			transport.prior.Store(true)
+			for range 64 {
+				err := transport.finish(tc.newError())
+				if err := l.add(&Record{Err: err, Ambiguous: ambiguous(err)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(l.errs) != 1 {
+				t.Fatalf("64 ambiguous retries occupy %d error entries, want 1", len(l.errs))
+			}
+			bare := tc.newError()
+			if err := l.add(&Record{Err: bare, Ambiguous: ambiguous(bare)}); err != nil {
+				t.Fatal(err)
+			}
+			if len(l.errs) != 2 {
+				t.Fatal("a first rejection was merged with an ambiguous retry")
+			}
+			recs, err := l.records()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range recs[:64] {
+				if !r.Ambiguous || !ambiguous(r.Err) || r.Err.Error() != bare.Error() || !errors.Is(r.Err, bare) {
+					t.Fatalf("ambiguous retry changed after decoding: %+v", r)
+				}
+				got, want := historyError(r.Err, true), historyError(bare, true)
+				if got.Code != want.Code || got.Message != want.Message {
+					t.Fatalf("recorded error %+v, want %+v", got, want)
+				}
+			}
+			if recs[64].Ambiguous || ambiguous(recs[64].Err) {
+				t.Fatal("a first rejection acquired an earlier possible effect")
+			}
+		})
 	}
 }
 

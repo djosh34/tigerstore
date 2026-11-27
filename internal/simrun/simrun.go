@@ -20,6 +20,13 @@ import (
 	"time"
 )
 
+// OrdinaryWallLimit is the real-time backstop for ordinary seeds and aged
+// images/forks. The witness's calibrated 360M budget takes at most 30
+// search minutes at the documented 200k steps/s contended sizing rate;
+// leave 15 minutes for simulation/other checks and 10 minutes of margin.
+// Long seeds select their separate policy. SIM_WALL remains an override.
+const OrdinaryWallLimit = 55 * time.Minute
+
 // A Run is one gosim run of a test.
 type Run struct {
 	// Test is the name of a top-level test of the package.

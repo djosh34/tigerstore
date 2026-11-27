@@ -130,6 +130,9 @@ type revisionOrder struct {
 	dueWork    *dueWork
 	workLeft   uint8
 	budgetLeft uint16
+	// diagnosticLeft carries paid-for JSON bytes across writes and across
+	// messages, so small explanations do not each round up to a whole step.
+	diagnosticLeft int
 	// counts are, per revision, how many keys of a range clients saw
 	// then, and countRevs those revisions in order. putRevs and delRevs
 	// are, per key, the revisions whose acked writer may create or delete
@@ -169,6 +172,11 @@ type revisionOrder struct {
 	// turn, candidate, application and restore. Both are nil in normal runs.
 	testDueQuery func(call, rev, from int64, yield func(optional) bool)
 	testTrace    func(phase string, op int)
+	// The certificate oracle replays an isolated witness with independent
+	// pre-certificate enumeration, never the fused candidate slice.
+	testCandidates         func(int64) []int
+	testNoEventCertificate bool
+	testCertificate        func(int64, eventCertificate, []int)
 }
 
 // progress says where the search is, for the report of a timeout. A
@@ -488,8 +496,11 @@ func (r *revisionOrder) index() error {
 			r.lives[key] = append(r.lives[key], l.lifeTo)
 		}
 	}
-	// An ambiguous op seen writing two revisions wrote neither for sure.
-	revOf := map[int]int64{}
+	// An ambiguous op seen writing multiple revisions holds none for sure.
+	// Count first, then remove only the current entry in a separate pass.
+	// Removing pairs during map traversal left an order-dependent survivor
+	// when three or more revisions named the same op.
+	revOf := map[int]int{}
 	for rev, i := range r.resolved {
 		if r.indexStep() {
 			return ErrWitnessTimeout
@@ -498,19 +509,21 @@ func (r *revisionOrder) index() error {
 			delete(r.resolved, rev)
 			continue
 		}
-		if other, ok := revOf[i]; ok {
-			delete(r.resolved, rev)
-			delete(r.resolved, other)
-			continue
-		}
-		revOf[i] = rev
+		revOf[i]++
 	}
 	for rev, i := range r.resolved {
 		if r.indexStep() {
 			return ErrWitnessTimeout
 		}
+		if revOf[i] > 1 {
+			delete(r.resolved, rev)
+			continue
+		}
 		r.reserved[i] = rev
 	}
+	// Each key's spans have deterministic input order and are merged
+	// independently. Map traversal changes neither the summed charge nor
+	// another key's result; a stopped index discards all partial results.
 	for k, ss := range r.covered {
 		if r.indexStep() {
 			return ErrWitnessTimeout
@@ -545,6 +558,11 @@ func (r *revisionOrder) indexCounts() {
 	h, s := r.w.h, r.w.live
 	add := func(rev int64, key, end string, n int64) {
 		lo, hi := s.span(key, end)
+		if len(r.counts[rev]) == 0 {
+			// Preserve history order: a charged adaptive sort must not
+			// receive the nondeterministic traversal order of a Go map.
+			r.countRevs = append(r.countRevs, rev)
+		}
 		r.counts[rev] = append(r.counts[rev], count{rev: rev, lo: lo, hi: hi, n: n})
 	}
 	n := len(s.keys)
@@ -631,11 +649,10 @@ func (r *revisionOrder) indexCounts() {
 		indexSort(r, revs, cmp.Compare[int64])
 	}
 	indexSort(r, r.revokeRevs, cmp.Compare[int64])
-	for rev := range r.counts {
+	for range r.countRevs {
 		if r.indexStep() {
 			return
 		}
-		r.countRevs = append(r.countRevs, rev)
 	}
 	indexSort(r, r.countRevs, cmp.Compare[int64])
 }
@@ -1716,6 +1733,7 @@ func (r *revisionOrder) search() (err error) {
 	defer func() { w.sorter.step = nil }()
 	w.sorter.step = r.step
 	w.live.stop = r.step
+	w.live.mutate = r.mutationStep
 	if r.step() {
 		return ErrWitnessTimeout
 	}
@@ -1803,7 +1821,7 @@ func (r *revisionOrder) write(rev int64) bool {
 			return false
 		}
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
-			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, outputOf(o), w.around(len(w.events))))
+			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, w.outputOf(o), w.around(len(w.events))))
 		}
 		return true
 	}
@@ -1826,8 +1844,27 @@ func (r *revisionOrder) write(rev int64) bool {
 	if n := len(r.stack); n > 0 && r.stack[n-1].rev == rev {
 		f = r.stack[n-1]
 	} else {
-		f = &frame{rev: rev, mark: r.save(), cands: r.candidates(rev)}
+		m := r.save()
+		cands, cert := r.candidates(rev)
+		// A stop during construction/sort leaves a partial list, not an
+		// exhausted search. In particular, do not format around() on stop.
+		if w.stopped {
+			return false
+		}
+		if cert.all {
+			if r.testCertificate != nil {
+				r.testCertificate(rev, cert, cands)
+			}
+			if r.testTrace != nil {
+				r.testTrace("certified", -1)
+			}
+			return r.exhausted(rev)
+		}
+		f = &frame{rev: rev, mark: m, cands: cands}
 		r.stack = append(r.stack, f)
+		if r.testTrace != nil {
+			r.testTrace("gap", -1)
+		}
 	}
 	for ; f.next < len(f.cands); f.next++ {
 		if r.step() {
@@ -1852,8 +1889,18 @@ func (r *revisionOrder) write(rev int64) bool {
 	if w.stopped {
 		return false
 	}
+	if r.testTrace != nil {
+		r.testTrace("exhaust", -1)
+	}
 	r.stack = r.stack[:len(r.stack)-1]
-	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, w.around(len(w.events))))
+	return r.exhausted(rev)
+}
+
+func (r *revisionOrder) exhausted(rev int64) bool {
+	if r.w.stopped {
+		return false
+	}
+	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, r.w.around(len(r.w.events))))
 }
 
 // candidates are the ops that may write gap rev: the acked revokes at it
@@ -1868,7 +1915,11 @@ func (r *revisionOrder) write(rev int64) bool {
 // found the delete that wrote it (seed 59113215 on #238). Call order is
 // only a preference: the search still tries other orders, and verifies
 // every response and real-time constraint before passing.
-func (r *revisionOrder) candidates(rev int64) []int {
+func (r *revisionOrder) candidates(rev int64) ([]int, eventCertificate) {
+	if r.testCandidates != nil {
+		return r.testCandidates(rev), eventCertificate{}
+	}
+	cert := r.newEventCertificate(rev)
 	h := r.w.h
 	out := slices.Clone(r.byRev(r.revokes, rev))
 	// A revoke writes a revision only if a key holds its lease (fits), and
@@ -1879,10 +1930,11 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	if !r.w.slow {
 		possible = slices.Clone(r.writing)
 		leases := map[int64]bool{}
-		for _, kv := range r.w.live.kvs {
+		for k, kv := range r.w.live.kvs {
 			if r.step() {
-				return nil
+				return nil, eventCertificate{}
 			}
+			cert.key(r, rev, k)
 			if kv.Version != 0 && kv.Lease != 0 && !leases[kv.Lease] {
 				leases[kv.Lease] = true
 				possible = append(possible, r.revokesOfLease[kv.Lease]...)
@@ -1892,7 +1944,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	var amb []int
 	for _, i := range possible {
 		if r.step() {
-			return nil
+			return nil, eventCertificate{}
 		}
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
@@ -1903,6 +1955,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 		}
 		if !r.used[i] && r.lb[i] < rev {
 			amb = append(amb, i)
+			cert.candidate(r, i)
 		}
 	}
 	revoke := func(i int) int {
@@ -1914,7 +1967,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	sortWithStep(amb, func(a, b int) int {
 		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(r.w.calls[a], r.w.calls[b]), cmp.Compare(a, b))
 	}, r.step)
-	return append(out, amb...)
+	return append(out, amb...), cert
 }
 
 // fitsGranted is fits, and if op i does not fit, it puts in first, for
@@ -1923,12 +1976,16 @@ func (r *revisionOrder) candidates(rev int64) []int {
 // fits. No answer need show such a lease in use, so its grant need not be
 // an optional mutation, and an ambiguous put that a client saw write could
 // not go in at all (#514). A grant changes no key and no revision; a
-// wrong one is undone with the candidate.
+// wrong one is undone with the candidate. Test traces record a successful
+// return before the caller's expire/apply: nested expiry may invalidate a fit.
 func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	if r.testTrace != nil {
 		r.testTrace("fit", i)
 	}
 	if r.fits(i, rev) {
+		if r.testTrace != nil {
+			r.testTrace("fit-accepted", i)
+		}
 		return true
 	}
 	grants := r.grantsFor(leasesOfWithStep(r.w.reqs[i], r.step), rev-1)
@@ -1938,6 +1995,9 @@ func (r *revisionOrder) fitsGranted(i int, rev int64) bool {
 	m := r.saveOrder()
 	r.grant(grants)
 	if r.fits(i, rev) {
+		if r.testTrace != nil {
+			r.testTrace("fit-accepted", i)
+		}
 		return true
 	}
 	r.restoreOrder(m)
@@ -2135,7 +2195,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 			return false
 		}
 		if o.err != nil || !w.gives(i, o) {
-			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
+			return r.dead(rev, fmt.Errorf("%s gets %s from the model in the order so far; the order around it: %s", w.describe(i), w.outputOf(o), w.around(len(w.events))))
 		}
 		r.use(i)
 		r.insertOptional(rev)
