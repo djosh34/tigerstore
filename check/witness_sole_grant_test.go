@@ -156,6 +156,9 @@ func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 		o.testRevision = func(v *revisionOrder) {
 			r = v
 			r.testNoSoleGrant = old
+			// Isolate #905, including its exact 13/14-step reviewer pin.
+			// #914's separate oracle compares survival on/off on this corpus.
+			r.testNoSurvival = true
 			r.testRejection = func(rev int64, err error) {
 				out.rejections[soleRejection{rev, err.Error()}] = true
 				if trace {

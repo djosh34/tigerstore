@@ -6,6 +6,7 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func survivalReference(h *history.History) map[string]int64 {
 		}
 		top = max(top, op.Resp.Revision)
 		at := op.Resp.Revision
-		key, end := "", ""
+		var key, end string
 		var n int64
 		switch {
 		case op.Req.Range != nil && !op.Req.Range.Serializable:
@@ -208,6 +209,7 @@ func runSurvival(h *history.History, off, trace bool, budget int64) *survivalRun
 	out.extraUnits = ((out.items + 255) / 256) * workUnitsPerStep
 	return out
 }
+
 func survivalCheck(old, got *survivalRun) (int, error) {
 	if err := soleVerdictCheck(old.soleRun, got.soleRun); err != nil {
 		return 0, err
@@ -259,11 +261,12 @@ func survivalAstra(sibling bool, n int, leased bool) *history.History {
 		h.Ops = append(h.Ops, history.Op{Client: 1, Call: 1, Return: 2, Req: history.Request{Delete: &history.DeleteRequest{Key: "a"}}, Err: errUnavailable})
 	}
 	for j := range 65 {
-		h.Ops = append(h.Ops, history.Op{Client: 2, Call: 10 + int64(j)*2, Return: 11 + int64(j)*2, Req: history.Request{Put: &history.PutRequest{Key: "z", Value: fmt.Sprint(j)}}, Resp: &history.Response{Revision: 4 + int64(j), Put: &history.PutResponse{}}})
+		h.Ops = append(h.Ops, history.Op{Client: 2, Call: 10 + int64(j)*2, Return: 11 + int64(j)*2, Req: history.Request{Put: &history.PutRequest{Key: "z", Value: strconv.Itoa(j)}}, Resp: &history.Response{Revision: 4 + int64(j), Put: &history.PutResponse{}}})
 	}
 	h.Ops = append(h.Ops, history.Op{Client: 3, Call: 150, Return: 151, Req: history.Request{Delete: &history.DeleteRequest{Key: "b", End: "c"}}, Resp: &history.Response{Revision: 69, Delete: &history.DeleteResponse{Deleted: int64(n)}}})
 	return h
 }
+
 func TestSurvivalAstraAndSibling(t *testing.T) {
 	for _, valid := range []bool{false, true} {
 		h := survivalAstra(valid, 1, false)
@@ -287,6 +290,7 @@ func TestSurvivalAstraAndSibling(t *testing.T) {
 		t.Logf("sibling=%v: old %d new %d, construction %d items / <=%d steps, hits %d prunes %d", valid, old.steps, got.steps, got.items, (got.items+255)/256, got.hits, n)
 	}
 }
+
 func TestSurvivalImageFamilies(t *testing.T) {
 	hits, prunes := 0, 0
 	for seed := range 64 {
@@ -310,6 +314,7 @@ func TestSurvivalImageFamilies(t *testing.T) {
 	}
 	t.Logf("64 Start families: hits %d, actual prunes %d", hits, prunes)
 }
+
 func TestSurvivalOracleRejectsMutations(t *testing.T) {
 	h := survivalAstra(false, 1, false)
 	old, got := runSurvival(h, true, true, 100000), runSurvival(h, false, true, 100000)
@@ -349,6 +354,7 @@ func TestSurvivalOracleRejectsMutations(t *testing.T) {
 		t.Fatal("changed retained trace accepted")
 	}
 }
+
 func TestSurvivalCapSweeps(t *testing.T) {
 	h := survivalAstra(true, 1, false)
 	full := runSurvival(h, false, false, 100000)

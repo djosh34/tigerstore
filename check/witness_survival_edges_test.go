@@ -20,9 +20,11 @@ func survivalIndex(h *history.History) *revisionOrder {
 	r.indexSurvival()
 	return r
 }
+
 func survivalRead(key, end string, at, header, n int64) history.Op {
 	return history.Op{Client: 0, Call: 1, Return: 2, Req: history.Request{Range: &history.RangeRequest{Key: key, End: end, Revision: at, CountOnly: true}}, Resp: &history.Response{Revision: header, Range: &history.RangeResponse{Count: n}}}
 }
+
 func TestSurvivalRawDeadlinesAndBoundaries(t *testing.T) {
 	for _, n := range []int{1, 128, 129} {
 		h := survivalAstra(false, n, false)
@@ -51,7 +53,12 @@ func TestSurvivalRawDeadlinesAndBoundaries(t *testing.T) {
 	if len(r.survives) != 0 {
 		t.Fatal("serializable count became evidence")
 	}
+	h.Ops = []history.Op{survivalRead("b", "c", 5, 68, 2)}
+	if len(survivalIndex(h).survives) != 0 {
+		t.Fatal("an impossible oversized count identified survivors")
+	}
 }
+
 func TestSurvivalLogIndependence(t *testing.T) {
 	h := survivalAstra(true, 1, false)
 	base := survivalIndex(h)
@@ -71,6 +78,7 @@ func TestSurvivalLogIndependence(t *testing.T) {
 		t.Fatal("log-free rule lost its valid sibling")
 	}
 }
+
 func TestSurvivalTxnFailurePutsAndPartial(t *testing.T) {
 	h := survivalAstra(false, 2, false)
 	h.Ops[len(h.Ops)-1].Resp.Delete.Deleted = 1
@@ -87,6 +95,7 @@ func TestSurvivalTxnFailurePutsAndPartial(t *testing.T) {
 		t.Fatal("raw request rebuild differs")
 	}
 }
+
 func TestSurvivalCutoffAndDuplicate(t *testing.T) {
 	h := &history.History{Start: &history.Start{Rev: 2}}
 	// Deliberately reverse observation revisions: cutoff must use countRevs,
@@ -108,6 +117,7 @@ func TestSurvivalCutoffAndDuplicate(t *testing.T) {
 		t.Fatal("countRevs no longer sorted")
 	}
 }
+
 func TestSurvivalOnlyPlainUnresolvedDeletes(t *testing.T) {
 	h := survivalAstra(false, 1, true)
 	w := newWitness(h, time.Now().Add(time.Minute))
@@ -153,6 +163,7 @@ func TestSurvivalOnlyPlainUnresolvedDeletes(t *testing.T) {
 		t.Fatal("deadline extended to at+1")
 	}
 }
+
 func TestSurvivalNestedExpiry(t *testing.T) {
 	h := review898NestedLeaseHistory()
 	h.Start.KVs = []history.KeyValue{{Key: "protected", CreateRevision: 2, ModRevision: 2, Version: 1}}
@@ -175,6 +186,7 @@ func TestSurvivalNestedExpiry(t *testing.T) {
 		t.Fatal("nested expiry / active survival index not exercised")
 	}
 }
+
 func TestSurvivalNoImageWorkAndConstructionStop(t *testing.T) {
 	for _, st := range []*history.Start{nil, {}, {Rev: 2, Leases: []int64{9}}} {
 		h := &history.History{Start: st}
