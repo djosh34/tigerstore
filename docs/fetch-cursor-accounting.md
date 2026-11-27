@@ -2,6 +2,18 @@
 
 Part of #833. Production range/watch cursor routing is enabled for validation. The settled #904/#908/#912 main-parity boundaries are implemented; qualifying Actions measurements and broad active-routing validation remain outstanding. This document records demonstrated gates, not a completed performance campaign.
 
+## Resident option A
+
+Resident one-shot range/watch output now shares main's selector and serializer without a source cursor. Selection does not load/evict into the slab and finishes before any small response is emitted; a cold value discards the provisional selection and hands the whole reply to the cursor at the same revision. Output loans and protected output still require complete P backing.
+
+Large resident output also uses main's serializer, but each viewport is reserved from P **before allocation**, bounded by the current windows/share and funded socket guard. An allocation-time remaining-credit invariant is checked before every stage control/root/page allocation, independently of connection admission. A closed-window reader does not retain a whole-value copy. Logical owners keep funded metadata, not receive-buffer pointers; private fill/worker ownership still pins its backing until ACK.
+
+A value turning cold after DATA publication continues the same message at the same held revision and exact byte offset. Only that actual cold handoff constructs a source cursor; a scalar CRC seed covers the already-published value prefix. Live watch values are borrowed from main's apply events only within the non-yielding flush and are never retained across its return.
+
+`TestDirectPieceAllocationRequiresAlreadyHeldPCredit`, `TestDirectResidentLargePiecesStayWithinPAndB` and `TestDirectResidentSlowReadersCannotStarveFastReader` cover pre-allocation credit and the unchanged real input-admission ceilings (5/9/13 at 83/137/191 MiB). The next connection stays queued by `loop.input`/`serveWaiting`; that limit remains #741, with no stream-table/admission change. A fast reader among each admitted cohort completes while the others keep zero windows. The B assertion is the existing worst-node/store allocation ledger, not a process-RSS measurement. Range and watch previous-value cold-mid-message tests compare complete decoded wire output against the original all-resident response. These tests supply #919's reservation/fairness evidence; full final-head campaign/deadline qualification is separate.
+
+The resident routing, not P-piece funding, explains the new short trace pin. See [the independent reversions and first-event proof](fetch-cursor-resident-pin.md); all semantic checks remain enabled. No new #904/#908/#912 exemption is introduced.
+
 ## Allocation inventory
 
 | Owner | Charged storage and lifetime |
@@ -109,7 +121,7 @@ when the selected record is already live in the slab (or the key is absent),
 with no active fetch/materialization/protected-P context or output loan. Cold or genuinely
 historical values still use the cursor path. There is no new persistent cache,
 index, representation, or budget exemption. Any output loan or protected
-output still follows the original cursor/P-funding path, and all
+output still follows complete P funding (without a source cursor when resident), and all
 whole-or-refuse limits remain unchanged. The regression
 is red with the shortcut disabled and green with it enabled; byte-for-byte
 main parity covers filters/count/projection/revisions/missing keys, with a P
@@ -124,7 +136,7 @@ After merging main's #907 fix normally, targeted race validation passes (8.276 s
 
 The offline `scripts/fetch-measure-gate.py` checks named/reuse evidence and thresholds (15 synthetic tests), but explicitly does **not** certify the separate original-workload gate. Initial original-workload tooling now lives in `scripts/fetch-original-measure.py` and `bench/fetch-measure/`: portable matched overlays preserve all original value/share/deadline/fetch assertions, collect every RPC's end-to-end duration and busy retries, blocking/NOWAIT calls/bytes and kernel physical-read bytes, and archive source patches/raw logs. `bench.yml` has opt-in `fetch_measure` and `fetch_pr897` dispatch paths with race and 0/5-ms durable-WAL-batch modes. Both now use the same ruling-A decision: five AB/BA pairs, each throughput ratio >=0.98 and each p95 delta within the predeclared baseline-only noise. The unchanged `3000 if race else 1000` figures are information for #913, never stops/failures; both main and candidate values are retained per pair and report. There is no extra-five rule or absolute-target stop. The adapter/gate suite has 51 synthetic tests, including orchestration with fake binaries proving all five pairs finish above both figures while real gate/correctness/qualification failures still stop. The original overlays have compiled and executed on Actions for both refs; the historical outcome below predates this added ruling. The complete named/Kubernetes/reuse instrumentation and adapter remain unfinished.
 
-**Approved pin update:** the manager's option-A ruling permits re-pinning the deliberate production-routing change. `TestLeaseFreeForkTrace` now pins `cee1eb73ec6ac127 / df529d402093fa52`; its comment names hot-watch staging/socket flush batching at 1,847 ms of aging on node 2 and links the [three-tree findings](https://github.com/djosh34/tigerstore/pull/897#issuecomment-7222981838). The scoped gosim run passes aging (10,480 witness steps), fork0 (15,348 steps), all five existing semantic checkers, and the new pin. Nothing else is weakened. All four v2.14.0 lint configurations report zero issues.
+**Historical first approved pin update (superseded by resident option A above):** the manager's option-A ruling permits re-pinning the deliberate production-routing change. `TestLeaseFreeForkTrace` now pins `cee1eb73ec6ac127 / df529d402093fa52`; its comment names hot-watch staging/socket flush batching at 1,847 ms of aging on node 2 and links the [three-tree findings](https://github.com/djosh34/tigerstore/pull/897#issuecomment-7222981838). The scoped gosim run passes aging (10,480 witness steps), fork0 (15,348 steps), all five existing semantic checkers, and the new pin. Nothing else is weakened. All four v2.14.0 lint configurations report zero issues.
 
 **Historical absolute diagnostic, no longer the #897 gate after option A:** [original non-race campaign 46034356851](https://github.com/djosh34/tigerstore/actions/runs/46034356851), immutable main `55b32bb9` versus candidate `c084b588`, stopped on its first AB pair. Both used 96 MiB, the original 8,000-key/80-range data and assertions, fadvise preparation, and the same supported refused-NOWAIT condition. Main: wall 1,684.728781 ms; p95 1,669.033559 ms; max 1,682.944488 ms; 95 total busy retries, maximum 3/range. Candidate: wall 1,714.413694 ms; p95 1,685.987438 ms; max 1,711.896241 ms; zero retries. The candidate misses the 1,000-ms non-race design figure, used as a gate at that time. The historical adapter emitted `RULING`; no deadline was relaxed and no five-pair median or throughput-regression verdict is claimed. The single-pair throughput ratio is 0.9826850934, not a paired-median result. Both sides pass all value/fetch/share assertions; raw 80-RPC samples and SHA-checked logs remain in the Actions artifact.
 

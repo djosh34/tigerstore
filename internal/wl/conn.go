@@ -568,7 +568,11 @@ func (w *msgW) newFrame() bool {
 
 func (w *msgW) write(p []byte) {
 	if w.stage != nil {
-		w.stage.append(p)
+		if w.stage.flags&stageViewport != 0 {
+			w.stage.appendViewport(p)
+		} else {
+			w.stage.append(p)
+		}
 		w.left -= len(p)
 		return
 	}

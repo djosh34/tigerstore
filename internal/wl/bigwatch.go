@@ -56,15 +56,18 @@ type bigWatch struct {
 	held, heldPrev bool
 	msgLeft        int // bytes of that message still to build, its prefix included
 	// buf is what it built and has not sent yet, from pos.
-	buf       []byte
-	pos       int
-	fetching  bool // it waits for values read off the loop
-	canceled  bool // its watch went: it ends the message under way
-	counted   int
-	stage     *replyStage
-	waitP     bool
-	pieceLeft int
-	resume    fillResume
+	buf                                []byte
+	pos                                int
+	fetching                           bool // it waits for values read off the loop
+	canceled                           bool // its watch went: it ends the message under way
+	counted                            int
+	stage                              *replyStage
+	waitP                              bool
+	pieceLeft                          int
+	resume                             fillResume
+	directHead, directBody, directMeta int
+	liveEvents                         []event // borrowed only during flushEvents, never across a turn
+	liveFirst                          int32
 }
 
 // bigEv is one event of a bigWatch: its change and its Event's size.
@@ -157,7 +160,6 @@ func (n *node) eachUnmutatedRevEvent(st *store, x *watcher, j, from int, f func(
 // compacted or past maxSendMsg.
 func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) bool {
 	st := n.st
-	b := &bigWatch{h: mkHandleRaw(x.sock, x.gen, x.sid), c: c, wi: i, inc: x.inc, id: x.id, x: *x, st: st, rev: st.changes[j].rev, hdrRev: st.rev, hdrTerm: n.term}
 	if !x.fragment {
 		size, err := n.revSize(x, j)
 		switch {
@@ -178,6 +180,15 @@ func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) b
 		n.w.remove(i)
 		return false
 	}
+	meta := 0
+	if n.cursorFetch {
+		meta = n.takeDirectOwner(c, 0)
+		if meta == 0 {
+			n.roomShort = true
+			return true
+		}
+	}
+	b := &bigWatch{h: mkHandleRaw(x.sock, x.gen, x.sid), c: c, wi: i, inc: x.inc, id: x.id, x: *x, st: st, rev: st.changes[j].rev, hdrRev: st.rev, hdrTerm: n.term, directMeta: meta}
 	// The states at the revision and before it, which its events show,
 	// stay while it is sent.
 	if !n.cursorFetch {
@@ -244,7 +255,7 @@ func (n *node) bigWatchReady() bool {
 		if b.st != n.st || n.watcherOf(b) == nil {
 			return true
 		}
-		if n.cursorFetch && !b.started && (c.flow.conn <= 0 || c.streamWin(s) <= 0) {
+		if n.cursorFetch && (c.flow.conn <= 0 || c.streamWin(s) <= 0 || rawSocketRoom(c) <= 0) {
 			continue
 		}
 		if b.stage != nil && rawSocketRoom(c) <= 0 {
@@ -306,6 +317,9 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 		if room <= 0 {
 			return true
 		}
+		if n.cursorFetch && (c.flow.conn <= 0 || c.streamWin(s) <= 0 || rawSocketRoom(c) <= 0) {
+			return true
+		}
 		if b.pos < len(b.buf) {
 			m := min(int64(len(b.buf)-b.pos), c.flow.conn, c.streamWin(s), room)
 			if m <= 0 {
@@ -325,6 +339,12 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 			continue
 		}
 		if b.stage != nil {
+			if !b.started {
+				if !n.startWatchData(b, c, s) {
+					return false
+				}
+				b.started = true
+			}
 			if !n.drainRawStage(c, s, b.stage, true) {
 				return true
 			}
@@ -444,16 +464,22 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 	n.gs.calls[s.kind].sent++
 	n.gs.sentBytes += int64(size)
 	b.msgLeft = 5 + size
-	w := msgW{c: c, held: b.buf[:0], left: b.msgLeft}
-	var p [5]byte
-	binary.BigEndian.PutUint32(p[1:], uint32(size))
-	w.write(p[:])
-	n.writeHdrTerm(&w, b.hdrRev, b.hdrTerm)
-	writeVarintNZ(&w, 2, uint64(b.id))
-	if b.frag {
-		w.varintField(7, 1)
+	if n.cursorFetch {
+		b.directBody = size
+		b.directHead = 5 + hdr + 2*int(b2i(b.frag))
+		b.pos = 0
+	} else {
+		w := msgW{c: c, held: b.buf[:0], left: b.msgLeft}
+		var p [5]byte
+		binary.BigEndian.PutUint32(p[1:], uint32(size))
+		w.write(p[:])
+		n.writeHdrTerm(&w, b.hdrRev, b.hdrTerm)
+		writeVarintNZ(&w, 2, uint64(b.id))
+		if b.frag {
+			w.varintField(7, 1)
+		}
+		b.buf, b.pos, b.msgLeft = w.held, 0, w.left
 	}
-	b.buf, b.pos, b.msgLeft = w.held, 0, w.left
 	b.recount()
 	return true
 }
@@ -463,7 +489,7 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 // ended b.
 func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 	if n.cursorFetch {
-		return n.startRawWatch(b)
+		return n.buildDirectWatch(b, c, s)
 	}
 	st := b.st
 	j := revStart(st, b.rev)
@@ -565,6 +591,8 @@ func (n *node) endBigWatch(b *bigWatch) {
 	b.c.growOut(-b.counted)
 	b.counted = 0
 	b.buf = nil
+	n.freeDirectOwner(b.c, b.directMeta)
+	b.directMeta = 0
 }
 
 // mayPassRoom reports whether watcher x's events of the revision whose

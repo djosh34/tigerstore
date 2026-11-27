@@ -55,6 +55,9 @@ type replyStage struct {
 	loans           uint32
 	flags           uint32
 	responsePending bool
+	// A direct serializer viewport: skip already-published wire bytes.
+	// Payload is still exclusively in the pre-reserved pages above.
+	skip int
 }
 
 const (
@@ -63,6 +66,7 @@ const (
 	stageCommitted
 	stageBroken
 	stageStreaming
+	stageViewport
 )
 
 func stageCapacity(n int) int64 {
@@ -77,11 +81,28 @@ func stageCapacity(n int) int64 {
 	return int64(pages+roots) * stageUnit
 }
 
+// claimStageAllocation is checked at EACH allocation, not just when a
+// connection is admitted. Its local remaining token is minted only AFTER P
+// credit is taken, and cannot fund two allocations. This remains mandatory
+// if connection/stream admission is widened independently in the future.
+func claimStageAllocation(b *stageCredit, charge, other int64, remaining *int64) bool {
+	if b == nil || charge < stageUnit || b.used < charge || b.used > b.limit || other < 0 || other > b.limit-b.used || remaining == nil || *remaining < stageUnit || *remaining > charge {
+		return false
+	}
+	*remaining -= stageUnit
+	return true
+}
+
 // newReplyStage reserves every allocation before creating any payload.
 // A failed admission neither changes the ledger nor allocates a stage.
 func newReplyStage(b *stageCredit, n int, other int64) *replyStage {
 	charge := stageCapacity(n)
 	if charge < 0 || !b.take(charge, other) {
+		return nil
+	}
+	remaining := charge
+	if !claimStageAllocation(b, charge, other, &remaining) {
+		b.give(charge)
 		return nil
 	}
 	s := &replyStage{credit: b, size: n, charged: charge}
@@ -92,10 +113,22 @@ func newReplyStage(b *stageCredit, n int, other int64) *replyStage {
 	}
 	for i := range pages {
 		if i > 0 && i%stageSlots == 0 {
+			if !claimStageAllocation(b, charge, other, &remaining) {
+				s.discard()
+				return nil
+			}
 			r.next = &stageRoot{}
 			r = r.next
 		}
+		if !claimStageAllocation(b, charge, other, &remaining) {
+			s.discard()
+			return nil
+		}
 		r.pages[i%stageSlots] = &stagePage{}
+	}
+	if remaining != 0 {
+		s.discard()
+		return nil
 	}
 	return s
 }

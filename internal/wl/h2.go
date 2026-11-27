@@ -448,7 +448,7 @@ func (c *client) takeBufs() {
 // idle reports whether the client holds nothing it read, nothing to send
 // and no request in part, so that its buffers may go back.
 func (c *client) idle() bool {
-	return c.stages == 0 && c.fillOwners == 0 && c.ir == c.iw && c.pr == c.pw && len(c.out) == c.ow && c.rec < 0 &&
+	return c.stages == 0 && !c.hasPrivateFill() && c.ir == c.iw && c.pr == c.pw && len(c.out) == c.ow && c.rec < 0 &&
 		len(c.flow.held) == 0 && c.partial == 0 && !c.paused && c.tokenWait == 0
 }
 

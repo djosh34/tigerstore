@@ -206,7 +206,7 @@ func (n *node) retryReads(now int64) {
 // is. One that needs values the loop would wait on the disk for waits for
 // them to be read off the loop, and is served again then (fetch.go).
 func (n *node) serveRange(c *client, s *stream, r *rangeReq, msg []byte) {
-	if n.cursorFetch && n.tryResidentPoint(c, s, r) {
+	if n.cursorFetch && (n.tryResidentPoint(c, s, r) || n.tryResidentRange(c, s, r, msg, n.st.residentAt)) {
 		return
 	}
 	n.serveRangeSlow(c, s, r, msg)
@@ -525,6 +525,12 @@ func (n *node) rangeChunk(c *client, s *stream, kvs [][]byte, last, more bool, c
 // unfiltered. Past most bytes of records read, 0 for no bound, it stops
 // with errBig: the reply is sent in pieces (bigrange.go).
 func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64, bool, error) {
+	return n.selectRangeKVs(r, kvs, most, n.st.at)
+}
+
+// A selector takes its value accessor from the same store/view it walks.
+// The resident accessor never loads/evicts a record or advances fetch state.
+func (n *node) selectRangeKVs(r *rangeReq, kvs [][]byte, most int64, at func(uint32, int64) ([]byte, error)) ([][]byte, int64, bool, error) {
 	st := n.st
 	k0 := len(kvs)
 	a0 := len(st.away)
@@ -533,7 +539,7 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 	noValue := r.keysOnly && r.sortTarget != sortByValue
 	if len(r.end) == 0 {
 		id, ok := st.find(r.key)
-		return n.keyRangeKVs(r, kvs, id, ok)
+		return n.selectKeyRangeKVs(r, kvs, id, ok, at)
 	}
 	end := r.end
 	if len(end) == 1 && end[0] == 0 {
@@ -565,7 +571,10 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 			rec = st.keyAt(id, rev)
 		} else {
 			a := st.awayBytes
-			rec, err = st.at(id, rev)
+			rec, err = at(id, rev)
+			if errors.Is(err, errResidentCold) {
+				return false
+			}
 			if errors.Is(err, errAway) {
 				// The scan goes on, so that one fetch reads every value the
 				// range lacks, up to most. Only a live state has a value to
@@ -615,6 +624,10 @@ func (n *node) rangeKVs(r *rangeReq, kvs [][]byte, most int64) ([][]byte, int64,
 // resident point fast path. In particular count, revision filters, projection
 // and sorting still follow shapeKVs; no alternate temporary representation.
 func (n *node) keyRangeKVs(r *rangeReq, kvs [][]byte, id uint32, found bool) ([][]byte, int64, bool, error) {
+	return n.selectKeyRangeKVs(r, kvs, id, found, n.st.at)
+}
+
+func (n *node) selectKeyRangeKVs(r *rangeReq, kvs [][]byte, id uint32, found bool, at func(uint32, int64) ([]byte, error)) ([][]byte, int64, bool, error) {
 	if !found {
 		return kvs, 0, false, nil
 	}
@@ -628,7 +641,7 @@ func (n *node) keyRangeKVs(r *rangeReq, kvs [][]byte, id uint32, found bool) ([]
 		}
 		return kvs, 0, false, nil
 	}
-	rec, err := st.at(id, rev)
+	rec, err := at(id, rev)
 	if err != nil || rec == nil {
 		return kvs, 0, false, err
 	}

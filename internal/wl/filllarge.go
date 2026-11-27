@@ -27,6 +27,14 @@ func (n *node) updateFillCredits() {
 }
 
 func (n *node) newRawFill(c *client, h handle, st *store, left int) *replyFill {
+	_, s := n.clientOf(h)
+	if s == nil {
+		return nil
+	}
+	left = min(left, n.directCapacity(c, s, s.kind == kWatch))
+	if left <= 0 {
+		return nil
+	}
 	n.stageCredits.limit = n.sizes.clientPool
 	wake := n.fillCreditWake
 	if !n.stageCredits.take(stageUnit, n.stageOther(0)) {
@@ -92,8 +100,20 @@ func (n *node) startRawRange(b *bigRange) bool {
 	q.selected = int64(len(b.piece))
 	q.req = b.req
 	q.view = b.rev
-	q.record, q.taken = b.resume.record, b.resume.taken
-	q.outer, q.outerPos, q.outerSize = b.resume.outer, b.resume.outerPos, b.resume.outerSize
+	if b.resume.taken < 0 {
+		full := 0
+		for _, id := range b.piece {
+			ks, _ := b.st.stateAt(id, b.rev)
+			full += sizeBytesField(2, b.recSize(id, &ks))
+		}
+		if err := n.seekColdFill(q, full-b.pieceLeft, b.resume.record.crc); err != nil {
+			q.cancelled = true
+			n.failRawFill(q)
+		}
+	} else {
+		q.record, q.taken = b.resume.record, b.resume.taken
+		q.outer, q.outerPos, q.outerSize = b.resume.outer, b.resume.outerPos, b.resume.outerSize
+	}
 	b.fetching = true
 	b.waitP = false
 	return true
@@ -128,8 +148,23 @@ func (n *node) startRawWatch(b *bigWatch) bool {
 	w := b.resume.watch
 	q.watch = &w
 	q.bigWatch = b
-	q.record, q.taken = b.resume.record, b.resume.taken
-	q.outer, q.outerPos, q.outerSize = b.resume.outer, b.resume.outerPos, b.resume.outerSize
+	if b.resume.taken < 0 {
+		full := 0
+		_ = n.eachRevEvent(b.st, &b.x, revStart(b.st, b.rev), b.next, func(off int, ev bigEv) bool {
+			if off >= b.resume.watch.stopOffset {
+				return false
+			}
+			full += sizeBytesField(11, ev.size)
+			return true
+		})
+		if err := n.seekColdFill(q, full-b.pieceLeft, b.resume.record.crc); err != nil {
+			q.cancelled = true
+			n.failRawFill(q)
+		}
+	} else {
+		q.record, q.taken = b.resume.record, b.resume.taken
+		q.outer, q.outerPos, q.outerSize = b.resume.outer, b.resume.outerPos, b.resume.outerSize
+	}
 	b.fetching = true
 	b.waitP = false
 	return true
@@ -148,7 +183,7 @@ func (n *node) publishRawFill(q *replyFill) bool {
 	q.stage = nil
 	resume := fillResume{record: q.record, taken: q.taken, outer: q.outer, outerPos: q.outerPos, outerSize: q.outerSize}
 	if b := q.bigRange; b != nil {
-		completed := q.taken - b.resume.taken
+		completed := q.taken - max(0, b.resume.taken)
 		b.msgRecs -= completed
 		b.taken += completed
 		if b.sorts {

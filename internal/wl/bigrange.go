@@ -44,11 +44,15 @@ type bigRange struct {
 	msg []byte // its request, which req's slices point into
 	req rangeReq
 	// planned: its records are counted and sized, and rev is held.
-	planned bool
-	stream  bool  // a RangeStream: each chunk is a message
-	sorts   bool  // sorted other than by key ascending
-	rev     int64 // the revision it reads
-	hdrRev  int64 // the revision its header names
+	planned    bool
+	stream     bool  // a RangeStream: each chunk is a message
+	sorts      bool  // sorted other than by key ascending
+	rev        int64 // the revision it reads
+	hdrRev     int64 // the revision its header names
+	hdrTerm    uint64
+	directHead int // unbuilt opening bytes, all pre-funded direct pieces
+	directBody int
+	directMeta int
 	// What it sends, n records in all: those after the key last sent
 	// (after, once begun), in the tree's order, or sorted, from next on.
 	after  []byte
@@ -92,8 +96,17 @@ type sortedKey struct {
 
 // startBig sends the reply of range msg of stream s in pieces.
 func (n *node) startBig(c *client, s *stream, msg []byte) {
-	b := &bigRange{h: mkHandle(c, s.id), c: c, st: n.st, msg: bytes.Clone(msg), stream: s.kind == kRangeStream}
+	meta := 0
+	if n.cursorFetch {
+		meta = n.takeDirectOwner(c, len(msg))
+		if meta == 0 {
+			n.waitFillRoom(c, s, msg, 0, 0)
+			return
+		}
+	}
+	b := &bigRange{h: mkHandle(c, s.id), c: c, st: n.st, msg: bytes.Clone(msg), stream: s.kind == kRangeStream, directMeta: meta}
 	if err := parseRange(b.msg, &b.req); err != nil {
+		n.freeDirectOwner(c, meta)
 		n.replyError(c, s.id, codeInvalidArgument, "bad request")
 		return
 	}
@@ -142,6 +155,9 @@ func (n *node) bigReady() bool {
 		if b.stage != nil && rawSocketRoom(c) <= 0 {
 			continue
 		}
+		if n.cursorFetch && (c.flow.conn <= 0 || s.win <= 0 || s.holds || rawSocketRoom(c) <= 0) {
+			continue
+		}
 		if c.waiting() >= n.connOut || (b.stage != nil || b.pos < len(b.buf)) && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
 			continue
 		}
@@ -188,6 +204,9 @@ func (n *node) stepBig(b *bigRange) bool {
 		// What waits to be sent to the client stays within its share.
 		room := n.connOut - c.waiting()
 		if room <= 0 {
+			return true
+		}
+		if n.cursorFetch && (c.flow.conn <= 0 || s.win <= 0 || s.holds || rawSocketRoom(c) <= 0) {
 			return true
 		}
 		if b.pos < len(b.buf) {
@@ -242,6 +261,8 @@ func (n *node) endBig(b *bigRange) {
 	b.c.growOut(-b.counted)
 	b.counted = 0
 	b.buf, b.sorted, b.after = nil, nil, nil
+	n.freeDirectOwner(b.c, b.directMeta)
+	b.directMeta = 0
 }
 
 // abortBig ends a large reply's stream s with RST_STREAM, as grpc-go ends a call whose
@@ -299,7 +320,7 @@ func (n *node) planBig(b *bigRange, c *client, s *stream) bool {
 		n.replyError(c, s.id, codeOutOfRange, msgFuture)
 		return false
 	}
-	b.rev, b.hdrRev = st.rev, st.rev
+	b.rev, b.hdrRev, b.hdrTerm = st.rev, st.rev, n.term
 	if r.rev > 0 {
 		b.rev = r.rev
 	}
@@ -379,17 +400,24 @@ func (n *node) planBig(b *bigRange, c *client, s *stream) bool {
 		b.ended = true
 		n.gs.calls[s.kind].sent++
 		n.gs.sentBytes += int64(body)
-		f := c.frame(9 + len(respHeaders))
-		putFrameHeader(f, len(respHeaders), frHeaders, flEndHeaders, s.id)
-		copy(f[9:], respHeaders)
-		w := msgW{c: c, held: b.buf[:0], left: b.msgLeft}
-		var p [5]byte
-		binary.BigEndian.PutUint32(p[1:], uint32(body))
-		w.write(p[:])
-		n.writeHdrAt(&w, b.hdrRev)
-		b.buf, b.msgLeft = w.held, w.left
+		if n.cursorFetch {
+			b.directHead = 5 + sizeBytesField(1, n.hdrSizeTerm(b.hdrRev, b.hdrTerm))
+			b.directBody = body
+		} else {
+			f := c.frame(9 + len(respHeaders))
+			putFrameHeader(f, len(respHeaders), frHeaders, flEndHeaders, s.id)
+			copy(f[9:], respHeaders)
+			w := msgW{c: c, held: b.buf[:0], left: b.msgLeft}
+			var p [5]byte
+			binary.BigEndian.PutUint32(p[1:], uint32(body))
+			w.write(p[:])
+			n.writeHdrAt(&w, b.hdrRev)
+			b.buf, b.msgLeft = w.held, w.left
+		}
 	} else {
-		n.openStream(c, s)
+		if !n.cursorFetch {
+			n.openStream(c, s)
+		}
 		b.total = r.limit
 		if b.total <= 0 {
 			b.total = math.MaxInt64
@@ -465,6 +493,9 @@ func (n *node) walk(b *bigRange, f func(id uint32, size int) bool) {
 // opening, or the next of its records, at most a share's worth, once
 // their values are all in memory. It reports false if it ended b.
 func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
+	if n.cursorFetch {
+		return n.buildDirectRange(b, c, s)
+	}
 	b.buf, b.pos = b.buf[:0], 0
 	if b.msgRecs == 0 && b.msgLeft == 0 {
 		n.beginChunk(b, s)
@@ -597,15 +628,24 @@ func (n *node) beginChunk(b *bigRange, s *stream) {
 	b.ended = last
 	n.gs.calls[s.kind].sent++
 	n.gs.sentBytes += int64(size)
-	w := msgW{c: b.c, held: b.buf, left: b.msgLeft}
-	var p [5]byte
-	binary.BigEndian.PutUint32(p[1:], uint32(size))
-	w.write(p[:])
-	w.lenField(1, body)
-	if last {
-		n.writeHdrAt(&w, b.hdrRev)
+	if n.cursorFetch {
+		b.directBody = body
+		b.directHead = 5 + sizeBytesField(1, body) - body
+		b.pos = 0
+		if last {
+			b.directHead += sizeBytesField(1, n.hdrSizeTerm(b.hdrRev, b.hdrTerm))
+		}
+	} else {
+		w := msgW{c: b.c, held: b.buf, left: b.msgLeft}
+		var p [5]byte
+		binary.BigEndian.PutUint32(p[1:], uint32(size))
+		w.write(p[:])
+		w.lenField(1, body)
+		if last {
+			n.writeHdrAt(&w, b.hdrRev)
+		}
+		b.buf, b.msgLeft = w.held, w.left
 	}
-	b.buf, b.msgLeft = w.held, w.left
 	if !last {
 		// The size of the RangeResponse etcd's chunk range returned (streamRange).
 		sz := sizeBytesField(1, sizeVarintField(3, uint64(b.hdrRev))) + 2 + sizeVarintField(4, uint64(min(rest, b.chunk+1))) + recs

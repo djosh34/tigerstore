@@ -537,7 +537,29 @@ func (n *node) flushEvents() {
 		for e := first; e >= 0; e = w.events[e].next {
 			size += sizeBytesField(11, n.eventSize(x, &w.events[e]))
 		}
-		if n.cursorFetch || c.slow() || !n.msgRoom(c, int64(5+size)) {
+		// Live events already carry the immutable values from this apply.
+		// They need no source cursor. A direct output loan is still P-funded.
+		wire := 5 + size
+		if x.fragment {
+			wire = n.linkedWatchWire(x, first, size)
+		}
+		if n.cursorFetch && size > replyRoom {
+			x.deliveryPlant.capture(n, c, w, first, size)
+			x.syncRev = w.events[first].rev
+			w.unsynced = append(w.unsynced, i)
+			before := len(n.bigWatches)
+			n.startBigWatch(i, x, c, s, revStart(n.st, x.syncRev))
+			if len(n.bigWatches) > before {
+				b := n.bigWatches[len(n.bigWatches)-1]
+				b.liveEvents = w.events
+				b.liveFirst = first
+				n.pumpBigWatches()
+				b.liveEvents = nil
+				b.liveFirst = 0
+			}
+			continue
+		}
+		if c.slow() || !n.replyRoom(c, s, int64(wire), int64(5+size)) {
 			if n.cursorFetch {
 				x.deliveryPlant.capture(n, c, w, first, size)
 			}
@@ -555,6 +577,7 @@ func (n *node) flushEvents() {
 				evs = append(evs, w.events[e])
 			}
 			n.writeEvents(c, s, x, evs)
+			n.commitReplyStage(c, s)
 			continue
 		}
 		var mw msgW
@@ -565,6 +588,7 @@ func (n *node) flushEvents() {
 			n.writeEvent(&mw, x, &w.events[e])
 		}
 		mw.end()
+		n.commitReplyStage(c, s)
 		n.markDirty(&c.sock)
 	}
 	clear(w.events)
@@ -590,7 +614,11 @@ func (x *watcher) withPrev() bool { return x.prevKV && !planted.On("B06c") }
 
 // writeEvent writes ev as an Event, field 11 of a WatchResponse.
 func (n *node) writeEvent(mw *msgW, x *watcher, ev *event) {
-	mw.lenField(11, n.eventSize(x, ev))
+	n.writeEventSized(mw, x, ev, n.eventSize(x, ev))
+}
+
+func (n *node) writeEventSized(mw *msgW, x *watcher, ev *event, size int) {
+	mw.lenField(11, size)
 	if ev.del {
 		mw.varintField(1, 1)
 		key := n.st.key(ev.key)
@@ -656,7 +684,26 @@ func (n *node) syncWatchers() error {
 			continue
 		}
 		if n.cursorFetch {
-			done, err := n.startWatchFill(i, x, c, s, &budget)
+			handled, done, err := n.tryResidentWatch(x, c, s, &budget)
+			if handled {
+				if errors.Is(err, errPrevCompacted) {
+					n.writeCompacted(c, s, x)
+					w.remove(i)
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				if done {
+					x.syncRev = 0
+					n.progressIfSynced(c, s)
+					continue
+				}
+				w.unsynced[k] = i
+				k++
+				continue
+			}
+			done, err = n.startWatchFill(i, x, c, s, &budget)
 			if errors.Is(err, errPrevCompacted) {
 				n.writeCompacted(c, s, x)
 				w.remove(i)
