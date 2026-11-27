@@ -99,6 +99,10 @@ on:
         type: choice
         options: ['0', '5']
         default: '0'
+      fetch_pr897:
+        description: Separate PR897 option-A relative gate; five pairs, each throughput >=0.98 and baseline-MAD p95 noise; leaves the absolute diagnostic unchanged
+        type: boolean
+        default: false
 
 jobs:
   fetch-original:
@@ -151,8 +155,58 @@ jobs:
           name: fetch-original-race${{ inputs.fetch_race }}-sync${{ inputs.fetch_fsync_ms }}
           path: ${{ runner.temp }}/fetch-original-evidence
           retention-days: 30
+  fetch-pr897:
+    if: ${{ inputs.fetch_pr897 && !inputs.fetch_measure }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      ETCD_UNSAFE_LOG_RING_BYTES: '536870912'
+      FETCH_MEASURE_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Record isolated runner and safe disk settings
+        run: |
+          sudo mount -o remount,barrier=1 /
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          { uname -a; lscpu; free -b; go version; findmnt -T "$RUNNER_TEMP"; } > "$RUNNER_TEMP/fetch-pr897-runner.txt"
+      - name: Five PR897 relative pairs, stop on any failed pair or new failure
+        env:
+          BASELINE: ${{ inputs.baseline }}
+          CANDIDATE: ${{ inputs.candidate }}
+          RACE: ${{ inputs.fetch_race }}
+          SYNC_DELAY: ${{ inputs.fetch_fsync_ms }}
+        run: |
+          args=()
+          if [ "$RACE" = true ]; then args+=(--race); fi
+          python3 -B scripts/fetch-pr897-measure.py --baseline "$BASELINE" --candidate "$CANDIDATE" --sync-delay-ms "$SYNC_DELAY" "${args[@]}" --out "$RUNNER_TEMP/fetch-pr897-evidence"
+      - name: Preserve the distinct PR897 policy and raw evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/fetch-pr897-evidence"
+          rm -f "$RUNNER_TEMP/fetch-pr897-evidence/"*.test
+          cp "$RUNNER_TEMP/fetch-pr897-runner.txt" "$RUNNER_TEMP/fetch-pr897-evidence/runner.txt"
+          python3 -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'fetch-pr897-evidence/manifest.json'
+          report = json.loads(p.read_text()) if p.exists() else {'status':'INCOMPLETE', 'reason':'campaign failed before a manifest existed'}
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('## PR897 option-A relative gate (not the absolute diagnostic)\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n')
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fetch-pr897-race${{ inputs.fetch_race }}-sync${{ inputs.fetch_fsync_ms }}
+          path: ${{ runner.temp }}/fetch-pr897-evidence
+          retention-days: 30
   plan:
-    if: ${{ !inputs.fetch_measure }}
+    if: ${{ !inputs.fetch_measure && !inputs.fetch_pr897 }}
     runs-on: ubuntu-24.04-arm
     outputs:
       jobs: ${{ steps.plan.outputs.jobs }}

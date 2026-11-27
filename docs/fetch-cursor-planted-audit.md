@@ -2,7 +2,8 @@
 
 Part of #833. This changes deliberate mutation plumbing, not production
 routing, the simulator's seed budgets, acceptance patterns, or checkers.
-The 1,000-ms measurement ruling remains pending; no measurement is dispatched.
+This audit predates the subsequent #897 option-A relative bench ruling; see
+`fetch-pr897-relative-gate.md` for the current separate measurement policy.
 
 ## Confirmed B06a/B06b gap
 
