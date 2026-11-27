@@ -49,22 +49,13 @@ type dirEnt struct {
 // a restart, namespace churn grew the directories without bound (#722).
 
 type tree struct {
-	st    *store
-	dirs  []dirEnt
-	free  []uint32 // the ids of directories removed, to reuse
-	table []uint64 // dir hash table: tag << 32 | dir id + 1
-	mask  uint64
-	seed  maphash.Seed
-
-	// testWork, nil in production, counts binary-search steps and slice
-	// entries copied, shifted or cleared (children and chunk headers).
-	testWork func(int)
-}
-
-func (t *tree) countWork(n int) {
-	if t.testWork != nil {
-		t.testWork(n)
-	}
+	treeWork // empty, with inlined no-op methods, unless built with wlcost
+	st       *store
+	dirs     []dirEnt
+	free     []uint32 // the ids of directories removed, to reuse
+	table    []uint64 // dir hash table: tag << 32 | dir id + 1
+	mask     uint64
+	seed     maphash.Seed
 }
 
 func (t *tree) init(st *store) {
@@ -211,7 +202,9 @@ func (t *tree) searchIn(d uint32, cs []child, name []byte) (int, bool) {
 	lo, hi := 0, len(cs)
 	for lo < hi {
 		m := int(uint(lo+hi) >> 1)
-		t.countWork(1)
+		if treeWorkEnabled {
+			t.countWork(1)
+		}
 		c := cmpPfx(&cs[m].pfx, &p)
 		if c == 0 {
 			c = bytes.Compare(t.name(d, cs[m]), name)
@@ -237,7 +230,9 @@ func (t *tree) search(d uint32, name []byte) (int, int, bool) {
 	lo, hi := 1, len(chunks)
 	for lo < hi {
 		m := int(uint(lo+hi) >> 1)
-		t.countWork(1)
+		if treeWorkEnabled {
+			t.countWork(1)
+		}
 		if bytes.Compare(t.name(d, chunks[m][0]), name) <= 0 {
 			lo = m + 1
 		} else {
@@ -256,23 +251,29 @@ func (t *tree) insertChild(d uint32, name []byte, id uint32) {
 		return
 	}
 	ci, i, _ := t.search(d, name)
-	c := e.chunks[ci]
-	t.countWork(len(c) - i)
-	if len(c) == cap(c) {
-		t.countWork(len(c)) // growing the backing array can copy it all
+	if treeWorkEnabled {
+		c := e.chunks[ci]
+		t.countWork(len(c) - i)
+		if len(c) == cap(c) {
+			t.countWork(len(c)) // growing the backing array can copy it all
+		}
 	}
-	c = slices.Insert(c, i, child{pfx: pfxOf(name), id: id})
+	c := slices.Insert(e.chunks[ci], i, child{pfx: pfxOf(name), id: id})
 	if len(c) <= chunkMax {
 		e.chunks[ci] = c
 		return
 	}
 	half := len(c) / 2
-	t.countWork(len(c) - half)
+	if treeWorkEnabled {
+		t.countWork(len(c) - half)
+	}
 	right := append(make([]child, 0, chunkMax), c[half:]...)
 	e.chunks[ci] = c[:half:chunkMax]
-	t.countWork(len(e.chunks) - ci - 1)
-	if len(e.chunks) == cap(e.chunks) {
-		t.countWork(len(e.chunks))
+	if treeWorkEnabled {
+		t.countWork(len(e.chunks) - ci - 1)
+		if len(e.chunks) == cap(e.chunks) {
+			t.countWork(len(e.chunks))
+		}
 	}
 	e.chunks = slices.Insert(e.chunks, ci+1, right)
 }
@@ -311,10 +312,14 @@ func (t *tree) removeChild(d uint32, name []byte) bool {
 		return false
 	}
 	e := &t.dirs[d]
-	t.countWork(len(e.chunks[ci]) - i)
+	if treeWorkEnabled {
+		t.countWork(len(e.chunks[ci]) - i)
+	}
 	e.chunks[ci] = slices.Delete(e.chunks[ci], i, i+1)
 	if len(e.chunks[ci]) == 0 && len(e.chunks) > 1 {
-		t.countWork(len(e.chunks) - ci)
+		if treeWorkEnabled {
+			t.countWork(len(e.chunks) - ci)
+		}
 		e.chunks = slices.Delete(e.chunks, ci, ci+1)
 	}
 	return len(e.chunks) == 1 && len(e.chunks[0]) == 0

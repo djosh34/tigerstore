@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // scanKeys returns the live keys in [start, end) as the tree orders them.
@@ -112,36 +113,81 @@ func TestTreeKeepsOrderAcrossChunks(t *testing.T) {
 // shift a few chunks' worth of entries, move a few hundred chunk headers,
 // and binary-search the index. Four chunks leave room for that, but not
 // for shifting a directory-sized array on every scattered insert/delete.
-func boundTreeWork(t *testing.T, tr *tree) func() {
+func boundTreeWork(t *testing.T, tr *tree) (check, stop func()) {
 	t.Helper()
 	work, total := 0, 0
-	tr.testWork = func(n int) {
+	enabled := tr.observeWork(func(n int) {
 		work += n
 		total += n
-	}
-	t.Cleanup(func() {
-		tr.testWork = nil
-		if total == 0 {
-			t.Error("no tree work measured")
-		}
 	})
-	return func() {
+	stopped := false
+	stop = func() {
+		if stopped {
+			return
+		}
+		stopped = true
+		tr.observeWork(nil)
+		if enabled && total == 0 {
+			t.Error("no tree work measured (build with -tags wlcost to enable counting)")
+		}
+	}
+	t.Cleanup(stop)
+	check = func() {
 		t.Helper()
 		if work > 4*chunkMax {
 			t.Fatalf("one tree mutation did %d units of work, want at most %d", work, 4*chunkMax)
 		}
 		work = 0
 	}
+	return check, stop
+}
+
+// Compare equal-sized blocks in the same run, not an absolute deadline.
+// Taking the cheapest block on each side excludes GC and scheduling pauses;
+// whole put/del calls are inside the block, including work outside tree.go.
+func cheapestTreeBlock(from, to, block int, op func(int)) time.Duration {
+	var best time.Duration
+	for i := from; i < to; i += block {
+		start := time.Now()
+		for j := i; j < i+block; j++ {
+			op(j)
+		}
+		d := time.Since(start)
+		if best == 0 || d < best {
+			best = d
+		}
+	}
+	return best
+}
+
+func boundTreeRatio(t *testing.T, operation string, small, large time.Duration) {
+	t.Helper()
+	// Searches grow logarithmically, and shifts stay within chunkMax.
+	// Fourfold allows cache/allocator/race overhead, but not a full scan
+	// or copy at 200k keys versus at most 10k in the baseline.
+	const limit = 4
+	ratio := float64(large) / float64(small)
+	t.Logf("%s large/small whole-path cost: %.3fx (limit %dx; blocks %v / %v)", operation, ratio, limit, large, small)
+	if ratio > limit {
+		t.Fatalf("large-directory %s cost %.3fx the small-directory baseline, want at most %dx", operation, ratio, limit)
+	}
 }
 
 func TestInsertsIntoALargeDirectoryStayCheap(t *testing.T) {
 	st, l := newTestStore(t)
 	const n = 200000
-	checkWork := boundTreeWork(t, &st.tree)
-	for i := range n {
+	checkWork, stopWork := boundTreeWork(t, &st.tree)
+	insert := func(i int) {
 		putValue(t, st, l, fmt.Sprintf("/big/%07d", (i*104729)%n), "")
 		checkWork()
 	}
+	small := cheapestTreeBlock(0, 10000, 2000, insert)
+	for i := 10000; i < n-10000; i++ {
+		insert(i)
+	}
+	large := cheapestTreeBlock(n-10000, n, 2000, insert)
+	stopWork() // scans must not satisfy the measured-work guard
+	boundTreeRatio(t, "put", small, large)
 	got := scanKeys(st, "/big/", "/big0")
 	if len(got) != n {
 		t.Fatalf("%d keys after inserts, want %d", len(got), n)
@@ -154,32 +200,67 @@ func TestInsertsIntoALargeDirectoryStayCheap(t *testing.T) {
 }
 
 func TestDeletesFromALargeDirectoryStayCheap(t *testing.T) {
+	// Use the same logical-delete path and block size for the small
+	// baseline. Its setup is not timed, just as the large setup is not.
+	deletes := func(st *store, checkWork func()) func(int) {
+		return func(i int) {
+			id, _ := st.find(fmt.Appendf(nil, "/big/%07d", 4*i))
+			st.rev++
+			if _, _, err := st.del(id, st.rev, true); err != nil {
+				t.Fatal(err)
+			}
+			checkWork()
+		}
+	}
+	baseline, bl := newTestStore(t)
+	checkSmall, stopSmall := boundTreeWork(t, &baseline.tree)
+	for i := range 10000 {
+		putValue(t, baseline, bl, fmt.Sprintf("/big/%07d", i), "")
+		checkSmall()
+	}
+	small := cheapestTreeBlock(0, 2500, 500, deletes(baseline, checkSmall))
+	baseline.endApply()
+	baseline.compact(baseline.rev)
+	smallTrim := cheapestTreeBlock(0, 10000, 500, func(int) {
+		baseline.trimSteps(1)
+		checkSmall()
+	})
+	stopSmall()
+
 	st, l := newTestStore(t)
 	const n = 200000
 	for i := range n {
 		putValue(t, st, l, fmt.Sprintf("/big/%07d", i), "")
 	}
-	for i := range n / 4 {
-		id, _ := st.find(fmt.Appendf(nil, "/big/%07d", 4*i))
-		st.rev++
-		if _, _, err := st.del(id, st.rev, true); err != nil {
-			t.Fatal(err)
-		}
-	}
+	checkWork, stopWork := boundTreeWork(t, &st.tree)
+	large := cheapestTreeBlock(0, n/4, 500, deletes(st, checkWork))
 	st.endApply()
-	if got := len(scanKeys(st, "/big/", "/big0")); got != n-n/4 {
-		t.Fatalf("%d keys left, want %d", got, n-n/4)
-	}
-	// del leaves tombstones in the tree for historical reads. Measure
-	// the actual removals during compaction, one key's trim at a time.
-	checkWork := boundTreeWork(t, &st.tree)
+	boundTreeRatio(t, "del", small, large)
+	// del leaves tombstones in the tree for historical reads. Keep
+	// measuring through the actual removals, one key's trim at a time.
 	st.compact(st.rev)
-	for st.trimming {
+	largeTrim := cheapestTreeBlock(0, n, 500, func(int) {
 		st.trimSteps(1)
 		checkWork()
+	})
+	stopWork() // scans must not satisfy the measured-work guard
+	boundTreeRatio(t, "trim", smallTrim, largeTrim)
+	got := scanKeys(st, "/big/", "/big0")
+	if len(got) != n-n/4 {
+		t.Fatalf("%d live keys left, want %d", len(got), n-n/4)
 	}
-	if got := len(scanIDs(st, "/big/", "/big0")); got != n-n/4 {
-		t.Fatalf("%d tree keys after compaction, want %d", got, n-n/4)
+	if ids := scanIDs(st, "/big/", "/big0"); len(ids) != len(got) {
+		t.Fatalf("%d tree keys after compaction, want %d", len(ids), len(got))
+	}
+	j := 0
+	for i := range n {
+		if i%4 == 0 {
+			continue
+		}
+		if want := fmt.Sprintf("/big/%07d", i); got[j] != want {
+			t.Fatalf("key %d is %q, want %q", j, got[j], want)
+		}
+		j++
 	}
 }
 
