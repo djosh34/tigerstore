@@ -88,13 +88,34 @@ func (n *node) selfRemovalRead(seq, _ uint64) bool {
 }
 
 // removalNotice never lets a transport notice stop a leader before its
-// own removal applies. Followers retain their prompt removal exit; a fenced
-// leader, even if it steps down, must finish its quorum and reply drain.
+// own removal applies, and a fenced leader, even if it steps down, must
+// finish its quorum and reply drain. A node that does not lead stops once
+// the notices it kept make a quorum (noticesMakeQuorum).
 func (n *node) removalNotice(id uint64) {
 	n.selfRemovalNotice(id)
-	if !n.leading() && n.selfRemoval.apply == nil && n.selfRemoval.drainBy.IsZero() {
+	if !n.leading() && n.selfRemoval.apply == nil && n.selfRemoval.drainBy.IsZero() && n.noticesMakeQuorum() {
 		n.stopErr = ErrRemoved
 	}
+}
+
+// noticesMakeQuorum reports whether the removal notices a node kept before
+// its own removal's apply let it stop: with its own, a quorum of its
+// voters, as a fenced leader waits for. A start may get a notice before
+// its replay reaches the removal: one from a learner, or from one voter of
+// several, leaves the voters that did not learn the commit waiting for its
+// vote (#933's review). A node that is no voter stops on any notice: no
+// one waits for its vote.
+func (n *node) noticesMakeQuorum() bool {
+	if i := n.memberAt(n.id); i < 0 || n.members[i].learner {
+		return true
+	}
+	acks := 1
+	for id := range n.selfRemoval.notices {
+		if i := n.memberAt(id); i >= 0 && !n.members[i].learner {
+			acks++
+		}
+	}
+	return acks >= n.voters()/2+1
 }
 
 // selfRemovalNotice accepts explicit commit knowledge: a peer only
@@ -105,11 +126,12 @@ func (n *node) removalNotice(id uint64) {
 func (n *node) selfRemovalNotice(id uint64) {
 	r := &n.selfRemoval
 	if r.apply == nil {
-		// A survivor can apply first while our local append is pending.
-		// Keep its evidence without stopping the leader. Membership can
-		// still change before local apply, so filter voters at the barrier,
-		// not here (a current learner could be promoted before removal).
-		if n.leading() && r.drainBy.IsZero() && n.memberAt(id) >= 0 {
+		// A survivor can apply first while our local append is pending,
+		// or our start's replay has yet to reach it. Keep its evidence.
+		// Membership can still change before local apply, so filter voters
+		// at the barrier, not here (a current learner could be promoted
+		// before removal).
+		if r.drainBy.IsZero() && n.memberAt(id) >= 0 {
 			if r.notices == nil {
 				r.notices = make(map[uint64]bool)
 			}

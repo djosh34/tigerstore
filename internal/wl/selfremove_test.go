@@ -574,3 +574,33 @@ func TestRemovingLeaderSurvivors(t *testing.T) {
 		})
 	}
 }
+
+// TestARestartKeepsAnEarlyNoticeUntilItsRemovalReplays is #933's review:
+// a start that has yet to replay its own removal gets a learner's notice.
+// The learner has no vote, so it is no evidence that the voter left knows
+// the commit: the node keeps the notice, replays the removal behind the
+// fence (#924), and stops once that voter's notice comes too. Before, the
+// learner's notice stopped it at once.
+func TestARestartKeepsAnEarlyNoticeUntilItsRemovalReplays(t *testing.T) {
+	n := gateNode(t)
+	n.st, _ = newTestStore(t)
+	t.Cleanup(func() { _ = n.st.close() })
+	n.members[2].learner = true // voters 1 and 2, learner 3
+	n.rn = newTestRawNode(t)
+	n.applied, n.recoveredLast = 8, 10
+	n.wal.durableHS = &pb.HardState{Commit: new(uint64(10))}
+	n.removalNotice(3)
+	if n.stopErr != nil {
+		t.Fatalf("a learner's notice stopped a voter before its replay reached its removal: %v", n.stopErr)
+	}
+	if err := n.storageApply(removalApply(t, n.id)); err != nil {
+		t.Fatal(err)
+	}
+	if n.selfRemoval.apply == nil || n.selfRemoval.ready || n.removed[n.id] {
+		t.Fatal("the replayed removal was not fenced, or the learner's notice counted toward its quorum")
+	}
+	n.removalNotice(2)
+	if err := n.resumeSelfRemoval(); err != nil || !n.removed[n.id] || n.selfRemoval.drainBy.IsZero() {
+		t.Fatalf("the voter's notice did not release the replayed removal: %v", err)
+	}
+}
