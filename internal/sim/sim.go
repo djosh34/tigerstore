@@ -31,6 +31,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	raftpb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/history"
@@ -488,6 +489,10 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// syncFor, set by a test, is how long each of its log syncs takes,
+	// and drop drops each peer message to it that it returns true for.
+	syncFor int64
+	drop    func(m *raftpb.Message) bool
 	// reloads are the times a client saw the node fail its call to start
 	// again from its log, after a snapshot install or a failed fetch, as
 	// on a restart; the client tries again. fromLog are the times it did.
@@ -505,6 +510,10 @@ type node struct {
 	mustLast  uint64
 	mustHS    hardState
 	tornCrash bool
+	// startedAt is when the node's process last recovered its log, and
+	// startCommit the commit it recovered (stuckRemoval).
+	startedAt   int64
+	startCommit uint64
 	// appended is the last entry a wl process handed its log, and
 	// mustAtMost, after a crash that tore a write of the log, what its
 	// next start may recover at most (wlStageCrash).
@@ -572,8 +581,8 @@ type node struct {
 	last  coreState
 }
 
-// hardState is the term and vote of a Raft hard state.
-type hardState struct{ term, vote uint64 }
+// hardState is the term, vote and commit of a Raft hard state.
+type hardState struct{ term, vote, commit uint64 }
 
 // pendingJob is a job a node's core handed its disk at time at: the first
 // entry it writes, and whether that replaces entries reported durable.
@@ -933,6 +942,10 @@ type Stats struct {
 	// 0 if never.
 	Replaced     int
 	QuorumLostAt int64
+	// StuckRemovalAt is when the membership work's removal left a
+	// cluster of two voters without a quorum for good, as etcd's
+	// (stuckRemoval), 0 if never.
+	StuckRemovalAt int64
 	// CertsExpiredAt is when the connections were reset after the nodes'
 	// certificate expired (Config.CertExpiresAt), and ExpiredWrites the
 	// writes that failed between then and the rotation.
@@ -1402,7 +1415,11 @@ func (s *Sim) run() error {
 	if err := s.settle(); err != nil {
 		return err
 	}
-	return s.lostQuorum()
+	if err := s.lostQuorum(); err != nil {
+		return err
+	}
+	s.stuckRemoval()
+	return nil
 }
 
 // formUnderFaults: one seed in formUnderFaults forms its cluster under
@@ -2166,6 +2183,9 @@ func (s *Sim) exited(p *proc, err error) {
 		// fences it.
 		s.stopNode(n)
 	case s.cfg.Membership && (core.FailureOf(err) == core.Leave || errors.Is(err, wl.ErrRemoved)):
+		if w := &s.membership; n.id == w.id && errors.Is(err, wl.ErrRemoved) {
+			w.stoppedAt, w.stoppedCommit = s.now(), n.hs.commit
+		}
 		n.inactive = true
 		s.down(n)
 	case injected(err):
@@ -2244,6 +2264,9 @@ func (s *Sim) beforeSync(p *proc) {
 	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
+	}
+	if n.syncFor > 0 {
+		lat = n.syncFor
 	}
 	gray := s.gray == n && n.graySync && !s.healed
 	switch {

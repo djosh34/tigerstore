@@ -66,3 +66,49 @@ func (s *Sim) lostQuorumBy(lastOf func(*node) (lastEntry, error)) error {
 	s.tracef("no node can win an election by the voters it applied: the cluster lost its quorum for good at the fence at %d ms", s.lastFenceAt/Millisecond)
 	return nil
 }
+
+// stuckRemoval decides, at the run's end, whether the membership work's
+// removal of the member it added left a cluster of two voters without a
+// quorum for good, as etcd v3.7.2's (#950): the removed member stopped on
+// applying its removal, and the survivor's last start, during the
+// removal's stage, recovered a commit below the one the removed member
+// held durable as it stopped, so that it lost its commit of the removal
+// to a crash. The survivor, having applied all it knows committed, still
+// counts the removed member among its two voters, and leads not: it waits
+// for that member's vote for good. Etcd applies a change before its
+// commit is synced (raft.MustSync), and stops a removed member a second
+// after its apply. The run then takes the checks of a cluster that lost
+// its quorum, from the removed member's stop. Every other run that ends
+// without a leader is left to fail.
+//
+// Temporary: #950's fix fences the removed member until the survivor
+// knows the commit, and removes this excuse and the cold restarts' skip
+// (checkColdRestarts) with it.
+func (s *Sim) stuckRemoval() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w := &s.membership
+	if !s.cfg.Membership || w.voters != 1 || w.stage != 3 || w.stoppedAt == 0 || s.quorumLostAt > 0 || hasLeader(s.nodes) {
+		return
+	}
+	survivor := s.nodes[0]
+	if survivor.out() || survivor.proc == nil || survivor.startedAt < w.removing || survivor.startCommit >= w.stoppedCommit {
+		return
+	}
+	t := survivor.proc.wl.turn
+	voters := 0
+	removedVotes := false
+	for _, m := range t.Members {
+		if !m.Learner {
+			voters++
+			removedVotes = removedVotes || m.ID == w.id
+		}
+	}
+	if t.Commit != t.Applied || voters != 2 || !removedVotes {
+		return
+	}
+	w.stuck = true
+	s.quorumLostAt, s.stats.QuorumLostAt, s.stats.StuckRemovalAt = w.stoppedAt, w.stoppedAt, w.stoppedAt
+	s.tracef("node %d started at commit %d, below the %d node %d held durable as it stopped on its removal: it waits for that member's vote for good, as etcd's does; the cluster lost its quorum at %d ms",
+		survivor.id, survivor.startCommit, w.stoppedCommit, w.id, w.stoppedAt/Millisecond)
+}

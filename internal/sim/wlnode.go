@@ -267,7 +267,8 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState, values func() []w
 		s.stats.StageRecoveries++
 		s.tracef("node %d: recovered entries to %d after its torn write, reported %d durable, handed its log %d", n.id, last, n.mustLast, n.mustAtMost)
 	}
-	n.durableLast, n.hs, n.tornCrash, n.mustAtMost, n.appended = last, hardState{term: hs.GetTerm(), vote: hs.GetVote()}, false, 0, last
+	n.durableLast, n.hs, n.tornCrash, n.mustAtMost, n.appended = last, hardState{term: hs.GetTerm(), vote: hs.GetVote(), commit: hs.GetCommit()}, false, 0, last
+	n.startedAt, n.startCommit = s.now(), hs.GetCommit()
 }
 
 // Append keeps an append on its way to the disk, which may lower what a
@@ -301,6 +302,9 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64, state func() uint64) {
 		return
 	}
 	p.wl.applied = e.GetIndex()
+	if e.GetIndex() > n.hs.commit && keptByReplay(e) {
+		s.fail("node %d applied entry %d, %s, past its durable commit %d: a crash now restarts it without the entry, which it may have answered for (#823)", n.id, e.GetIndex(), keptWhat(e), n.hs.commit)
+	}
 	if n.catchUp > 0 && e.GetIndex() >= n.catchUp {
 		// A replacing member caught up: the liveness rule holds it once
 		// it had the time to recover (replace).
@@ -315,6 +319,36 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64, state func() uint64) {
 		// hold the same state.
 		s.sameState(n, e.GetIndex(), state(), "applied")
 	}
+}
+
+// keptByReplay reports whether entry e is one that a node may apply, and
+// answer for, only once its durable commit covers it, so that its replay
+// after a crash keeps it: a change of members, or a batch with an auth
+// op. A replay without a removal waits for the removed member's vote,
+// and one without an auth change serves reads with the auth of before.
+func keptByReplay(e *raftpb.Entry) bool {
+	if e.GetType() != raftpb.EntryNormal {
+		return true
+	}
+	b, err := wl.ParseBatch(e.GetData())
+	if err != nil {
+		// Not a batch, or one the check of the committed log reports.
+		return false
+	}
+	for _, op := range b.Ops {
+		if op.Auth() {
+			return true
+		}
+	}
+	return false
+}
+
+// keptWhat names the kind of entry e for keptByReplay's failure.
+func keptWhat(e *raftpb.Entry) string {
+	if e.GetType() == raftpb.EntryNormal {
+		return "an auth change"
+	}
+	return "a change of members"
 }
 
 // noteRevokes notes when the first node to apply entry e applied the
@@ -374,7 +408,7 @@ func (h *wlHooks) Durable(last uint64, install bool, hs *raftpb.HardState) {
 		n.durableLast = last
 	}
 	if hs != nil {
-		n.hs = hardState{term: hs.GetTerm(), vote: hs.GetVote()}
+		n.hs = hardState{term: hs.GetTerm(), vote: hs.GetVote(), commit: hs.GetCommit()}
 	}
 	_ = install
 }
@@ -704,7 +738,8 @@ func (h *wlHooks) Deliver(m *raftpb.Message) bool {
 	s := h.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return h.p.n.proc != h.p || !s.grayDrops(h.p.n, m)
+	n := h.p.n
+	return n.proc != h.p || !s.grayDrops(n, m) && (n.drop == nil || !n.drop(m))
 }
 
 // holdTurn holds p's loop, at the end of a turn, while the run failed,
@@ -776,6 +811,8 @@ func (s *Sim) callWL(p *proc, req proto.Message, ctx context.Context) (proto.Mes
 		return pb.NewClusterClient(conn).MemberList(ctx, r)
 	case *pb.AlarmRequest:
 		return pb.NewMaintenanceClient(conn).Alarm(ctx, r)
+	case *pb.AuthUserAddRequest:
+		return pb.NewAuthClient(conn).UserAdd(ctx, r)
 	case *pb.LeaseKeepAliveRequest:
 		ka, err := pb.NewLeaseClient(conn).LeaseKeepAlive(ctx)
 		if err != nil {

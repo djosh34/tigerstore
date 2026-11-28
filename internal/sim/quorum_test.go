@@ -322,3 +322,49 @@ func TestReplacementLosesQuorum(t *testing.T) {
 		})
 	}
 }
+
+// TestAStuckRemovalIsExcusedOnlyAsEtcds checks stuckRemoval (#950): it
+// takes seed 6's end, two voters whose survivor started again below the
+// commit the removed member stopped at, as a lost quorum, and nothing
+// next to it.
+func TestAStuckRemovalIsExcusedOnlyAsEtcds(t *testing.T) {
+	const removed = 7
+	for _, c := range []struct {
+		name  string
+		vary  func(s *Sim, survivor *node)
+		stuck bool
+	}{
+		{"seed 6's end", func(*Sim, *node) {}, true},
+		{"the survivor leads", func(_ *Sim, n *node) { n.proc.wl.turn.Lead = n.id }, false},
+		{"the survivor recovered the commit", func(_ *Sim, n *node) { n.startCommit = 209 }, false},
+		{"the survivor did not start again during the removal", func(_ *Sim, n *node) { n.startedAt = 10 * Second }, false},
+		{"the survivor has committed entries to apply", func(_ *Sim, n *node) { n.proc.wl.turn.Commit = 200 }, false},
+		{"the removed member did not stop on its removal", func(s *Sim, _ *node) { s.membership.stoppedAt = 0 }, false},
+		{"three voters", func(_ *Sim, n *node) {
+			n.proc.wl.turn.Members = append(n.proc.wl.turn.Members, wl.TurnMember{ID: 9})
+		}, false},
+		{"the survivor no longer counts the removed member", func(_ *Sim, n *node) {
+			n.proc.wl.turn.Members = n.proc.wl.turn.Members[:1]
+		}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := DefaultConfig(1)
+			cfg.Nodes, cfg.Membership = 1, true
+			s, err := newSim(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			survivor := s.nodes[0]
+			survivor.proc = &proc{n: survivor, wl: &wlProc{turn: wl.TurnState{Term: 10, Commit: 193, Applied: 193, Members: []wl.TurnMember{{ID: survivor.id}, {ID: removed}}}}}
+			survivor.startedAt, survivor.startCommit = 41*Second, 193
+			s.nodes[1].inactive = true
+			s.membership.id, s.membership.stage = removed, 3
+			s.membership.removing, s.membership.stoppedAt, s.membership.stoppedCommit = 20*Second, 38*Second, 209
+			c.vary(s, survivor)
+			s.stuckRemoval()
+			if got := s.stats.StuckRemovalAt > 0 && s.quorumLostAt > 0 && s.membership.stuck; got != c.stuck {
+				t.Fatalf("taken as a stuck removal: %v, want %v", got, c.stuck)
+			}
+		})
+	}
+}

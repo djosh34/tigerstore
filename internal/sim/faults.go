@@ -673,6 +673,14 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 		}
 	}
 	for _, c := range all {
+		if s.membership.stuck && c.at >= s.membership.removing {
+			// Two voters whose removal left them without a quorum, as
+			// etcd's (stuckRemoval): from the removal's stage on, the
+			// survivor's disk may lack the removal's commit, and its cold
+			// restart waits for the removed member's vote as the run did.
+			// Temporary, with stuckRemoval: #950's fix removes both.
+			continue
+		}
 		for _, erased := range erasures {
 			// A damaged disk cannot stand in for the erased one: the
 			// healthy disks left must hold a quorum of the voters.

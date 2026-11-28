@@ -309,6 +309,9 @@ type node struct {
 	// the start, through which every entry's is (mustSyncCommit).
 	mustSync      []uint64
 	recoveredLast uint64
+	// notDurable are Raft's applies that wait for the durable commit, in
+	// order (waitsForDurable).
+	notDurable []heldApply
 	// ringPledged is the log bytes of the writes taken since Raft last
 	// handed the log an append, which the ring's room must hold too
 	// (ringTaken).

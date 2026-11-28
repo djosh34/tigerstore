@@ -117,6 +117,9 @@ type Op struct {
 	Req  []byte
 }
 
+// Auth reports whether op is an auth request.
+func (o Op) Auth() bool { return o.Kind == kAuthOp }
+
 // ErrNotBatch is an entry's data that is not a batch.
 var ErrNotBatch = errors.New("not a batch")
 
