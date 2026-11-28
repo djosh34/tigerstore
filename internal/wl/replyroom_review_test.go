@@ -52,8 +52,10 @@ func TestAShrunkenShareRechecksThePiecesThreshold(t *testing.T) {
 	}
 }
 
-// A real tick, not a test-set roomFreed flag, must wake the waiting range
-// when more active clients shrink its share past the whole-reply limit.
+// More active clients, not a test-set roomFreed flag, must wake the
+// waiting range when they shrink its share past the whole-reply limit:
+// at once as they take their buffers (node.reshare), and the tick keeps
+// the share.
 func TestAClientTickWakesARangeWhenItsShareShrinks(t *testing.T) {
 	c, s, st, log := replyRoomClient(t)
 	n := c.node
@@ -70,11 +72,11 @@ func TestAClientTickWakesARangeWhenItsShareShrinks(t *testing.T) {
 	if len(n.roomWait) != 1 {
 		t.Fatal("the whole reply did not wait")
 	}
+	n.roomFreed = false
 	for i := 1; i < 3; i++ {
 		other := partClient(t, n, i)
 		n.socks, n.gens = append(n.socks, other), append(n.gens, other.gen)
 	}
-	n.roomFreed = false
 	l := &loop{n: n}
 	l.clientTick()
 	if n.connOut != 512<<10 {

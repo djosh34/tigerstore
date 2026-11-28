@@ -174,6 +174,7 @@ func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) b
 	x.big = true
 	n.bigWatches = append(n.bigWatches, b)
 	c.larges++
+	c.countSending()
 	n.stats.bigWatches++
 	return true
 }
@@ -531,6 +532,7 @@ func (b *bigWatch) recount() {
 // endBigWatch lets go of what b holds.
 func (n *node) endBigWatch(b *bigWatch) {
 	b.c.larges--
+	b.c.countSending()
 	if b.st == n.st {
 		b.st.releaseRead(b.rev - 1)
 		b.st.releaseRead(b.rev)

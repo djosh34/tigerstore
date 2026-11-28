@@ -233,9 +233,28 @@ type client struct {
 	// may write on the connection, from its first message to its end.
 	bigs int
 	bigW *bigWatch
-	// larges counts its large replies under way, ranges' and watches'
+	// larges counts its large replies under way, ranges' and watches',
+	// and idleLarge is set while it holds no buffers with one under way
 	// (node.sending).
-	larges int
+	larges    int
+	idleLarge bool
+}
+
+// countSending keeps the client's place among those that share what waits
+// to be sent (node.sending), as it takes or gives back its buffers, starts
+// or ends a large reply, or closes.
+func (c *client) countSending() {
+	n := c.node
+	idle := !c.dead && c.in == nil && c.larges > 0
+	if idle != c.idleLarge {
+		c.idleLarge = idle
+		if idle {
+			n.idleLarges++
+		} else {
+			n.idleLarges--
+		}
+	}
+	n.reshare()
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
@@ -418,6 +437,7 @@ func (c *client) takeBufs() {
 	if c.slots == nil {
 		c.slots = make([]stream, streamSlots)
 	}
+	c.countSending()
 }
 
 // idle reports whether the client holds nothing it read, nothing to send
@@ -458,6 +478,7 @@ func (c *client) dropAll() {
 	}
 	c.in, c.pt, c.out, c.slots, c.flow.held = nil, nil, nil, nil, nil
 	c.partial, c.flow.bytes = 0, 0
+	c.countSending()
 }
 
 func (c *client) get(id uint32) *stream {

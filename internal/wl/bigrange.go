@@ -100,6 +100,7 @@ func (n *node) startBig(c *client, s *stream, msg []byte) {
 	}
 	n.bigs = append(n.bigs, b)
 	c.larges++
+	c.countSending()
 	n.pumpBig()
 }
 
@@ -222,6 +223,7 @@ func (n *node) stepBig(b *bigRange) bool {
 // endBig lets go of what b holds.
 func (n *node) endBig(b *bigRange) {
 	b.c.larges--
+	b.c.countSending()
 	if b.planned && b.st == n.st {
 		b.st.releaseRead(b.rev)
 	}

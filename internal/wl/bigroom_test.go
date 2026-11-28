@@ -129,7 +129,8 @@ type largeReplies struct {
 // while it could not. The slow readers start in turn, each its windows opened
 // by a share's worth, which it takes; then they read no more, their
 // sockets drain and they go idle, so that the share of the readers left
-// grows. What the clients hold stays within the client pool throughout,
+// grows; then they read on all at once, a share's worth each, and stop
+// again. What the clients hold stays within the client pool throughout,
 // and the fast reader's message, which it returns, comes whole.
 func readLarge(t *testing.T, n *node, cs []*client, r largeReplies) []byte {
 	t.Helper()
@@ -165,6 +166,21 @@ func readLarge(t *testing.T, n *node, cs []*client, r largeReplies) []byte {
 			c := cs[i]
 			r.start(c, c.get(1))
 			c.flow.conn, c.get(1).win = n.connOut, n.connOut
+			settle()
+		}
+		if turn == len(cs)+1 {
+			// The slow readers, idle since, read on all at once: each
+			// takes its buffers to read its WINDOW_UPDATEs, and a share's
+			// worth of window.
+			for _, c := range cs[1:] {
+				if c.in == nil {
+					c.takeBufs()
+				}
+			}
+			for _, c := range cs[1:] {
+				c.windowUpdate(0, n.connOut)
+				c.windowUpdate(1, n.connOut)
+			}
 			settle()
 		}
 		got = append(got, sent(t, fast)...)
@@ -289,4 +305,134 @@ func TestSlowWatchersOfLargeRevisionsStayWithinTheClientPool(t *testing.T) {
 			}
 		}
 	})
+}
+
+// rangeAt is a range request of /b/ at revision rev.
+func rangeAt(rev int64) []byte {
+	return appendVarintField(appendBytesField(appendBytesField(nil, 1, []byte("/b/")), 2, []byte("/b0")), 4, uint64(rev))
+}
+
+// drain sends client c's large range reply to the end, its windows open,
+// and returns the message it got.
+func drain(t *testing.T, n *node, c *client) []byte {
+	t.Helper()
+	got := sent(t, c)
+	c.windowUpdate(0, 1<<30)
+	c.windowUpdate(1, 1<<30)
+	for i := 0; n.bigReady(); i++ {
+		if i > 10000 {
+			t.Fatal("the large reply does not end")
+		}
+		n.pumpBig()
+		got = append(got, sent(t, c)...)
+	}
+	return got
+}
+
+// A value a checkpoint moves between the parts of its record is summed
+// over the bytes sent, from both copies: a byte the old copy read wrong
+// fails the value's sum, and the reply ends unfinished, as a value read
+// whole fails (#919's re-check). Summed again from its new copy, the sum
+// passed, and the client got the wrong byte in a whole reply.
+func TestAValueMovedBetweenPartsIsSummedOverTheBytesSent(t *testing.T) {
+	n, cs, rev := bigReaders(t, 83<<20, 1, true, kRange)
+	st, c := n.st, cs[0]
+	l := st.log.(*memLog)
+	id, _ := st.find([]byte("/b/0"))
+	var e *histEnt
+	for h := st.keys[id].hist; h != 0; h = st.hist[h].prev {
+		if st.hist[h].mod == rev {
+			e = &st.hist[h]
+		}
+	}
+	if e == nil {
+		t.Fatal("no past revision of /b/0")
+	}
+	l.b[e.voff+100] ^= 1 // the log reads one byte wrong
+	n.startBig(c, c.get(1), rangeAt(rev))
+	if len(n.bigs) != 1 || n.bigs[0].part == 0 {
+		t.Fatal("the first record is not under way in parts")
+	}
+	e.voff = l.add(string(bigValue(0))) // a checkpoint copies it, right, and moves it there
+	got := drain(t, n, c)
+	if st.bad == nil || len(n.bigs) != 0 {
+		t.Fatalf("a value sent with a byte read wrong passed its sum: store bad %v, %d large replies under way", st.bad, len(n.bigs))
+	}
+	if len(got) >= 5 && int(binary.BigEndian.Uint32(got[1:5])) == len(got)-5 {
+		t.Fatal("the client got the whole reply")
+	}
+}
+
+// A put of a key with ignore_value between the parts of its record keeps
+// the value where it is, in a record whose revisions may be wider: the
+// parts find the value in the record by its own fields (#919's re-check).
+// Found by those of the revision read, a put at revision 128 shifted it
+// by a byte, failed the value's sum and stopped the node.
+func TestAPutWithIgnoreValueBetweenPartsLeavesTheValueWhole(t *testing.T) {
+	n, cs, rev := bigReaders(t, 83<<20, 1, false, kRange)
+	st, c := n.st, cs[0]
+	n.startBig(c, c.get(1), rangeAt(rev))
+	if len(n.bigs) != 1 || n.bigs[0].part == 0 {
+		t.Fatal("the first record is not under way in parts")
+	}
+	st.setBudget(0, 0) // the records put stay in the slab
+	st.rev = 127
+	for i := range 4 {
+		id, _ := st.find(fmt.Appendf(nil, "/b/%d", i))
+		k := &st.keys[id]
+		st.rev++
+		if _, err := st.put(id, bigValue(i), k.lease, st.rev, k.voff, false); err != nil {
+			t.Fatal(err)
+		}
+		st.endApply()
+		if k.rec == 0 {
+			t.Fatal("the record put is not in the slab")
+		}
+	}
+	got := drain(t, n, c)
+	if st.bad != nil {
+		t.Fatalf("the store went bad: %v", st.bad)
+	}
+	if len(got) < 5 || int(binary.BigEndian.Uint32(got[1:5])) != len(got)-5 {
+		t.Fatalf("the client got %d bytes, not one whole message", len(got))
+	}
+	var reply pb.RangeResponse
+	if err := proto.Unmarshal(got[5:], &reply); err != nil {
+		t.Fatal(err)
+	}
+	for i, kv := range reply.Kvs {
+		if string(kv.Value) != string(bigValue(i)) || kv.ModRevision != rev {
+			t.Fatalf("record %d: a value of %d bytes not the one put, at revision %d", i, len(kv.Value), kv.ModRevision)
+		}
+	}
+}
+
+// Clients idle at a tick that read again in one turn share what waits to
+// be sent from then on, not from the next tick (#919's re-check): three
+// at 83 MiB that sent large ranges each wrote a lone client's share, 7.4
+// MB of the client pool's 5.4 MB.
+func TestIdleClientsThatReadOnInOneTurnShareWhatWaits(t *testing.T) {
+	n, cs, rev := bigReaders(t, 83<<20, 3, false, kRange)
+	for _, c := range cs {
+		c.giveBufs()
+	}
+	l := &loop{n: n}
+	l.tick += 2
+	l.clientTick() // the share of a lone client
+	for _, c := range cs {
+		c.takeBufs() // each reads its range
+		c.flow.conn, c.get(1).win = 1<<30, 1<<30
+	}
+	for _, c := range cs {
+		n.startBig(c, c.get(1), rangeAt(rev))
+		for i := 0; n.bigReady(); i++ {
+			if i > 100 {
+				t.Fatal("the large replies stay ready without moving on")
+			}
+			n.pumpBig()
+		}
+		if used := n.cpool + n.cout + int64(n.clients)*idleConn; used > n.sizes.clientPool {
+			t.Fatalf("3 clients hold %d bytes of the client pool's %d, with a share of %d", used, n.sizes.clientPool, n.connOut)
+		}
+	}
 }
