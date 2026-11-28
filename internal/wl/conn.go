@@ -483,6 +483,10 @@ type msgW struct {
 	c    *client
 	st   *stream
 	held []byte
+	// A held message's piece may be a view of its bytes (bigrange.go):
+	// it skips the first skip bytes written and keeps at most room more.
+	view       bool
+	skip, room int
 }
 
 // begin starts a gRPC message of n bytes on stream s of client c.
@@ -524,6 +528,12 @@ func (w *msgW) newFrame() bool {
 
 func (w *msgW) write(p []byte) {
 	if w.c != nil {
+		if w.view {
+			k := min(w.skip, len(p))
+			w.skip -= k
+			p = p[k:min(len(p), k+w.room)]
+			w.room -= len(p)
+		}
 		w.held = append(w.held, p...)
 		w.left -= len(p)
 		return

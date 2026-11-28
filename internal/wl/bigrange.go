@@ -21,8 +21,11 @@ import (
 // needs while writes go on; each piece reads its records again by key and
 // revision, fetches the values it lacks off the loop in one bounded
 // batch, and is written as the connection's share (connOut) and its
-// HTTP/2 windows take it. A reply past maxSendMsg is refused with
-// ResourceExhausted before any value is read, as grpc-go refuses it.
+// HTTP/2 windows take it. A piece is built only as the share and the
+// windows take it now, and a record past that goes in parts, so that a
+// reader that reads slowly holds no more than its share (#919). A reply
+// past maxSendMsg is refused with ResourceExhausted before any value is
+// read, as grpc-go refuses it.
 
 // maxSendMsg is the largest message etcd's gRPC server sends, its default
 // grpc.MaxSendMsgSize(math.MaxInt32).
@@ -57,6 +60,7 @@ type bigRange struct {
 	next   int
 	n      int64
 	taken  int64 // records written
+	part   int   // bytes of the next record's field written already
 	count  int64
 	more   bool
 	// The message being written: its bytes and records left, and its
@@ -128,7 +132,8 @@ func (n *node) bigReady() bool {
 		if c == nil {
 			return true
 		}
-		if c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
+		done := b.ended && b.msgLeft == 0 && b.pos == len(b.buf)
+		if c.waiting() >= n.connOut || !done && b.planned && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
 			continue
 		}
 		return true
@@ -201,7 +206,12 @@ func (n *node) stepBig(b *bigRange) bool {
 			n.endStreamOK(c, s)
 			return false
 		}
-		if !n.buildPiece(b, c, s) {
+		// Nothing is built ahead of what the windows take (#919).
+		take := min(room, c.flow.conn, s.win)
+		if take <= 0 || s.holds {
+			return true
+		}
+		if !n.buildPiece(b, c, s, int(take)) {
 			return false
 		}
 	}
@@ -436,9 +446,10 @@ func (n *node) walk(b *bigRange, f func(id uint32, size int) bool) {
 }
 
 // buildPiece writes b's next bytes into its buf: the next message's
-// opening, or the next of its records, at most a share's worth, once
-// their values are all in memory. It reports false if it ended b.
-func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
+// opening, or the next of its records, at most target bytes of them, once
+// their values are all in memory; a record past target goes in parts. It
+// reports false if it ended b.
+func (n *node) buildPiece(b *bigRange, c *client, s *stream, target int) bool {
 	b.buf, b.pos = b.buf[:0], 0
 	if b.msgRecs == 0 && b.msgLeft == 0 {
 		n.beginChunk(b, s)
@@ -461,10 +472,10 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		b.recount()
 		return true
 	}
-	target := int(n.connOut)
 	b.piece = b.piece[:0]
-	size := 0
+	size := -b.part
 	n.walk(b, func(id uint32, sz int) bool {
+		sz = sizeBytesField(2, sz)
 		if int64(len(b.piece)) >= b.msgRecs || len(b.piece) > 0 && size+sz > target {
 			return false
 		}
@@ -511,23 +522,38 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		b.recount()
 		return true
 	}
-	w := msgW{c: c, held: b.buf, left: b.msgLeft}
+	// The piece is target bytes of its records' fields from the part of
+	// the first written already; a record cut short goes on in the next.
+	w := msgW{c: c, held: b.buf, left: b.msgLeft, view: true, skip: b.part, room: target}
+	end, at := b.part+target, 0
+	k := int64(0)
 	for _, rec := range recs {
 		if b.req.keysOnly {
 			rec = keysOnly(rec, &b.req)
 		}
 		w.bytesField(2, rec)
+		start := at
+		at += sizeBytesField(2, len(rec))
+		if at > end {
+			b.part = end - start
+			break
+		}
+		b.part = 0
+		k++
 	}
 	clear(recs)
 	n.kvs = recs[:0]
 	b.buf, b.msgLeft = w.held, w.left
-	k := int64(len(b.piece))
+	if k == 0 {
+		b.recount()
+		return true
+	}
 	b.msgRecs -= k
 	b.taken += k
 	if b.sorts {
 		b.next += int(k)
 	} else {
-		b.after = append(b.after[:0], st.key(b.piece[len(b.piece)-1])...)
+		b.after = append(b.after[:0], st.key(b.piece[k-1])...)
 		b.begun = true
 	}
 	b.recount()

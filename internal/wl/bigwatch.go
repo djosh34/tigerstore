@@ -53,6 +53,7 @@ type bigWatch struct {
 	frag      bool
 	opened    bool // a message is begun: the stream holds it alone
 	msgLeft   int  // bytes of that message still to build, its prefix included
+	part      int  // bytes of the next event's field written already
 	// buf is what it built and has not sent yet, from pos.
 	buf      []byte
 	pos      int
@@ -218,7 +219,8 @@ func (n *node) bigWatchReady() bool {
 		if c == nil {
 			return true
 		}
-		if c.bigW != nil && c.bigW != b || c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || c.streamWin(s) <= 0) || !b.opened && s.holds && !s.big {
+		building := b.opened && b.next < b.end
+		if c.bigW != nil && c.bigW != b || c.waiting() >= n.connOut || (b.pos < len(b.buf) || building) && (c.flow.conn <= 0 || c.streamWin(s) <= 0) || !b.opened && s.holds && !s.big {
 			continue
 		}
 		return true
@@ -313,7 +315,12 @@ func (n *node) stepBigWatch(b *bigWatch) bool {
 			}
 			continue
 		}
-		if !n.buildWatchPiece(b, c, s) {
+		// Nothing is built ahead of what the windows take (#919).
+		take := min(room, c.flow.conn, c.streamWin(s))
+		if take <= 0 {
+			return true
+		}
+		if !n.buildWatchPiece(b, c, s, int(take)) {
 			return false
 		}
 	}
@@ -403,25 +410,26 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 	return true
 }
 
-// buildWatchPiece writes b's next events into its buf, at most a share's
-// worth, once their values are all in memory. It reports false if it
-// ended b.
-func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
+// buildWatchPiece writes b's next events into its buf, at most target
+// bytes of them, once their values are all in memory; an event past
+// target goes in parts, as a range's record does (buildPiece). It reports
+// false if it ended b.
+func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream, target int) bool {
 	st := b.st
 	j := revStart(st, b.rev)
-	target := int(n.connOut)
 	type pieceEv struct {
 		off int
 		ev  bigEv
 	}
 	var evs []pieceEv
-	size := 0
+	size := -b.part
 	err := n.eachRevEvent(st, &b.x, j, b.next, func(off int, ev bigEv) bool {
-		if off >= b.end || len(evs) > 0 && size+ev.size > target {
+		sz := sizeBytesField(11, ev.size)
+		if off >= b.end || len(evs) > 0 && size+sz > target {
 			return false
 		}
 		evs = append(evs, pieceEv{off, ev})
-		size += ev.size
+		size += sz
 		return true
 	})
 	if err != nil || len(evs) == 0 {
@@ -462,12 +470,20 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream) bool {
 		n.fetchAway()
 		return true
 	}
-	w := msgW{c: c, held: b.buf[:0], left: b.msgLeft}
+	w := msgW{c: c, held: b.buf[:0], left: b.msgLeft, view: true, skip: b.part, room: target}
+	end, at := b.part+target, 0
 	for i := range recs {
 		n.writeEvent(&w, &b.x, &recs[i])
+		start := at
+		at += sizeBytesField(11, n.eventSize(&b.x, &recs[i]))
+		if at > end {
+			b.part = end - start
+			break
+		}
+		b.part = 0
+		b.next = evs[i].off + 1
 	}
 	b.buf, b.pos, b.msgLeft = w.held, 0, w.left
-	b.next = evs[len(evs)-1].off + 1
 	b.recount()
 	return true
 }
