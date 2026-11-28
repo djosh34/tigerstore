@@ -436,3 +436,41 @@ func TestIdleClientsThatReadOnInOneTurnShareWhatWaits(t *testing.T) {
 		}
 	}
 }
+
+// A reader that gives its buffers back at a tick with a large reply under
+// way still shares what waits to be sent (node.sending): when it reads
+// on, it writes no more than the share of every reader with a reply
+// under way (#919's re-check). Counted in neither, it gave its share to
+// the others.
+func TestAnIdleReaderWithALargeReplyKeepsItsShare(t *testing.T) {
+	n, cs, rev := bigReaders(t, 83<<20, 3, false, kRange)
+	for _, c := range cs {
+		n.startBig(c, c.get(1), rangeAt(rev))
+		sent(t, c)
+	}
+	l := &loop{n: n}
+	l.tick += 2
+	l.clientTick() // the readers, their sockets drained, give their buffers back
+	for _, c := range cs {
+		if c.in != nil {
+			t.Fatal("a reader kept its buffers")
+		}
+	}
+	if got := n.sending(); got != len(cs) {
+		t.Fatalf("%d clients share what waits to be sent, want the %d with a large reply under way", got, len(cs))
+	}
+	for _, c := range cs {
+		c.takeBufs() // it reads on: its WINDOW_UPDATEs
+		c.windowUpdate(0, 1<<30)
+		c.windowUpdate(1, 1<<30)
+		for i := 0; n.bigReady(); i++ {
+			if i > 100 {
+				t.Fatal("the large replies stay ready without moving on")
+			}
+			n.pumpBig()
+		}
+		if used := n.cpool + n.cout + int64(n.clients)*idleConn; used > n.sizes.clientPool {
+			t.Fatalf("3 readers hold %d bytes of the client pool's %d, with a share of %d", used, n.sizes.clientPool, n.connOut)
+		}
+	}
+}

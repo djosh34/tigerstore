@@ -461,6 +461,7 @@ func (c *client) giveBufs() {
 		c.grow(-slotBytes)
 		c.slots = nil
 	}
+	c.countSending()
 }
 
 // dropAll takes what a closed client held out of the client pool.
