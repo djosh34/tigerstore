@@ -50,6 +50,15 @@ func (s *Sim) changeMembership() {
 			}
 			continue
 		}
+		if !w.list && w.stage == 2 && s.cfg.promoteThroughFollower {
+			if i = s.followerIdx(i); i < 0 {
+				s.mu.Unlock()
+				if !s.sleep(100 * Millisecond) {
+					return
+				}
+				continue
+			}
+		}
 		var req proto.Message
 		if w.list {
 			req = &pb.MemberListRequest{Linearizable: true}
@@ -81,6 +90,16 @@ func (s *Sim) changeMembership() {
 			return
 		}
 	}
+}
+
+// followerIdx is the index of a running voter other than lead's, or -1.
+func (s *Sim) followerIdx(lead int) int {
+	for _, n := range s.nodes[:s.membership.voters] {
+		if n.proc != nil && n.idx != lead {
+			return n.idx
+		}
+	}
+	return -1
 }
 
 // memberReply checks the reply to a membership call and moves on to the

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -292,34 +293,115 @@ func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc 
 	return cancel
 }
 
-// forwardPromote calls a MemberPromote on the leader's client URLs, with
-// the node's client TLS configuration, checking the leader's certificate
-// against the CA the client port trusts.
-func (l *loop) forwardPromote(h handle, urls []string, req []byte) context.CancelFunc {
-	m := &sideMethod{impl: func(*sideServers) any { return nil }, unary: &grpc.MethodDesc{
-		Handler: func(_ any, ctx context.Context, dec func(any) error, _ grpc.UnaryServerInterceptor) (any, error) {
-			r := &etcdpb.MemberPromoteRequest{}
-			if err := dec(r); err != nil {
-				return nil, err
-			}
-			// The leader's client URLs: https ones with the client TLS,
-			// http ones without.
-			var dial *tls.Config
-			if l.selfTLS != nil {
-				dial = l.selfTLS.Clone()
-				if dial.RootCAs = l.selfTLS.ClientCAs; dial.RootCAs != nil {
-					dial.InsecureSkipVerify = false
-				}
-			}
-			cli, err := clientv3.New(clientv3.Config{Endpoints: urls, TLS: dial, Logger: zap.NewNop(), DialTimeout: 5 * time.Second})
-			if err != nil {
-				return nil, err
-			}
-			defer func() { _ = cli.Close() }()
-			return etcdpb.NewClusterClient(cli.ActiveConnection()).MemberPromote(ctx, r)
-		},
-	}}
-	return l.sideCall(h, m, req)
+// A follower hands a MemberPromote to the leader as etcd's does over its
+// peer API: on a peer connection of its own, whose hello is promoteAsk,
+// with the peer TLS. The follower checked the caller's auth; the leader
+// runs the promotion through its own client as root, as etcd's leader
+// runs a promotion its peer forwards with no check (#783). Each side
+// gives up after forwardTimeout, the leader's call a second before.
+
+// promoteAsk is the hello of a promotion forwarded to the leader.
+const promoteAsk = ^uint64(1)
+
+// forwardTimeout bounds a forwarded promotion, as etcd's ReqTimeout.
+const forwardTimeout = requestTimeout + time.Second
+
+// errForwardTimeout is etcd's answer to a forwarded promotion that
+// timed out.
+var errForwardTimeout = status.Error(codes.Unavailable, msgTimeout)
+
+// forwardPromote has the leader at peer address addr run the
+// MemberPromote req, in a goroutine of its own, and answers the client
+// of h with the leader's answer. It returns what ends the call's context.
+func (l *loop) forwardPromote(h handle, addr string, req []byte) context.CancelFunc {
+	ctx, cancel := context.WithTimeout(l.ctx, forwardTimeout)
+	go func() {
+		reply, err := l.askPromote(ctx, addr, req)
+		l.post(func() error { l.n.sideEnd(h, true, reply, err); return nil })
+	}()
+	return cancel
+}
+
+// askPromote sends the leader at addr the promotion req, and returns its
+// answer: the reply, or the error it answered with.
+func (l *loop) askPromote(ctx context.Context, addr string, req []byte) ([]byte, error) {
+	b, err := l.exchangePromote(ctx, addr, req)
+	code, k := binary.Uvarint(b)
+	if err == nil && k <= 0 {
+		err = errRecord
+	}
+	switch {
+	case err != nil:
+		l.logger.Printf("forward a promotion to %s: %v", addr, err)
+		return nil, errForwardTimeout
+	case code != 0:
+		return nil, status.Error(codes.Code(code), string(b[k:]))
+	}
+	return b[k:], nil
+}
+
+// exchangePromote sends the promotion req on a peer connection to addr,
+// and reads the answer, by ctx's deadline.
+func (l *loop) exchangePromote(ctx context.Context, addr string, req []byte) ([]byte, error) {
+	deadline, _ := ctx.Deadline()
+	nc, err := l.n.sys.dial(ctx, addr, time.Until(deadline))
+	if err != nil {
+		return nil, err
+	}
+	cfg := l.peerTLS.Clone()
+	cfg.ServerName, _, _ = net.SplitHostPort(addr)
+	hs, err := handshake(l.n.sys, nc, cfg, kindPeerOut)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = sysClose(hs.fd) }()
+	d := time.Until(deadline)
+	if d <= 0 {
+		return nil, context.DeadlineExceeded
+	}
+	if err := l.n.sys.blocking(hs.fd, d); err != nil {
+		return nil, err
+	}
+	s := newSock(hs, &counters{})
+	s.put(peerHelloBytes(promoteAsk, l.n.clusterID, ""))
+	putFrame(s, req)
+	if err := flushAll(s); err != nil {
+		return nil, err
+	}
+	return readFrame(s)
+}
+
+// answerPromote runs the promotion a peer forwards, in the accept
+// goroutine, and answers with a code, 0 or the gRPC error's, then the
+// reply or the error's message.
+func (l *loop) answerPromote(s *sock) error {
+	b, err := readFrame(s)
+	if err != nil {
+		return err
+	}
+	r := &etcdpb.MemberPromoteRequest{}
+	if err := proto.Unmarshal(b, r); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(l.ctx, requestTimeout)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx, sideCallerHeader, l.n.sideSecret+":"+rootUser)
+	resp, err := etcdpb.NewClusterClient(l.self.ActiveConnection()).MemberPromote(ctx, r)
+	var answer []byte
+	switch {
+	case ctx.Err() != nil:
+		err = errForwardTimeout
+	case err == nil:
+		answer, err = proto.Marshal(resp)
+	}
+	if err != nil {
+		st := status.Convert(err)
+		answer = append(binary.AppendUvarint(nil, uint64(st.Code())), st.Message()...)
+	} else {
+		answer = append([]byte{0}, answer...)
+	}
+	putFrame(s, answer)
+	return flushAll(s)
 }
 
 var errNotProto = errors.New("a side call's message is not a protobuf message")

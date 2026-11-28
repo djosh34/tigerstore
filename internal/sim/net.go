@@ -638,7 +638,11 @@ func (c *conn) send(b []byte) chan struct{} {
 	s := c.s
 	l := s.link(c.from, c.to)
 	b = slices.Clone(b)
-	at := s.now() + s.delay(l)
+	at := s.now()
+	if c.from != c.to {
+		// Loopback has no delay.
+		at += s.delay(l)
+	}
 	damaged := false
 	if l.netemUntil > s.now() {
 		b, at, damaged = s.netem(l, b, at, c.out.last)
