@@ -56,8 +56,10 @@ run)
 	# here (#476).
 	tools=/workspace/.tigerstore-tools
 	export PATH=$tools/go/bin:$PATH GOMODCACHE=$tools/gopath/pkg/mod GOCACHE=$tools/cache GOTOOLCHAIN=local
-	# As sim-campaign.yml: tests format a 512 MiB log ring (#602).
-	export ETCD_UNSAFE_LOG_RING_BYTES=536870912
+	# As sim-campaign.yml: tests format a 512 MiB log ring (#602). The
+	# native test binary runs each seed with the gosim command sim.sh
+	# builds; without it the tests skip.
+	export ETCD_UNSAFE_LOG_RING_BYTES=536870912 GOSIMTOOL=$root/.gosim/bin/gosim
 	cd "$root" || exit 1
 	if ! scripts/sim.sh ./internal/sim '^$' >"$dir/build.log" 2>&1; then
 		echo 1 >"$dir/exit"

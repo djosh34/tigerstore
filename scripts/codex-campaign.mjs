@@ -482,14 +482,16 @@ async function startThread(envConfig, name) {
   });
 }
 
-// waitConnected waits until the thread's VM is up; a turn sent before
-// finds no environment.
+// waitConnected waits until the thread's VM is up: connected and in
+// phase running. A turn sent while it is still starting finds no
+// environment.
 async function waitConnected(thread, limitMs) {
   const start = Date.now();
   while (Date.now() - start < limitMs) {
     try {
       const r = await withCloud((c) => c.call('environment/status', { environmentIds: [thread.environment] }));
-      if (r.data?.[0]?.status === 'connected') return (Date.now() - start) / 1000;
+      const s = r.data?.[0];
+      if (s?.status === 'connected' && s.observations?.phase === 'running') return (Date.now() - start) / 1000;
     } catch (e) {
       if (!(e instanceof CloudError)) throw e;
     }
@@ -614,7 +616,15 @@ async function runVM(vm, ctx) {
   try {
     vm.thread = await startThread(ctx.env, `${NAME} ${ctx.run} vm ${vm.index}`);
     vm.boot = await waitConnected(vm.thread, 10 * 60_000);
-    const started = ran(await turn(vm.thread, prompt(command)), 'codex-campaign-vm.sh start');
+    let items = await turn(vm.thread, prompt(command));
+    // A turn that ran nothing, as when the model found no environment
+    // yet, is sent once more; the VM script refuses a second start.
+    if (!items.some((i) => i.command?.includes('codex-campaign-vm.sh start'))) {
+      log('the start turn ran nothing; sending it again');
+      await sleep(30_000);
+      items = await turn(vm.thread, prompt(command));
+    }
+    const started = ran(items, 'codex-campaign-vm.sh start');
     const sum = crypto.createHash('sha256').update(vmPlan(vm)).digest('hex');
     if (!started.includes(sum)) throw new CloudError(`the VM got a different plan: ${started.trim()}`);
     vm.startedAt = Date.now();
