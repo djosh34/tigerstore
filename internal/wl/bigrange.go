@@ -21,8 +21,11 @@ import (
 // needs while writes go on; each piece reads its records again by key and
 // revision, fetches the values it lacks off the loop in one bounded
 // batch, and is written as the connection's share (connOut) and its
-// HTTP/2 windows take it. A reply past maxSendMsg is refused with
-// ResourceExhausted before any value is read, as grpc-go refuses it.
+// HTTP/2 windows take it. A piece is built only as the share and the
+// windows take it now, and a record past that goes in parts, so that a
+// reader that reads slowly holds no more than its share (#919). A reply
+// past maxSendMsg is refused with ResourceExhausted before any value is
+// read, as grpc-go refuses it.
 
 // maxSendMsg is the largest message etcd's gRPC server sends, its default
 // grpc.MaxSendMsgSize(math.MaxInt32).
@@ -56,7 +59,9 @@ type bigRange struct {
 	sorted []sortedKey
 	next   int
 	n      int64
-	taken  int64 // records written
+	taken  int64   // records written
+	part   int     // bytes of the next record's field written already
+	sum    partSum // the sum of its value's bytes sent (bigpart.go)
 	count  int64
 	more   bool
 	// The message being written: its bytes and records left, and its
@@ -94,6 +99,8 @@ func (n *node) startBig(c *client, s *stream, msg []byte) {
 		return
 	}
 	n.bigs = append(n.bigs, b)
+	c.larges++
+	c.countSending()
 	n.pumpBig()
 }
 
@@ -128,7 +135,8 @@ func (n *node) bigReady() bool {
 		if c == nil {
 			return true
 		}
-		if c.waiting() >= n.connOut || b.pos < len(b.buf) && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
+		done := b.ended && b.msgLeft == 0 && b.pos == len(b.buf)
+		if c.waiting() >= n.connOut || !done && b.planned && (c.flow.conn <= 0 || s.win <= 0 || s.holds) {
 			continue
 		}
 		return true
@@ -201,7 +209,12 @@ func (n *node) stepBig(b *bigRange) bool {
 			n.endStreamOK(c, s)
 			return false
 		}
-		if !n.buildPiece(b, c, s) {
+		// Nothing is built ahead of what the windows take (#919).
+		take := min(room, c.flow.conn, s.win)
+		if take <= 0 || s.holds {
+			return true
+		}
+		if !n.buildPiece(b, c, s, int(take)) {
 			return false
 		}
 	}
@@ -209,6 +222,8 @@ func (n *node) stepBig(b *bigRange) bool {
 
 // endBig lets go of what b holds.
 func (n *node) endBig(b *bigRange) {
+	b.c.larges--
+	b.c.countSending()
 	if b.planned && b.st == n.st {
 		b.st.releaseRead(b.rev)
 	}
@@ -435,10 +450,11 @@ func (n *node) walk(b *bigRange, f func(id uint32, size int) bool) {
 	})
 }
 
-// buildPiece writes b's next bytes into its buf: the next message's
-// opening, or the next of its records, at most a share's worth, once
-// their values are all in memory. It reports false if it ended b.
-func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
+// buildPiece writes b's next bytes: the next message's opening or closing
+// into its buf, or the next of its records straight into the socket, at
+// most target bytes of them, once their values are all in memory; a
+// record past target goes in parts. It reports false if it ended b.
+func (n *node) buildPiece(b *bigRange, c *client, s *stream, target int) bool {
 	b.buf, b.pos = b.buf[:0], 0
 	if b.msgRecs == 0 && b.msgLeft == 0 {
 		n.beginChunk(b, s)
@@ -461,10 +477,10 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		b.recount()
 		return true
 	}
-	target := int(n.connOut)
 	b.piece = b.piece[:0]
-	size := 0
+	size := -b.part
 	n.walk(b, func(id uint32, sz int) bool {
+		sz = sizeBytesField(2, sz)
 		if int64(len(b.piece)) >= b.msgRecs || len(b.piece) > 0 && size+sz > target {
 			return false
 		}
@@ -477,23 +493,37 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		n.abortBig(c, s)
 		return false
 	}
+	// A record past what the piece takes goes in parts: the first, when it
+	// goes on from a part sent already or is cut short here (bigpart.go).
 	st := b.st
+	split := b.part > 0 || size > target
+	var first ckptState
+	if split {
+		first, _ = st.stateAt(b.piece[0], b.rev)
+		if b.req.keysOnly {
+			first.vlen, first.lease = 0, 0
+		}
+	}
+	writeFirst := func(w *msgW, get partGet) { writeRec(w, st, 2, b.piece[0], &first, get) }
 	recs := n.kvs[:0]
 	away := false
 	st.noWait = true
-	for _, id := range b.piece {
+	for i, id := range b.piece {
 		var rec []byte
 		var err error
-		if b.req.keysOnly {
-			rec = st.keyAt(id, b.rev)
-		} else {
+		switch {
+		case i == 0 && split:
+			err = st.probePart(b.sum, b.part, target, writeFirst)
+		case b.req.keysOnly:
+			rec = keysOnly(st.keyAt(id, b.rev), &b.req)
+		default:
 			rec, err = st.at(id, b.rev)
 		}
 		if errors.Is(err, errAway) {
 			away = true
 			continue
 		}
-		if err != nil || rec == nil {
+		if err != nil || rec == nil && (i != 0 || !split) {
 			st.noWait = false
 			clear(recs)
 			n.kvs = recs[:0]
@@ -511,23 +541,54 @@ func (n *node) buildPiece(b *bigRange, c *client, s *stream) bool {
 		b.recount()
 		return true
 	}
-	w := msgW{c: c, held: b.buf, left: b.msgLeft}
-	for _, rec := range recs {
-		if b.req.keysOnly {
-			rec = keysOnly(rec, &b.req)
+	// The piece goes straight into the socket, within the share and the
+	// windows: target bytes of its records' fields at most, from the part
+	// of the first sent already.
+	kept := min(target, size)
+	w := msgW{s: &c.sock, sid: s.id, left: kept, view: true, skip: b.part, room: kept}
+	end, at := b.part+kept, 0
+	k := int64(0)
+	var err error
+	for i, rec := range recs {
+		sz := sizeBytesField(2, len(rec))
+		if i == 0 && split {
+			err = st.writePart(&w, &b.sum, writeFirst)
+			sz = sizeBytesField(2, b.recSize(b.piece[0], &first))
+		} else {
+			w.bytesField(2, rec)
 		}
-		w.bytesField(2, rec)
+		start := at
+		at += sz
+		if at > end {
+			b.part = end - start
+			break
+		}
+		b.part = 0
+		k++
 	}
 	clear(recs)
 	n.kvs = recs[:0]
-	b.buf, b.msgLeft = w.held, w.left
-	k := int64(len(b.piece))
+	if err != nil || w.left != 0 {
+		// A value that did not check, or a record of another size than its
+		// state said: the frames are cut short.
+		c.broken = true
+		n.abortBig(c, s)
+		return false
+	}
+	c.flow.conn -= int64(kept)
+	s.win -= int64(kept)
+	b.msgLeft -= kept
+	n.markDirty(&c.sock)
+	if k == 0 {
+		b.recount()
+		return true
+	}
 	b.msgRecs -= k
 	b.taken += k
 	if b.sorts {
 		b.next += int(k)
 	} else {
-		b.after = append(b.after[:0], st.key(b.piece[len(b.piece)-1])...)
+		b.after = append(b.after[:0], st.key(b.piece[k-1])...)
 		b.begun = true
 	}
 	b.recount()

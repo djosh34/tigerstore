@@ -1334,11 +1334,37 @@ func (l *loop) clientTick() {
 		}
 	}
 	l.serveWaiting()
-	if out := n.sizes.connOut(n.active); out != n.connOut && (len(n.roomWait) > 0 || len(n.heldReplies) > 0) {
+	out := n.sizes.connOut(n.sending())
+	if out != n.connOut && (len(n.roomWait) > 0 || len(n.heldReplies) > 0) {
 		// Growth may let a reply fit; shrinkage may require pieces.
 		n.roomFreed = true
 	}
-	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)
+	n.connOut, n.connIn = out, n.sizes.connIn(n.active)
+}
+
+// sending is how many clients share what waits to be sent (connOut):
+// those that hold buffers, and those idle but for a large reply under
+// way, which writes up to a share into its socket whenever its windows
+// open. Counted out once idle, readers stalled behind shut windows gave
+// the others their shares, past the client pool once they read on
+// (#919's review).
+func (n *node) sending() int { return n.active + n.idleLarges }
+
+// reshare shrinks the share of what waits to be sent at once when more
+// clients share it than it was made for, so that clients that start to
+// read or write within a tick do not each write the share of fewer: three
+// idle ones that sent ranges in one turn each wrote a lone client's share,
+// past the client pool (#919's re-check). It grows back at the next tick
+// (clientTick). As there, a smaller share may have a waiting reply go in
+// pieces, so the replies that wait for room are served again.
+func (n *node) reshare() {
+	if n.sizes.clientPool == 0 {
+		return // a node of a test that sets its shares itself
+	}
+	if out := n.sizes.connOut(n.sending()); out < n.connOut {
+		n.connOut = out
+		n.roomFreed = n.roomFreed || len(n.roomWait) > 0 || len(n.heldReplies) > 0
+	}
 }
 
 // serveWaiting gives the clients whose request's part waits for room in

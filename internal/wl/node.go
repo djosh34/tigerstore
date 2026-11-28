@@ -27,9 +27,11 @@ type node struct {
 	// (sizes.connIn), and clients the client connections the node holds;
 	// cpool is what they hold of the client buffers (sizes.clientBufs) to
 	// read, and cout what waits to be sent to them; active is how many
-	// hold buffers to read.
+	// hold buffers to read, and idleLarges how many hold none but have a
+	// large reply under way (node.sending).
 	connIn          int64
 	clients, active int
+	idleLarges      int
 	cpool, cout     int64
 	// turnCkpt is where the turn's checkpoint step spent its time, and
 	// turnReady where ready() spent it.

@@ -146,7 +146,7 @@ type stream struct {
 	failAt int64
 	// progressDue: a progress request of the watch stream waits for its
 	// watches to catch up; progressWaits, also for one from a revision
-	// still to come (watches.progressWait).
+	// still to come, or for its client to take it (watches.progressWait).
 	progressDue, progressWaits bool
 	// token is the call's auth token, from its token header. A side
 	// call's (byCaller) is for the client of caller's certificate name.
@@ -233,6 +233,28 @@ type client struct {
 	// may write on the connection, from its first message to its end.
 	bigs int
 	bigW *bigWatch
+	// larges counts its large replies under way, ranges' and watches',
+	// and idleLarge is set while it holds no buffers with one under way
+	// (node.sending).
+	larges    int
+	idleLarge bool
+}
+
+// countSending keeps the client's place among those that share what waits
+// to be sent (node.sending), as it takes or gives back its buffers, starts
+// or ends a large reply, or closes.
+func (c *client) countSending() {
+	n := c.node
+	idle := !c.dead && c.in == nil && c.larges > 0
+	if idle != c.idleLarge {
+		c.idleLarge = idle
+		if idle {
+			n.idleLarges++
+		} else {
+			n.idleLarges--
+		}
+	}
+	n.reshare()
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
@@ -415,6 +437,7 @@ func (c *client) takeBufs() {
 	if c.slots == nil {
 		c.slots = make([]stream, streamSlots)
 	}
+	c.countSending()
 }
 
 // idle reports whether the client holds nothing it read, nothing to send
@@ -438,6 +461,7 @@ func (c *client) giveBufs() {
 		c.grow(-slotBytes)
 		c.slots = nil
 	}
+	c.countSending()
 }
 
 // dropAll takes what a closed client held out of the client pool.
@@ -453,8 +477,9 @@ func (c *client) dropAll() {
 	if c.slots != nil {
 		c.grow(-slotBytes)
 	}
-	c.in, c.pt, c.out, c.slots = nil, nil, nil, nil
+	c.in, c.pt, c.out, c.slots, c.flow.held = nil, nil, nil, nil, nil
 	c.partial, c.flow.bytes = 0, 0
+	c.countSending()
 }
 
 func (c *client) get(id uint32) *stream {

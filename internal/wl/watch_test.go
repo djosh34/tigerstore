@@ -225,6 +225,7 @@ func TestNoProgressComesBeforeAWatchsStartRevision(t *testing.T) {
 	n.w.ws = []watcher{{active: true, sock: c.idx, sid: s.id, minRev: 10, progressNotify: true}}
 	s.wids = []int32{0}
 	n.progressEvery, n.now = time.Second, time.Now()
+	n.connOut = 1 << 20 // a share, so that a progress waiting to be sent leaves the client not slow
 	st.rev = 1
 	win := s.win
 

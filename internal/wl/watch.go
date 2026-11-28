@@ -894,6 +894,18 @@ func (n *node) progressIfSynced(c *client, s *stream) {
 			return
 		}
 	}
+	if n.progressBlocked(c, s) {
+		// The stream takes nothing now: the progress waits, one for any
+		// number asked, and goes out once it does. etcd drops a progress
+		// notification its watch stream's channel has no room for; held,
+		// each one asked for took the client's memory past its share with
+		// its windows shut (#912).
+		if !s.progressWaits {
+			s.progressWaits = true
+			n.w.progressWait = append(n.w.progressWait, mkHandle(c, s.id))
+		}
+		return
+	}
 	s.progressDue = false
 	n.writeProgress(c, s, -1)
 }
@@ -911,6 +923,15 @@ func (n *node) retryProgress() {
 			n.progressIfSynced(c, s)
 		}
 	}
+}
+
+// progressBlocked reports whether watch stream s of client c takes no
+// progress notification now: its client's send buffer is past its share,
+// or the stream holds messages for want of window while the client holds
+// past its share. As etcd's channel is a stream's, a stream of the
+// client whose window is open still takes one (#912).
+func (n *node) progressBlocked(c *client, s *stream) bool {
+	return c.paused || c.backedUp() || s.holds && c.holdsTooMuch()
 }
 
 // writeProgress writes a progress notification of watch id, -1 for the
@@ -940,7 +961,9 @@ func (n *node) notifyProgress() {
 			x.sent = false
 			continue
 		}
-		if c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c != nil {
+		if c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c != nil && !n.progressBlocked(c, s) {
+			// One its stream takes nothing for is dropped, as etcd drops
+			// one its watch stream's channel has no room for.
 			n.writeProgress(c, s, x.id)
 		}
 	}
