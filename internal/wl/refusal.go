@@ -188,8 +188,18 @@ func (n *node) followerDrops(m *pb.Message) bool {
 		// probing, sent it again for good.
 		return false
 	}
+	// Raft writes the append from its first entry that is new or of
+	// another term than the one held at its index, truncating the log
+	// there (findConflict), so the room counts those from it on (#817).
+	held := last
+	for _, e := range ents {
+		if e.GetIndex() <= last && !n.holdsAt(e.GetIndex(), e.GetTerm()) {
+			held = e.GetIndex() - 1
+			break
+		}
+	}
 	room := w.ringRoom() - n.appendPledged - w.waitingBytes() - appendMargin
-	keep, took, wanted := fitEntries(ents, last, room)
+	keep, took, wanted := fitEntries(ents, held, room)
 	if wanted > 0 {
 		// The room it wants, with what the ring holds besides, makes the
 		// ring low, so that a checkpoint is due once the node applied past
