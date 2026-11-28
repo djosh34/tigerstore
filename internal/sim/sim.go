@@ -488,6 +488,8 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// syncFor, set by a test, is how long each of its log syncs takes.
+	syncFor int64
 	// reloads are the times a client saw the node fail its call to start
 	// again from its log, after a snapshot install or a failed fetch, as
 	// on a restart; the client tries again. fromLog are the times it did.
@@ -572,8 +574,8 @@ type node struct {
 	last  coreState
 }
 
-// hardState is the term and vote of a Raft hard state.
-type hardState struct{ term, vote uint64 }
+// hardState is the term, vote and commit of a Raft hard state.
+type hardState struct{ term, vote, commit uint64 }
 
 // pendingJob is a job a node's core handed its disk at time at: the first
 // entry it writes, and whether that replaces entries reported durable.
@@ -2244,6 +2246,9 @@ func (s *Sim) beforeSync(p *proc) {
 	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
+	}
+	if n.syncFor > 0 {
+		lat = n.syncFor
 	}
 	gray := s.gray == n && n.graySync && !s.healed
 	switch {

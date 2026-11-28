@@ -124,6 +124,9 @@ func (n *node) ready() error {
 				return err
 			}
 		}
+		if err := n.resumeApplies(); err != nil {
+			return err
+		}
 		if err := n.resumeSelfRemoval(); err != nil {
 			return err
 		}
@@ -131,7 +134,11 @@ func (n *node) ready() error {
 			n.serveReads()
 		}
 	}
-	// A transport removal acknowledgement need not produce a Raft Ready.
+	// A sync's end, or a transport removal acknowledgement, need not
+	// produce a Raft Ready.
+	if err := n.resumeApplies(); err != nil {
+		return err
+	}
 	return n.resumeSelfRemoval()
 }
 
@@ -203,6 +210,7 @@ func (n *node) appendNow(m *pb.Message) error {
 		n.simAppend(m)
 	}
 	if sn := m.GetSnapshot(); sn != nil && sn.GetMetadata().GetIndex() > 0 {
+		n.dropHeldApplies()
 		t := time.Now()
 		err := n.installSnapshot(sn)
 		n.turnReady.install += time.Since(t)
@@ -403,12 +411,74 @@ func (n *node) storageApply(m *pb.Message) error {
 		// acknowledged while the already-owned apply prefix is held.
 		return nil
 	}
+	if len(n.notDurable) > 0 {
+		// The apply is in order: it waits behind the one held.
+		n.notDurable = append(n.notDurable, heldApply{m: m})
+		return nil
+	}
 	return n.storageApplyReady(m, 0)
+}
+
+// heldApply is an apply of Raft's, from its entry at from on, that waits
+// for the durable commit to cover that entry (waitsForDurable).
+type heldApply struct {
+	m    *pb.Message
+	from int
+}
+
+// waitsForDurable reports whether committed entry idx is one whose apply
+// waits for its commit to be durable: an entry whose commit is synced
+// (mustSyncCommit) that the durable commit does not cover yet. Applied
+// and answered before, a crash before the sync left it out of what the
+// node's replay applies: a restarted node served reads with the auth of
+// before, or waited for a removed member's vote (#823). Its commit's sync
+// starts at once, so the wait is that one sync.
+func (n *node) waitsForDurable(idx uint64) bool {
+	return idx > n.wal.durableHS.GetCommit() && (idx <= n.recoveredLast || slices.Contains(n.mustSync, idx))
+}
+
+// resumeApplies applies, in order, the applies held for the durable
+// commit (waitsForDurable) that it covers now.
+func (n *node) resumeApplies() error {
+	for len(n.notDurable) > 0 && n.selfRemoval.apply == nil {
+		h := n.notDurable[0]
+		if n.waitsForDurable(h.m.GetEntries()[h.from].GetIndex()) {
+			return nil
+		}
+		n.notDurable = n.notDurable[1:]
+		if err := n.storageApplyReady(h.m, h.from); err != nil {
+			return err
+		}
+	}
+	// A removal of our own holds what came after it (storageApply).
+	n.notDurable = nil
+	return nil
+}
+
+// dropHeldApplies lets go of the applies held for the durable commit, as
+// a snapshot past their entries installs: Raft restores one only past
+// its commit, which covers every entry it handed for apply. Their
+// responses tell Raft the apply is done, as the snapshot's will.
+func (n *node) dropHeldApplies() {
+	for _, h := range n.notDurable {
+		for _, r := range h.m.Responses {
+			_ = n.rn.Step(r)
+		}
+	}
+	n.notDurable = nil
 }
 
 func (n *node) storageApplyReady(m *pb.Message, from int) error {
 	for i, e := range m.GetEntries()[from:] {
 		idx := e.GetIndex()
+		if n.waitsForDurable(idx) {
+			// Ahead of the applies that came after it.
+			n.notDurable = slices.Insert(n.notDurable, 0, heldApply{m: m, from: from + i})
+			n.flushEvents()
+			n.st.endApply()
+			n.serveReads()
+			return nil
+		}
 		switch e.GetType() {
 		case pb.EntryConfChange:
 			var cc pb.ConfChange
