@@ -244,11 +244,22 @@ export function vmPlan(vm) {
 
 // --- Reports.
 
-// parseReport reads the lines codex-campaign-vm.sh report prints.
+// parseRanges reads 1-3,48 as [[1, 3], [48, 48]].
+function parseRanges(text) {
+  return (text ?? '').split(',').filter(Boolean).map((x) => {
+    const [a, b] = x.split('-').map(Number);
+    return [a, b ?? a];
+  });
+}
+
+// parseReport reads the lines codex-campaign-vm.sh report prints. A turn
+// keeps only the end of a command's output; a report whose "end" line
+// counts more lines than arrived was cut, and its failures may be lost.
 export function parseReport(text) {
-  const r = { done: false, exit: null, reported: {}, failures: [], known: [], campaign: [], build: [], moreFailures: 0 };
+  const r = { done: false, exit: null, reported: {}, failures: [], known: [], campaign: [], build: [], cut: true };
   const replays = {};
-  for (const line of text.split('\n')) {
+  const lines = text.split('\n').filter(Boolean);
+  for (const line of lines) {
     const [word, ...rest] = line.split(' ');
     const arg = rest.join(' ');
     if (word === 'commit') r.commit = arg;
@@ -257,32 +268,38 @@ export function parseReport(text) {
       if (r.done) r.exit = Number(rest[1]);
     } else if (word === 'elapsed') r.elapsed = Number(arg);
     else if (word === 'cpu') r.cpu = Number(arg);
-    else if (word === 'reported') {
-      const ranges = (rest[1] ?? '').split(',').filter(Boolean).map((x) => {
-        const [a, b] = x.split('-').map(Number);
-        return [a, b ?? a];
-      });
-      (r.reported[rest[0]] ??= []).push(...ranges);
-    } else if (word === 'fail') r.failures.push({ test: rest[0], seed: Number(rest[1]), error: rest.slice(2).join(' ') });
-    else if (word === 'replay') replays[`${rest[0]}/${rest[1]}`] = rest.slice(2).join(' ');
+    else if (word === 'reported') (r.reported[rest[0]] ??= []).push(...parseRanges(rest[1]));
+    else if (word === 'cause') {
+      const error = rest.slice(2).join(' ');
+      for (const [a, b] of parseRanges(rest[1])) {
+        for (let seed = a; seed <= b; seed++) r.failures.push({ test: rest[0], seed, error });
+      }
+    } else if (word === 'replay') replays[`${rest[0]}/${rest[1]}`] = rest.slice(2).join(' ');
     else if (word === 'known') r.known.push({ test: rest[0], seed: Number(rest[1]), issue: rest[2] });
     else if (word === 'campaign') r.campaign.push({ test: rest[0], counts: rest.slice(1).join(' ') });
-    else if (word === 'more-failures') r.moreFailures += Number(arg);
     else if (word === 'build') r.build.push(arg);
+    else if (word === 'end') r.cut = Number(arg) !== lines.length;
   }
   for (const f of r.failures) {
-    f.replay = replays[`${f.test}/${f.seed}`] ?? `SIM_SEED=${f.seed} SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^${f.test}$'`;
+    f.replay = replays[`${f.test}/${f.seed}`] ?? `SIM_SEED=${f.seed} SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^${f.test}$/^${f.seed}$'`;
   }
   return r;
 }
 
 // campaignCounts sums the "key: n" counts of TestCampaign's count lines.
+// A key may hold ", " itself ("requested quorum loss, not lost").
 export function campaignCounts(lines) {
   const sum = {};
   for (const line of lines) {
-    for (const m of line.split(';')[0].matchAll(/([a-z][a-z ,:-]*?): (\d+)(?=,|$)/g)) {
-      const key = m[1].replace(/^, /, '');
-      sum[key] = (sum[key] ?? 0) + Number(m[2]);
+    let key = '';
+    for (const part of line.split(';')[0].split(', ')) {
+      const m = /^(.*): (\d+)$/.exec(part);
+      if (!m) {
+        key += `${part}, `;
+        continue;
+      }
+      sum[key + m[1]] = (sum[key + m[1]] ?? 0) + Number(m[2]);
+      key = '';
     }
   }
   return sum;
@@ -306,6 +323,17 @@ export function missing(first, seeds, ranges) {
 
 function covered(first, seeds, ranges) {
   return seeds - missing(first, seeds, ranges).reduce((a, [x, y]) => a + y - x + 1, 0);
+}
+
+// seedRanges turns seeds into ranges of consecutive seeds.
+export function seedRanges(seeds) {
+  const out = [];
+  for (const seed of [...seeds].sort((a, b) => a - b)) {
+    const last = out.at(-1);
+    if (last && seed <= last[1] + 1) last[1] = Math.max(last[1], seed);
+    else out.push([seed, seed]);
+  }
+  return out;
 }
 
 export function rangeText(ranges) {
@@ -336,8 +364,12 @@ export function searchPhrase(error) {
 
 // --- Codex Cloud.
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// sleep waits ms, in steps of an hour: Node waits 1 ms for a timer past
+// 2^31 - 1 ms, which a full campaign's wait can reach.
+async function sleep(ms) {
+  for (let left = ms; left > 0; left -= 3600_000) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(left, 3600_000)));
+  }
 }
 
 // refreshAuth has the codex CLI refresh ~/.codex/auth.json: its app
@@ -367,7 +399,7 @@ async function refreshAuth() {
     server.stdin.write(`${JSON.stringify({ method: 'initialized' })}\n`);
     const r = await call('account/read', { refreshToken: true });
     if (r.error || r.result?.account?.type !== 'chatgpt') {
-      throw new Error(`refreshing ~/.codex/auth.json through the codex CLI failed: ${JSON.stringify(r.error ?? r.result)}`);
+      throw new Error(`refreshing ~/.codex/auth.json through the codex CLI failed: ${JSON.stringify(r.error ?? r.result?.account?.type)}`);
     }
   } finally {
     server.kill();
@@ -461,11 +493,14 @@ async function withCloud(f) {
   }
 }
 
-// Threads this run started and has not archived yet.
+// Threads this run started and has not archived yet, and the starts
+// still in flight, which an interrupt waits for: a thread started then
+// has no name yet, so a later run could not find it.
 const live = new Set();
+const starting = new Set();
 
-async function startThread(envConfig, name) {
-  return withCloud(async (c) => {
+function startThread(envConfig, name) {
+  const start = withCloud(async (c) => {
     const r = await c.call('thread/start', {
       model: MODEL,
       sandbox: 'danger-full-access',
@@ -480,6 +515,8 @@ async function startThread(envConfig, name) {
     await c.call('thread/name/set', { threadId: thread.id, name });
     return thread;
   });
+  starting.add(start);
+  return start.finally(() => starting.delete(start));
 }
 
 // waitConnected waits until the thread's VM is up: connected and in
@@ -561,6 +598,7 @@ async function archive(id) {
   live.delete(id);
 }
 
+// archiveAll tries every thread, then fails if any is left.
 async function archiveAll(ids) {
   const failed = [];
   for (const id of ids) {
@@ -570,7 +608,7 @@ async function archiveAll(ids) {
       failed.push(`${id}: ${e.message}`);
     }
   }
-  if (failed.length) console.error(`could not archive:\n${failed.join('\n')}`);
+  if (failed.length) throw new Error(`could not archive these threads; archive them before another run:\n${failed.join('\n')}`);
 }
 
 // leftovers archives the threads of this script an earlier run left.
@@ -593,18 +631,26 @@ async function usage() {
 
 // lock keeps one campaign of this host at a time, so a run's start never
 // archives the threads of a campaign still running.
+// The file is created exclusively; one left by a run that died is removed.
 function lock() {
   fs.mkdirSync(STATE, { recursive: true });
   const file = path.join(STATE, 'lock');
-  try {
+  for (;;) {
+    try {
+      fs.writeFileSync(file, `${process.pid}`, { flag: 'wx' });
+      return () => fs.rmSync(file, { force: true });
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
     const pid = Number(fs.readFileSync(file, 'utf8'));
-    process.kill(pid, 0);
-    throw new Error(`campaign ${pid} still runs on this host`);
-  } catch (e) {
-    if (e.code !== 'ENOENT' && e.code !== 'ESRCH') throw e;
+    try {
+      process.kill(pid, 0);
+      throw new Error(`campaign ${pid} still runs on this host`);
+    } catch (e) {
+      if (e.code !== 'ESRCH') throw e;
+    }
+    fs.rmSync(file, { force: true });
   }
-  fs.writeFileSync(file, `${process.pid}`);
-  return () => fs.rmSync(file, { force: true });
 }
 
 // --- One VM.
@@ -616,15 +662,7 @@ async function runVM(vm, ctx) {
   try {
     vm.thread = await startThread(ctx.env, `${NAME} ${ctx.run} vm ${vm.index}`);
     vm.boot = await waitConnected(vm.thread, 10 * 60_000);
-    let items = await turn(vm.thread, prompt(command));
-    // A turn that ran nothing, as when the model found no environment
-    // yet, is sent once more; the VM script refuses a second start.
-    if (!items.some((i) => i.command?.includes('codex-campaign-vm.sh start'))) {
-      log('the start turn ran nothing; sending it again');
-      await sleep(30_000);
-      items = await turn(vm.thread, prompt(command));
-    }
-    const started = ran(items, 'codex-campaign-vm.sh start');
+    const started = ran(await turn(vm.thread, prompt(command)), 'codex-campaign-vm.sh start');
     const sum = crypto.createHash('sha256').update(vmPlan(vm)).digest('hex');
     if (!started.includes(sum)) throw new CloudError(`the VM got a different plan: ${started.trim()}`);
     vm.startedAt = Date.now();
@@ -643,6 +681,7 @@ async function runVM(vm, ctx) {
       const left = did > 0 ? (elapsed * (total - did)) / did : total;
       wait = Math.max(left * 1.25, vm.jobs.some((j) => j.long) ? 180 * 60 : 65 * 60);
     }
+    if (vm.report.cut) throw new CloudError('its report was cut short, so failures may be missing from it');
     log(vm.report.done ? `done, exit ${vm.report.exit}` : 'still running at its last report');
   } catch (e) {
     vm.error = e.message;
@@ -681,11 +720,12 @@ function gh(args, input) {
   return execFileSync('gh', args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'inherit'] }).trim();
 }
 
-// openIssueFor finds an open issue that quotes the failure's error.
+// openIssueFor finds an open `bug` issue that quotes the failure's
+// error. Summary comments quote errors too, so other issues do not count.
 function openIssueFor(error) {
   const phrase = searchPhrase(error);
   if (!phrase) return null;
-  const q = `repo:${REPO} is:issue is:open "${phrase.replaceAll('"', '')}"`;
+  const q = `repo:${REPO} is:issue is:open label:bug "${phrase.replaceAll('"', '')}"`;
   const found = JSON.parse(gh(['api', '-X', 'GET', 'search/issues', '-f', `q=${q}`, '-f', 'per_page=5']));
   return found.items?.[0]?.html_url ?? null;
 }
@@ -698,6 +738,16 @@ function knownFailuresEmpty(commit) {
 
 // The counts of a full campaign (#497).
 export const FULL = { fresh: 10_000_000, aged: 50_000, long: 4_000 };
+
+// checkOverlap refuses specs whose seeds of one test overlap: a seed
+// counts once.
+export function checkOverlap(specs) {
+  const sorted = [...specs].sort((a, b) => a.test.localeCompare(b.test) || a.first - b.first);
+  for (let i = 1; i < sorted.length; i++) {
+    const [a, b] = [sorted[i - 1], sorted[i]];
+    if (a.test === b.test && b.first < a.first + a.seeds) throw new Error(`${a.test}: the ranges from ${a.first} and ${b.first} overlap`);
+  }
+}
 
 export function isFull(specs) {
   const c = { fresh: 0, aged: 0, long: 0 };
@@ -734,7 +784,6 @@ async function campaign(opts) {
   const known = [];
   const campaignLines = [];
   let cpu = 0;
-  let more = 0;
   for (const vm of vms) {
     const r = vm.report;
     if (!r) continue;
@@ -743,7 +792,6 @@ async function campaign(opts) {
     known.push(...r.known);
     campaignLines.push(...r.campaign.map((c) => c.counts));
     cpu += r.cpu ?? 0;
-    more += r.moreFailures;
   }
   let requested = 0;
   let got = 0;
@@ -755,7 +803,7 @@ async function campaign(opts) {
     if (m.length) gaps.push(`${s.test} ${rangeText(m.slice(0, 20))}${m.length > 20 ? ', …' : ''}`);
   }
   const knownSeeds = new Set(known.map((k) => `${k.test}/${k.seed}`));
-  const failed = failures.length + more;
+  const failed = failures.length;
   const passed = got - failed - knownSeeds.size;
   const counted = campaignCounts(campaignLines);
   const answered = counted['answered calls'];
@@ -781,11 +829,12 @@ async function campaign(opts) {
           '',
           `**Error:** ${fs_[0].error}`,
           '',
-          `**Seeds of ${fs_[0].test}:** ${fs_.map((f) => f.seed).join(', ')}`,
+          `**Seeds of ${fs_[0].test}:** ${rangeText(seedRanges(fs_.map((f) => f.seed)))}`,
           '',
           'Each replays alone, anywhere, at that commit:',
           '',
           ...fs_.slice(0, 10).map((f) => `    git checkout ${ctx.commit} && ${f.replay}`),
+          ...(fs_.length > 10 ? ['', 'The other seeds replay the same way with their own number.'] : []),
           '',
           `Signature: \`${key}\``,
         ].join('\n');
@@ -795,8 +844,18 @@ async function campaign(opts) {
     filed.push({ key, failures: fs_, url, found });
   }
 
+  // The status is only for a complete full campaign: every VM reported
+  // its end on the commit, every seed has a verdict, none was skipped,
+  // and known-failures.txt is empty. It passes when no seed failed and
+  // every VM's run, with the checks over its whole set, exited 0.
   const full = isFull(specs);
-  const clean = full && got === requested && failed === 0 && knownSeeds.size === 0 && knownFailuresEmpty(ctx.commit);
+  const complete = full && vms.every((vm) => !vm.error && vm.report?.done) && got === requested && knownSeeds.size === 0 && knownFailuresEmpty(ctx.commit);
+  const clean = complete && failed === 0 && vms.every((vm) => vm.report.exit === 0);
+  const statusText = !full
+    ? 'no, a short run: no commit status'
+    : !complete
+      ? 'yes, but not complete (a VM failed, seeds are missing or skipped, or known-failures.txt lists seeds): no commit status'
+      : `yes, complete: the commit status \`campaign\` is set to ${clean ? 'success' : 'failure'}`;
   const tokens = vms.reduce((a, vm) => a + (vm.thread?.tokens ?? 0), 0);
   const turns = vms.reduce((a, vm) => a + (vm.thread?.turns ?? 0), 0);
   const lines = [
@@ -808,21 +867,23 @@ async function campaign(opts) {
     `- **Wall time:** ${duration(wall)} on ${vms.length} VMs.`,
     `- **Answered calls per core-second:** ${answered !== undefined && cpu ? (answered / cpu).toFixed(1) : 'not logged by these tests'} (${answered ?? '–'} answered calls, ${cpu} core-seconds of seeds).`,
     `- **Cost:** ${turns} GPT-6 Luna turns at effort ${EFFORT}, ${tokens} tokens; weekly usage ${before.percent}% before, ${after.percent}% after; credits ${before.credits} before, ${after.credits} after.`,
-    `- **Full campaign:** ${full ? (clean ? 'yes, and clean: the commit status `campaign` is set to success' : 'yes, not clean: the commit status `campaign` is set to failure') : 'no, a short run: no commit status'}.`,
+    `- **Full campaign:** ${statusText}.`,
   ];
   if (Object.keys(counted).length) lines.push(`- **TestCampaign's counts:** ${Object.entries(counted).map(([k, v]) => `${k} ${v}`).join(', ')}.`);
   if (gaps.length) lines.push(`- **Missing seeds:** ${gaps.join('; ')}.`);
   lines.push('', '| VM | Thread | Seeds | Estimate | Seeds ran for | Core-seconds | Result |', '|---|---|---|---|---|---|---|');
   for (const vm of vms) {
     const r = vm.report;
-    const result = vm.error ?? (r?.done ? `exit ${r.exit}, ${r.failures.length + r.moreFailures} failed` : 'still running at its last report');
+    let result = vm.error ?? (r?.done ? `exit ${r.exit}, ${r.failures.length} failed` : 'still running at its last report');
+    // A VM whose build failed says why.
+    if (r?.build.length) result += `; build: ${r.build.slice(-3).join(' / ')}`;
     lines.push(`| ${vm.index} | \`${vm.thread?.id ?? '–'}\` | ${vm.seeds} | ${duration(vm.estimate)} | ${r?.elapsed !== undefined ? duration(r.elapsed) : '–'} | ${r?.cpu ?? '–'} | ${result.replaceAll('|', '\\|').slice(0, 300)} |`);
   }
   if (filed.length) {
     lines.push('', '| Failure | Seeds | Issue |', '|---|---|---|');
     for (const f of filed) {
-      const seeds = f.failures.map((x) => x.seed);
-      lines.push(`| ${f.failures[0].error.replaceAll('|', '\\|').slice(0, 200)} | ${seeds.slice(0, 20).join(', ')}${seeds.length > 20 ? ', …' : ''} | ${f.url ? `${f.url}${f.found ? ' (open)' : ' (new)'}` : 'not filed'} |`);
+      const seeds = rangeText(seedRanges(f.failures.map((x) => x.seed)));
+      lines.push(`| ${f.failures[0].error.replaceAll('|', '\\|').slice(0, 200)} | ${seeds.length > 1000 ? `${seeds.slice(0, 1000)}…` : seeds} | ${f.url ? `${f.url}${f.found ? ' (open)' : ' (new)'}` : 'not filed'} |`);
     }
     lines.push('', `Replay one: \`git checkout ${ctx.commit} && ${filed[0].failures[0].replay}\``);
   }
@@ -831,7 +892,7 @@ async function campaign(opts) {
   console.log(body);
   const url = gh(['issue', 'comment', String(opts.issue), '--repo', REPO, '--body-file', '-'], body);
   console.log(url);
-  if (full) {
+  if (complete) {
     gh([
       'api', `repos/${REPO}/statuses/${ctx.commit}`,
       '-f', `state=${clean ? 'success' : 'failure'}`,
@@ -852,6 +913,7 @@ async function findMaxVMs(opts) {
   const run = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
   const rows = [];
   let most = 0;
+  let partial = null;
   for (const n of [10, 20, 40, 60, 80, MAX_VMS]) {
     const results = await Promise.all(
       Array.from({ length: n }, async (_, i) => {
@@ -870,11 +932,17 @@ async function findMaxVMs(opts) {
     const errors = [...new Set(results.filter((r) => r.error).map((r) => r.error))];
     rows.push(`| ${n} | ${up.length} | ${up.length ? `${up[0].toFixed(0)} / ${up[Math.floor(up.length / 2)].toFixed(0)} / ${up.at(-1).toFixed(0)}` : '–'} | ${errors.join('; ').replaceAll('|', '\\|') || '–'} |`);
     console.log(rows.at(-1));
-    if (up.length < n) break;
+    if (up.length < n) {
+      partial = { n, up: up.length };
+      break;
+    }
     most = n;
   }
+  const heading = partial
+    ? `## Codex Cloud VMs at once: all ${most} came up; of ${partial.n} started at once, ${partial.up} came up`
+    : `## Codex Cloud VMs at once: all ${most} came up${most === MAX_VMS ? ', the cap' : ''}`;
   const body = [
-    `## Most Codex Cloud VMs at once: ${most}${most === MAX_VMS ? ' (the cap)' : ''}`,
+    heading,
     '',
     `\`node scripts/codex-campaign.mjs ${opts.argv.join(' ')}\`, run ${run}. Each step starts that many threads in the tigerstore environment at once and waits up to 5 minutes for every VM to be up; a VM not up by then counts as queued. Every thread was archived after its step.`,
     '',
@@ -909,6 +977,7 @@ function parseArgs(argv) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  checkOverlap(opts.specs);
   if (opts.dryRun) {
     for (const [i, vm] of plan(opts.specs, opts.vms).entries()) {
       console.log(`vm ${i}: ${vm.seeds} seeds, about ${duration(vm.estimate)}: ${vmPlan(vm)}`);
@@ -921,10 +990,17 @@ async function main() {
   const unlock = lock();
   // Archive every thread this run started, also on an interrupt.
   const stop = async (signal) => {
-    console.error(`${signal}: archiving ${live.size} threads`);
-    await archiveAll([...live]);
+    console.error(`${signal}: archiving the threads of this run`);
+    await Promise.race([Promise.allSettled([...starting]), sleep(150_000)]);
+    let code = 130;
+    try {
+      await archiveAll([...live]);
+    } catch (e) {
+      console.error(e.message);
+      code = 1;
+    }
     unlock();
-    process.exit(130);
+    process.exit(code);
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

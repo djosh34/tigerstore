@@ -20,19 +20,24 @@
 # from its seed and commit, and the files of many failed runs could fill
 # the VM's disk.
 #
-# report prints one line per fact, which the host script parses:
+# report prints one line per fact, which the host script parses. A
+# model turn keeps only the last 64 KiB of a command's output, so the
+# failures come first, grouped by cause, the counts last, and the last
+# line says how many lines there are, so a cut report shows:
+#   cause <test> <seeds> <error>          failed seeds of one error, its
+#                                         numbers aside; seeds as 1-3,48
+#   replay <test> <seed> <command>        when it is not the plain one
+#   known <test> <seed> <issue>           skipped: in known-failures.txt
+#   campaign <test> <counts>              TestCampaign's count lines
+#   build <line>                          the build log's end, if no seed ran
 #   commit <sha>
 #   state running|done <exit code>
 #   elapsed <seconds since the seeds started>
 #   cpu <core-seconds the VM used since the seeds started>
 #   reported <test> <first>-<last>,...    seeds with a driver verdict
-#   fail <test> <seed> <error>            one per failed seed
-#   replay <test> <seed> <command>
-#   known <test> <seed> <issue>           skipped: in known-failures.txt
-#   campaign <test> <counts>              TestCampaign's count line
-#   more-failures <n>                     failures past the first 40
+#   end <lines>
 set -uo pipefail
-dir=/tmp/campaign
+dir=${CODEX_CAMPAIGN_DIR:-/tmp/campaign}
 root=$(cd "$(dirname "$0")/.." && pwd)
 
 cpu_seconds() {
@@ -93,81 +98,121 @@ run)
 	;;
 report)
 	cd "$root" || exit 1
-	echo "commit $(git rev-parse HEAD)"
-	if [ -e "$dir/exit" ]; then
-		echo "state done $(cat "$dir/exit")"
-	else
-		echo "state running"
-	fi
-	if [ ! -e "$dir/started" ]; then
-		# Still building, or the build failed.
-		tail -n 20 "$dir/build.log" 2>/dev/null | sed 's/^/build /'
-		exit 0
-	fi
-	now=$(cat "$dir/ended" 2>/dev/null || date +%s)
-	echo "elapsed $((now - $(cat "$dir/started")))"
-	echo "cpu $(($(cat "$dir/cpu-end" 2>/dev/null || cpu_seconds) - $(cat "$dir/cpu-start")))"
-	for ((j = 0; j < $(jq length "$dir/plan.json"); j++)); do
-		test=$(jq -r ".[$j].test" "$dir/plan.json")
-		# Only the driver's verdict counts as reported (sim-campaign.py).
-		ranges=$(cat "$dir"/seeds-"$j"-*.log 2>/dev/null |
-			sed -nE "s#^simrun: seed $test/([0-9]+) (PASS|FAIL|SKIP known-failure)\$#\\1#p" | sort -n -u |
-			awk 'NR == 1 || $1 != last + 1 { if (NR > 1) out = out (start == last ? start : start "-" last) ","; start = $1 } { last = $1 } END { if (NR) print out (start == last ? start : start "-" last) }')
-		if [ -n "$ranges" ]; then
-			echo "reported $test $ranges"
-		fi
-		cat "$dir"/seeds-"$j"-*.log 2>/dev/null | awk -v test="$test" '
-		# The test prints the error of a failed seed between its "=== RUN"
-		# line and its verdict; keep the first message that is not one the
-		# passing seeds print as well.
-		$0 ~ "^=== RUN   " test "/[0-9]+$" {
-			split($3, a, "/")
-			cur = a[2] + 0
-			err[cur] = ""
-		}
-		/^ +[a-z_]+\.go:[0-9]+: / && err[cur] == "" {
-			msg = $0
-			sub(/^ +[a-z_]+\.go:[0-9]+: /, "", msg)
-			if (msg !~ /^(the gosim run of|=== RUN|Using pre-built|revision witness used|campaign:|trace of seed|the nodes at the end|hashes|replay:|the run is saved|seed [0-9]+ real-time backstop|image of seed|fork [0-9]+ hashes|set SIM_OUT)/ &&
-				msg !~ /^seed [0-9]+: .* on [0-9] voters, [0-9]+ clients \(/ &&
-				msg !~ / failed in gosim with seed [0-9]+: test failed$/) {
-				err[cur] = substr(msg, 1, 300)
+	out=$(mktemp)
+	{
+		for ((j = 0; j < $(jq length "$dir/plan.json"); j++)); do
+			test=$(jq -r ".[$j].test" "$dir/plan.json")
+			cat "$dir"/seeds-"$j"-*.log 2>/dev/null | awk -v test="$test" '
+			# A failed seed'"'"'s error: the driver'"'"'s own line about it, as
+			# a run that played out differently the second time, or else the
+			# first message of the seed that passing seeds do not print.
+			$0 ~ "^=== RUN   " test "/[0-9]+$" {
+				split($3, a, "/")
+				cur = a[2] + 0
+				driver[cur] = inner[cur] = ""
 			}
-		}
-		/^ +[a-z_]+\.go:[0-9]+: replay: / && !(cur in replay) {
-			r = $0
-			sub(/^.*replay: /, "", r)
-			replay[cur] = r
-		}
-		$0 ~ "^simrun: seed " test "/[0-9]+ FAIL$" {
-			split($3, a, "/")
-			x = a[2] + 0
-			if (++nf <= 40) {
-				print "fail " test " " x " " (err[x] == "" ? "(no message; see the log)" : err[x])
-				if (x in replay) {
-					print "replay " test " " x " " replay[x]
+			/^    native\.go:[0-9]+: / && driver[cur] == "" {
+				msg = $0
+				sub(/^    native\.go:[0-9]+: /, "", msg)
+				if (msg ~ /(failed in gosim with seed|played out differently|left no result|saved no image|is not the image|in gosim with seed [0-9]+:)/ && msg !~ /: test failed$/) {
+					driver[cur] = msg
 				}
 			}
-		}
-		/known failure: seed [0-9]+ of [^ ]+ fails because of / {
-			match($0, /seed [0-9]+ of [^ ]+ fails because of [^ ]+/)
-			split(substr($0, RSTART, RLENGTH), k, " ")
-			if (k[4] == test && !((k[2], k[8]) in known)) {
-				known[k[2], k[8]] = 1
-				print "known " test " " k[2] " " k[8]
+			/^ +[a-z_]+\.go:[0-9]+: / && inner[cur] == "" {
+				msg = $0
+				sub(/^ +[a-z_]+\.go:[0-9]+: /, "", msg)
+				if (msg !~ /^(the gosim run of|=== RUN|Using pre-built|revision witness used|campaign:|trace of seed|the nodes at the end|hashes|replay:|the run is saved|seed [0-9]+ real-time backstop|image of seed|fork [0-9]+ hashes|set SIM_OUT)/ &&
+					msg !~ /^seed [0-9]+: .* on [0-9] voters, [0-9]+ clients \(/ &&
+					msg !~ / failed in gosim with seed [0-9]+: test failed$/) {
+					inner[cur] = msg
+				}
 			}
-		}
-		/^ +campaign_test\.go:[0-9]+: campaign: / && !/by cost: fresh 0, aged 0, long 0 of 0$/ {
-			c = $0
-			sub(/^.*campaign: /, "", c)
-			print "campaign " test " " c
-		}
-		END {
-			if (nf > 40) {
-				print "more-failures " nf - 40
+			# A replay with more than the seed (a second run, a fork) wins.
+			/^ +([a-z_]+\.go:[0-9]+: )?replay: / {
+				r = $0
+				sub(/^.*replay: /, "", r)
+				if (!(cur in replay) || r ~ /SIM_(TWICE|FORK|IMAGE)/) {
+					replay[cur] = r
+				}
 			}
-		}'
-	done
+			$0 ~ "^simrun: seed " test "/[0-9]+ FAIL$" {
+				split($3, a, "/")
+				x = a[2] + 0
+				e = driver[x] != "" ? driver[x] : inner[x]
+				if (e == "") {
+					e = "(no message; see the replay)"
+				}
+				e = substr(e, 1, 300)
+				key = e
+				sub(/^seed [0-9]+: /, "", key)
+				gsub(/[0-9]+(\.[0-9]+)?/, "N", key)
+				if (!(key in error)) {
+					error[key] = e
+					order[++causes] = key
+				}
+				# Seeds of a cause as ranges of consecutive seeds.
+				if (key in last && x == last[key] + 1) {
+					tail[key] = "-" x
+				} else {
+					seeds[key] = seeds[key] (key in last ? tail[key] "," : "") x
+					tail[key] = ""
+				}
+				last[key] = x
+				if (x in replay && replay[x] ~ /SIM_(TWICE|FORK|IMAGE)/ && ++replays <= 200) {
+					extra[replays] = "replay " test " " x " " replay[x]
+				}
+			}
+			/known failure: seed [0-9]+ of [^ ]+ fails because of / {
+				match($0, /seed [0-9]+ of [^ ]+ fails because of [^ ]+/)
+				split(substr($0, RSTART, RLENGTH), k, " ")
+				if (k[4] == test && !((k[2], k[8]) in known)) {
+					known[k[2], k[8]] = 1
+					print "known " test " " k[2] " " k[8]
+				}
+			}
+			/^ +campaign_test\.go:[0-9]+: campaign: / && !/by cost: fresh 0, aged 0, long 0 of 0$/ {
+				c = $0
+				sub(/^.*campaign: /, "", c)
+				print "campaign " test " " c
+			}
+			END {
+				for (i = 1; i <= causes; i++) {
+					print "cause " test " " seeds[order[i]] tail[order[i]] " " error[order[i]]
+				}
+				for (i = 1; i <= replays && i <= 200; i++) {
+					print extra[i]
+				}
+			}'
+		done
+		if [ ! -e "$dir/started" ]; then
+			# Still building, or the build failed.
+			tail -n 20 "$dir/build.log" 2>/dev/null | cut -c 1-300 | sed 's/^/build /'
+		fi
+		echo "commit $(git rev-parse HEAD)"
+		if [ -e "$dir/exit" ]; then
+			echo "state done $(cat "$dir/exit")"
+		else
+			echo "state running"
+		fi
+		if [ -e "$dir/started" ]; then
+			now=$(cat "$dir/ended" 2>/dev/null || date +%s)
+			echo "elapsed $((now - $(cat "$dir/started")))"
+			echo "cpu $(($(cat "$dir/cpu-end" 2>/dev/null || cpu_seconds) - $(cat "$dir/cpu-start")))"
+		fi
+		for ((j = 0; j < $(jq length "$dir/plan.json"); j++)); do
+			test=$(jq -r ".[$j].test" "$dir/plan.json")
+			# Only the driver's verdict counts as reported (sim-campaign.py).
+			ranges=$(cat "$dir"/seeds-"$j"-*.log 2>/dev/null |
+				sed -nE "s#^simrun: seed $test/([0-9]+) (PASS|FAIL|SKIP known-failure)\$#\\1#p" | sort -n -u |
+				awk 'NR == 1 || $1 != last + 1 { if (NR > 1) out = out (start == last ? start : start "-" last) ","; start = $1 } { last = $1 } END { if (NR) print out (start == last ? start : start "-" last) }')
+			if [ -n "$ranges" ]; then
+				echo "reported $test $ranges"
+			fi
+		done
+	} >"$out"
+	cat "$out"
+	echo "end $(($(wc -l <"$out") + 1))"
+	rm -f "$out"
 	;;
 *)
 	echo "usage: $0 start <plan> | run | report" >&2

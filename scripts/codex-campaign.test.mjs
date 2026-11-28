@@ -1,11 +1,13 @@
 // Tests of scripts/codex-campaign.mjs that need no network:
 //   node --test scripts/codex-campaign.test.mjs
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import test from 'node:test';
 
 import {
   campaignCounts,
+  checkOverlap,
   counts,
   isFull,
   kindOf,
@@ -14,6 +16,7 @@ import {
   parseSpec,
   plan,
   searchPhrase,
+  seedRanges,
   signature,
   vmPlan,
 } from './codex-campaign.mjs';
@@ -85,22 +88,51 @@ test('a queue runs 1% of its seeds twice, spread over its spans', () => {
 test('a report of the VM script', () => {
   const r = parseReport(fs.readFileSync(new URL('./testdata/codex-campaign-report.txt', import.meta.url), 'utf8'));
   assert.equal(r.commit, '7c53d3b6114d0d86a674bf61db6cad25f607805f');
+  assert.equal(r.cut, false);
   assert.equal(r.done, true);
   assert.equal(r.exit, 1);
   assert.equal(r.elapsed, 1234);
   assert.equal(r.cpu, 4321);
   assert.deepEqual(r.reported.TestCampaign, [[1, 244], [300, 300]]);
-  assert.equal(r.failures.length, 2);
-  assert.equal(r.failures[0].seed, 48);
-  assert.match(r.failures[0].error, /^seed 48: watch 1 was never created/);
+  assert.deepEqual(r.failures.map((f) => f.seed), [48, 50, 51, 52, 99]);
+  assert.match(r.failures[3].error, /^seed 48: watch 1 was never created/);
   assert.equal(r.failures[0].replay, "SIM_SEED=48 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestCampaign$/^48$'");
-  assert.equal(r.failures[1].replay, "SIM_SEED=99 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestCampaign$'");
+  assert.equal(r.failures[4].replay, "SIM_TWICE=1 SIM_SEED=99 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestCampaign$/^99$'");
   assert.deepEqual(r.known, [{ test: 'TestCampaign', seed: 412, issue: 'https://github.com/djosh34/tigerstore/issues/785' }]);
-  assert.equal(r.moreFailures, 3);
   const c = campaignCounts(r.campaign.map((x) => x.counts));
   assert.equal(c['fresh: kubernetes'], 27);
   assert.equal(c['answered calls'], 5000);
+  assert.equal(c['aged images with at least 3,000 leases'], 1);
   assert.equal(c['requested quorum loss, not lost'], 0);
+  // A report missing its first lines was cut.
+  const text = fs.readFileSync(new URL('./testdata/codex-campaign-report.txt', import.meta.url), 'utf8');
+  assert.equal(parseReport(text.split('\n').slice(2).join('\n')).cut, true);
+});
+
+test('the VM script reports a real seed log', () => {
+  // Seeds 47 (passed) and 48 (failed) of an Actions run of TestCampaign,
+  // with the middle of seed 48's trace taken out.
+  const dir = new URL('./testdata/codex-campaign-vm', import.meta.url).pathname;
+  const out = execFileSync('bash', [new URL('./codex-campaign-vm.sh', import.meta.url).pathname, 'report'], {
+    encoding: 'utf8',
+    env: { ...process.env, CODEX_CAMPAIGN_DIR: dir },
+  });
+  const r = parseReport(out);
+  assert.equal(r.cut, false);
+  assert.equal(r.done, true);
+  assert.equal(r.elapsed, 100);
+  assert.equal(r.cpu, 400);
+  assert.deepEqual(r.reported.TestCampaign, [[47, 48]]);
+  assert.equal(r.failures.length, 1);
+  assert.equal(r.failures[0].seed, 48);
+  assert.match(r.failures[0].error, /^seed 48: watch 1 was never created; its last stream was on node 0/);
+  assert.equal(campaignCounts(r.campaign.map((x) => x.counts))['answered calls'], 4321);
+});
+
+test('overlapping ranges and seed ranges', () => {
+  assert.throws(() => checkOverlap([parseSpec('TestCampaign:1:100'), parseSpec('TestCampaign:50:10')]));
+  checkOverlap([parseSpec('TestCampaign:1:100'), parseSpec('TestCampaign:101:10'), parseSpec('TestSeeds:1:100')]);
+  assert.deepEqual(seedRanges([5, 1, 2, 3, 9]), [[1, 3], [5, 5], [9, 9]]);
 });
 
 test('missing seeds', () => {
