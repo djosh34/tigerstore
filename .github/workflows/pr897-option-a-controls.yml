@@ -1,0 +1,122 @@
+name: PR897 option A pre-correction profiles and main controls
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  leader-profile:
+    name: leader-profile-${{ matrix.workload }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        workload: [watch, txn, k8s]
+    env:
+      ETCD_UNSAFE_LOG_RING_BYTES: '536870912'
+      FETCH_MEASURE_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Record unchanged four-core placement and safe disk
+        run: |
+          sudo mount -o remount,barrier=1 /
+          sudo modprobe sch_netem
+          { uname -a; lscpu; free -b; go version; findmnt -T "$RUNNER_TEMP"; } > "$RUNNER_TEMP/profile-runner.txt"
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+      - name: Install pinned etcdctl
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+      - name: Both frozen refs, one diagnostic profile per side
+        env:
+          WORKLOAD: ${{ matrix.workload }}
+          FETCH_ETCDCTL: ${{ runner.temp }}/etcd-v3.7.2-linux-arm64/etcdctl
+        run: python3 -B scripts/fetch-option-a-profile.py --case "$WORKLOAD" --out "$RUNNER_TEMP/leader-profile"
+      - name: Preserve profiles and matching binaries
+        if: always()
+        run: |
+          sudo bash bench/netem.sh off || true
+          mkdir -p "$RUNNER_TEMP/leader-profile"
+          cp "$RUNNER_TEMP/profile-runner.txt" "$RUNNER_TEMP/leader-profile/runner.txt"
+          rm -rf "$RUNNER_TEMP/leader-profile/bins" "$RUNNER_TEMP/leader-profile/data"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: option-a-leader-${{ matrix.workload }}
+          path: ${{ runner.temp }}/leader-profile
+          retention-days: 30
+  main-scenario:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      ETCD_UNSAFE_LOG_RING_BYTES: '536870912'
+      GOTOOLCHAIN: local
+      SIM_SEED: '75'
+      SIM_SEEDS: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Record main control environment
+        run: |
+          { git rev-parse HEAD; go version; uname -a; lscpu; free -b; } > "$RUNNER_TEMP/main-scenario-runner.txt"
+      - name: Replay scenario 75 on frozen main
+        env:
+          SIM_OUT: ${{ runner.temp }}/sim-out
+        shell: bash
+        run: scripts/sim.sh ./internal/sim '^TestScenarios$/^75$' 2>&1 | tee "$RUNNER_TEMP/main-scenario.log"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: option-a-main-scenario75
+          path: |
+            ${{ runner.temp }}/main-scenario.log
+            ${{ runner.temp }}/main-scenario-runner.txt
+            ${{ runner.temp }}/sim-out
+          retention-days: 30
+  main-watch20:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      ETCD_UNSAFE_LOG_RING_BYTES: '536870912'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Record main control environment
+        run: |
+          { git rev-parse HEAD; go version; uname -a; lscpu; free -b; } > "$RUNNER_TEMP/main-watch-runner.txt"
+      - name: Fixed 20 full-package race simio executions, no early stopping
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/main-watch20"
+          status=0
+          for ordinal in $(seq 1 20); do
+            result=0
+            go test -race -tags simio ./internal/simos -count=1 -v > "$RUNNER_TEMP/main-watch20/$ordinal.log" 2>&1 || result=$?
+            printf '%s %s\n' "$ordinal" "$result" | tee -a "$RUNNER_TEMP/main-watch20/exits.txt"
+            cat "$RUNNER_TEMP/main-watch20/$ordinal.log"
+            if [ "$result" -ne 0 ]; then status=1; fi
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: option-a-main-watch20
+          path: |
+            ${{ runner.temp }}/main-watch20
+            ${{ runner.temp }}/main-watch-runner.txt
+          retention-days: 30
