@@ -325,9 +325,13 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 	return total
 }
 
+// agedBulkConfig is TestAgedBulk's aging of seed: agingConfig's draws,
+// then 500 objects and 160 MB of bulk values under a 137 MiB budget, on
+// disks sized for the bulk. Its quota is wl's default (#926): the quota
+// agingConfig draws for its own object count, up from #846, can be below
+// the bulk and refuse its load with NOSPACE.
 func agedBulkConfig(seed uint64) Config {
 	aging := agingConfig(seed)
-	// Keep wl's default quota: the drawn object quota can refuse the bulk load.
 	aging.Quota = 0
 	aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
 	aging.MemoryBytes, aging.BulkBytes = 137<<20, 160_000_000
@@ -336,6 +340,8 @@ func agedBulkConfig(seed uint64) Config {
 	return aging
 }
 
+// TestAgedBulkConfig checks that every image TestAgedBulk can age keeps
+// wl's default quota (#926), over seeds both with and without GrowDisk.
 func TestAgedBulkConfig(t *testing.T) {
 	var growDisk, fixedDisk bool
 	for seed := uint64(1); seed <= 100; seed++ {
