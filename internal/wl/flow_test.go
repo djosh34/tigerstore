@@ -352,6 +352,7 @@ func TestWatchProgressWithTheWindowsShutStaysWithinTheClientPool(t *testing.T) {
 	n.connOut = n.sizes.connOut(1)
 	n.clients = 1
 	s.kind = kWatch
+	watchOn(c, s, 1)
 	progress := []byte{0x1a, 0x00}
 	for turn := range 4 {
 		// A turn's worth of input: 250,000 requests of 7 bytes.
@@ -376,5 +377,54 @@ func TestWatchProgressWithTheWindowsShutStaysWithinTheClientPool(t *testing.T) {
 	n.retryProgress()
 	if s.progressDue || len(c.flow.held) != 0 || c.flow.bytes != 0 || len(c.out) == 0 {
 		t.Fatalf("after the client read: progress due %v, %d entries and %d bytes held, %d bytes sent", s.progressDue, len(c.flow.held), c.flow.bytes, len(c.out))
+	}
+}
+
+// watchOn opens watch id of stream s of client c, caught up.
+func watchOn(c *client, s *stream, id int64) {
+	s.kind, s.watch = kWatch, true
+	i := c.node.w.add(watcher{sock: c.idx, gen: c.gen, sid: s.id, id: id, key: []byte("/w/"), end: []byte("/w0"), progressNotify: true})
+	s.wids = append(s.wids, i)
+}
+
+// A watch stream whose window is open takes its progress notifications
+// while another stream of its client holds past the client's share behind
+// a shut window, as etcd's channel is a stream's (#912's review). The
+// stalled stream's progress waits, and adds nothing to what it holds.
+func TestAStalledWatchStreamHoldsUpNoOtherStreamsProgress(t *testing.T) {
+	c, a, _, _ := replyRoomClient(t)
+	n := c.node
+	n.sizes = sizeFor(83 << 20)
+	n.connOut = n.sizes.connOut(1)
+	n.progressEvery, n.now = time.Second, time.Now()
+	watchOn(c, a, 1)
+	b := c.newStream(3, kWatch)
+	watchOn(c, b, 2)
+	c.flow.conn, b.win = 1<<30, 1<<30
+	sendMsg(c, a, int(n.connOut)) // a holds past the share: its window is shut
+	if !c.holdsTooMuch() || !a.holds {
+		t.Fatal("stream a does not hold past the client's share")
+	}
+	held := c.flow.bytes
+	progress := []byte{0x1a, 0x00}
+	for range 1000 {
+		if err := n.request(c, a, progress); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.flow.bytes != held || !a.progressDue {
+		t.Fatalf("stream a's progress requests held %d bytes more, due %v", c.flow.bytes-held, a.progressDue)
+	}
+	before := len(c.out)
+	if err := n.request(c, b, progress); err != nil {
+		t.Fatal(err)
+	}
+	if b.progressDue || b.holds || len(c.out) == before {
+		t.Fatalf("stream b's progress did not go out: due %v, held %v", b.progressDue, b.holds)
+	}
+	before = len(c.out)
+	n.notifyProgress()
+	if b.holds || len(c.out) == before || c.flow.bytes != held {
+		t.Fatalf("stream b's periodic progress did not go out, or stream a's was held: %d bytes more held", c.flow.bytes-held)
 	}
 }
