@@ -129,13 +129,18 @@ func TestDroppedLogFlagsAreRefused(t *testing.T) {
 		}
 	}
 	// CI sets ETCD_UNSAFE_LOG_RING_BYTES for every job, which the
-	// command line may not set too.
-	c, err := parseArgs(t, "--unsafe-segment-bytes", "1048576", "--disk-budget-bytes", "1073741824")
+	// command line may not set too: the test clears it, and t.Setenv puts
+	// it back.
+	t.Setenv("ETCD_UNSAFE_LOG_RING_BYTES", "")
+	if err := os.Unsetenv("ETCD_UNSAFE_LOG_RING_BYTES"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := parseArgs(t, "--unsafe-segment-bytes", "1048576", "--unsafe-log-ring-bytes", "134217728", "--disk-budget-bytes", "1073741824")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.own.UnsafeSegment != 1<<20 || c.own.DiskBudget != 1<<30 {
-		t.Errorf("segment %d, disk budget %d", c.own.UnsafeSegment, c.own.DiskBudget)
+	if c.own.UnsafeSegment != 1<<20 || c.own.UnsafeLogRing != 128<<20 || c.own.DiskBudget != 1<<30 {
+		t.Errorf("segment %d, ring %d, disk budget %d", c.own.UnsafeSegment, c.own.UnsafeLogRing, c.own.DiskBudget)
 	}
 }
 
