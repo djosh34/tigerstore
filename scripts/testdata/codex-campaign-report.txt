@@ -1,3 +1,4 @@
+begin
 known TestCampaign 412 https://github.com/djosh34/tigerstore/issues/785
 campaign TestCampaign answered calls: 3000, fresh: certificate expiry: 3, fresh: kubernetes: 18, fresh: membership: 9, fresh: small keys: 30, membership work completed: 9, requested quorum loss, not lost: 0; by cost: fresh 60, aged 0, long 0 of 60
 campaign TestCampaign aged images with at least 3,000 leases: 1, answered calls: 2000, fresh: kubernetes: 9, requested quorum loss, not lost: 0; by cost: fresh 9, aged 0, long 0 of 9
@@ -9,4 +10,4 @@ state done 1
 elapsed 1234
 cpu 4321
 reported TestCampaign 1-244,300
-end 12
+end 13

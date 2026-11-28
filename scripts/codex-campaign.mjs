@@ -268,7 +268,7 @@ export function parseReport(text) {
       if (r.done) r.exit = Number(rest[1]);
     } else if (word === 'elapsed') r.elapsed = Number(arg);
     else if (word === 'cpu') r.cpu = Number(arg);
-    else if (word === 'reported') (r.reported[rest[0]] ??= []).push(...parseRanges(rest[1]));
+    else if (word === 'reported') r.reported[rest[0]] = (r.reported[rest[0]] ?? []).concat(parseRanges(rest[1]));
     else if (word === 'cause') {
       const error = rest.slice(2).join(' ');
       for (const [a, b] of parseRanges(rest[1])) {
@@ -278,7 +278,7 @@ export function parseReport(text) {
     else if (word === 'known') r.known.push({ test: rest[0], seed: Number(rest[1]), issue: rest[2] });
     else if (word === 'campaign') r.campaign.push({ test: rest[0], counts: rest.slice(1).join(' ') });
     else if (word === 'build') r.build.push(arg);
-    else if (word === 'end') r.cut = Number(arg) !== lines.length;
+    else if (word === 'end') r.cut = lines[0] !== 'begin' || Number(arg) !== lines.length;
   }
   for (const f of r.failures) {
     f.replay = replays[`${f.test}/${f.seed}`] ?? `SIM_SEED=${f.seed} SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^${f.test}$/^${f.seed}$'`;
@@ -681,7 +681,11 @@ async function runVM(vm, ctx) {
       const left = did > 0 ? (elapsed * (total - did)) / did : total;
       wait = Math.max(left * 1.25, vm.jobs.some((j) => j.long) ? 180 * 60 : 65 * 60);
     }
-    if (vm.report.cut) throw new CloudError('its report was cut short, so failures may be missing from it');
+    if (vm.report.cut) {
+      // Its verdicts cannot count: failures may be missing.
+      vm.report.reported = {};
+      throw new CloudError('its report was cut short, so its seeds count as missing');
+    }
     log(vm.report.done ? `done, exit ${vm.report.exit}` : 'still running at its last report');
   } catch (e) {
     vm.error = e.message;
@@ -787,8 +791,8 @@ async function campaign(opts) {
   for (const vm of vms) {
     const r = vm.report;
     if (!r) continue;
-    for (const [test, ranges] of Object.entries(r.reported)) (reported[test] ??= []).push(...ranges);
-    failures.push(...r.failures.map((f) => ({ ...f, vm: vm.index })));
+    for (const [test, ranges] of Object.entries(r.reported)) reported[test] = (reported[test] ?? []).concat(ranges);
+    for (const f of r.failures) failures.push({ ...f, vm: vm.index });
     known.push(...r.known);
     campaignLines.push(...r.campaign.map((c) => c.counts));
     cpu += r.cpu ?? 0;
@@ -901,7 +905,7 @@ async function campaign(opts) {
       '-f', `description=${passed} of ${requested} seeds passed`,
     ]);
   }
-  return got === requested && failed === 0 ? 0 : 1;
+  return got === requested && failed === 0 && vms.every((vm) => !vm.error) ? 0 : 1;
 }
 
 // findMaxVMs raises the number of VMs at once until VMs queue or fail,

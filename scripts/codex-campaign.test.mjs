@@ -104,9 +104,10 @@ test('a report of the VM script', () => {
   assert.equal(c['answered calls'], 5000);
   assert.equal(c['aged images with at least 3,000 leases'], 1);
   assert.equal(c['requested quorum loss, not lost'], 0);
-  // A report missing its first lines was cut.
+  // A report missing its first lines, or only part of its first, was cut.
   const text = fs.readFileSync(new URL('./testdata/codex-campaign-report.txt', import.meta.url), 'utf8');
   assert.equal(parseReport(text.split('\n').slice(2).join('\n')).cut, true);
+  assert.equal(parseReport(text.slice(3)).cut, true);
 });
 
 test('the VM script reports a real seed log', () => {

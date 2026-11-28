@@ -23,7 +23,8 @@
 # report prints one line per fact, which the host script parses. A
 # model turn keeps only the last 64 KiB of a command's output, so the
 # failures come first, grouped by cause, the counts last, and the last
-# line says how many lines there are, so a cut report shows:
+# line says how many lines there are, so a cut report shows. The first
+# line is "begin":
 #   cause <test> <seeds> <error>          failed seeds of one error, its
 #                                         numbers aside; seeds as 1-3,48
 #   replay <test> <seed> <command>        when it is not the plain one
@@ -98,8 +99,28 @@ run)
 	;;
 report)
 	cd "$root" || exit 1
+	# The state first, then the verdicts, then the failures: logs only
+	# grow, so a seed with a verdict here has its failure in the later
+	# scan, and a run done here has all its verdicts.
+	if [ -e "$dir/exit" ]; then
+		state="done $(cat "$dir/exit")"
+	else
+		state=running
+	fi
+	reported=$(mktemp)
+	for ((j = 0; j < $(jq length "$dir/plan.json"); j++)); do
+		test=$(jq -r ".[$j].test" "$dir/plan.json")
+		# Only the driver's verdict counts as reported (sim-campaign.py).
+		ranges=$(cat "$dir"/seeds-"$j"-*.log 2>/dev/null |
+			sed -nE "s#^simrun: seed $test/([0-9]+) (PASS|FAIL|SKIP known-failure)\$#\\1#p" | sort -n -u |
+			awk 'NR == 1 || $1 != last + 1 { if (NR > 1) out = out (start == last ? start : start "-" last) ","; start = $1 } { last = $1 } END { if (NR) print out (start == last ? start : start "-" last) }')
+		if [ -n "$ranges" ]; then
+			echo "reported $test $ranges" >>"$reported"
+		fi
+	done
 	out=$(mktemp)
 	{
+		echo begin
 		for ((j = 0; j < $(jq length "$dir/plan.json"); j++)); do
 			test=$(jq -r ".[$j].test" "$dir/plan.json")
 			cat "$dir"/seeds-"$j"-*.log 2>/dev/null | awk -v test="$test" '
@@ -189,30 +210,17 @@ report)
 			tail -n 20 "$dir/build.log" 2>/dev/null | cut -c 1-300 | sed 's/^/build /'
 		fi
 		echo "commit $(git rev-parse HEAD)"
-		if [ -e "$dir/exit" ]; then
-			echo "state done $(cat "$dir/exit")"
-		else
-			echo "state running"
-		fi
+		echo "state $state"
 		if [ -e "$dir/started" ]; then
 			now=$(cat "$dir/ended" 2>/dev/null || date +%s)
 			echo "elapsed $((now - $(cat "$dir/started")))"
 			echo "cpu $(($(cat "$dir/cpu-end" 2>/dev/null || cpu_seconds) - $(cat "$dir/cpu-start")))"
 		fi
-		for ((j = 0; j < $(jq length "$dir/plan.json"); j++)); do
-			test=$(jq -r ".[$j].test" "$dir/plan.json")
-			# Only the driver's verdict counts as reported (sim-campaign.py).
-			ranges=$(cat "$dir"/seeds-"$j"-*.log 2>/dev/null |
-				sed -nE "s#^simrun: seed $test/([0-9]+) (PASS|FAIL|SKIP known-failure)\$#\\1#p" | sort -n -u |
-				awk 'NR == 1 || $1 != last + 1 { if (NR > 1) out = out (start == last ? start : start "-" last) ","; start = $1 } { last = $1 } END { if (NR) print out (start == last ? start : start "-" last) }')
-			if [ -n "$ranges" ]; then
-				echo "reported $test $ranges"
-			fi
-		done
+		cat "$reported"
 	} >"$out"
 	cat "$out"
 	echo "end $(($(wc -l <"$out") + 1))"
-	rm -f "$out"
+	rm -f "$out" "$reported"
 	;;
 *)
 	echo "usage: $0 start <plan> | run | report" >&2
