@@ -429,13 +429,18 @@ func (l *loop) syncDials() {
 		}
 	}
 	keep := map[uint64]bool{}
+	self := n.peerAddr()
 	for i := range want {
 		m := &want[i]
-		if m.id == n.id {
+		addr := m.peerAddr()
+		// A member at this node's own address is one it replaced, whose
+		// removal it has not applied yet. Dialed, it would be this node,
+		// which would take what Raft sends that member; etcd's peer
+		// handler refuses a stream not meant for it.
+		if m.id == n.id || addr == self {
 			continue
 		}
 		keep[m.id] = true
-		addr := m.peerAddr()
 		if d := l.dials[m.id]; d != nil && d.addr == addr {
 			continue
 		}
