@@ -325,6 +325,35 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 	return total
 }
 
+func agedBulkConfig(seed uint64) Config {
+	aging := agingConfig(seed)
+	// Keep wl's default quota: the drawn object quota can refuse the bulk load.
+	aging.Quota = 0
+	aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
+	aging.MemoryBytes, aging.BulkBytes = 137<<20, 160_000_000
+	aging.Faults.DiskBudget = 2 * aging.BulkBytes
+	aging.Faults.DiskCapacity = int(2 * aging.Faults.DiskBudget)
+	return aging
+}
+
+func TestAgedBulkConfig(t *testing.T) {
+	var growDisk, fixedDisk bool
+	for seed := uint64(1); seed <= 100; seed++ {
+		aging := agedBulkConfig(seed)
+		if aging.Quota != 0 {
+			t.Errorf("seed %d: quota %d, want wl's default quota (0)", seed, aging.Quota)
+		}
+		if aging.Faults.GrowDisk {
+			growDisk = true
+		} else {
+			fixedDisk = true
+		}
+	}
+	if !growDisk || !fixedDisk {
+		t.Fatal("seed range must cover both GrowDisk and non-GrowDisk images")
+	}
+}
+
 // TestAgedBulk measures an image bulk-loaded past its memory budget
 // (#775): 160 MB of values under a budget of 137 MiB, the least three wl
 // voters that bootstrap their cluster keep (#760), then one fork of it,
@@ -341,11 +370,7 @@ func TestAgedBulk(t *testing.T) {
 		before = memAvailable(t)
 	}
 	simrun.ImageSeeds(t, 1, 0, 1, func(t *testing.T, seed uint64) Stats {
-		aging := agingConfig(seed)
-		aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
-		aging.MemoryBytes, aging.BulkBytes = 137<<20, 160_000_000
-		aging.Faults.DiskBudget = 2 * aging.BulkBytes
-		aging.Faults.DiskCapacity = int(2 * aging.Faults.DiskBudget)
+		aging := agedBulkConfig(seed)
 		return agedForks(t, seed, aging, 1, func(aging Config, seed uint64) Config {
 			cfg := forkConfig(aging, seed)
 			cfg.Duration = 2 * 60 * Second
