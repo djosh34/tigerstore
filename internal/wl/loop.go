@@ -1002,7 +1002,7 @@ func (l *loop) input(idx int, hup bool) {
 			// Nothing comes back on an outgoing peer connection but the
 			// notice that this node was removed.
 			if s.pw-s.pr >= 8 && binary.LittleEndian.Uint64(s.pt[s.pr:]) == removedNotice {
-				n.stopErr = ErrRemoved
+				n.removalNotice(v.peer)
 			}
 			s.pr = s.pw
 		}
@@ -1056,7 +1056,10 @@ func (l *loop) run() error {
 		}
 		n.now = time.Now()
 		l.watch.begin(n.now)
-		if n.stopErr != nil {
+		if n.stopErr != nil && n.selfRemoval.apply == nil && n.selfRemoval.drainBy.IsZero() {
+			// A survivor may send removedNotice before the removing leader
+			// gets its ReadState. That notice must not bypass its barrier
+			// or discard the MemberRemove reply awaiting the output drain.
 			return n.stopErr
 		}
 		if !l.leaveBy.IsZero() && (n.lead != 0 && n.lead != n.id || n.now.After(l.leaveBy)) {
@@ -1180,6 +1183,9 @@ func (l *loop) run() error {
 		}
 		t3 := time.Now()
 		l.flush()
+		if n.selfRemovalDrained() {
+			return ErrRemoved
+		}
 		if len(n.waiting) > 0 {
 			l.serveWaiting()
 		}

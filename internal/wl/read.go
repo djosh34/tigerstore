@@ -45,7 +45,7 @@ func (n *node) readState(ctx []byte, index uint64) {
 		return
 	}
 	seq := binary.BigEndian.Uint64(ctx)
-	if n.leadConfirmed(seq) {
+	if n.selfRemovalRead(seq, index) || n.leadConfirmed(seq) {
 		return
 	}
 	for _, b := range n.readBatches {
@@ -176,6 +176,7 @@ func (n *node) serveReads() {
 // answered, and the reads, which clients often give up on, would be kept
 // for as long (#689's review).
 func (n *node) retryReads(now int64) {
+	n.retrySelfRemovalRead()
 	k := 0
 	for _, b := range n.readBatches {
 		if now-b.started < int64(requestTimeout/tickEvery) {
