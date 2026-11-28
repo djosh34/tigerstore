@@ -268,6 +268,7 @@ func (h *wlHooks) Recovered(last uint64, hs *raftpb.HardState, values func() []w
 		s.tracef("node %d: recovered entries to %d after its torn write, reported %d durable, handed its log %d", n.id, last, n.mustLast, n.mustAtMost)
 	}
 	n.durableLast, n.hs, n.tornCrash, n.mustAtMost, n.appended = last, hardState{term: hs.GetTerm(), vote: hs.GetVote(), commit: hs.GetCommit()}, false, 0, last
+	n.startedAt, n.startCommit = s.now(), hs.GetCommit()
 }
 
 // Append keeps an append on its way to the disk, which may lower what a

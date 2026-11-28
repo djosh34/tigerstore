@@ -510,6 +510,10 @@ type node struct {
 	mustLast  uint64
 	mustHS    hardState
 	tornCrash bool
+	// startedAt is when the node's process last recovered its log, and
+	// startCommit the commit it recovered (stuckRemoval).
+	startedAt   int64
+	startCommit uint64
 	// appended is the last entry a wl process handed its log, and
 	// mustAtMost, after a crash that tore a write of the log, what its
 	// next start may recover at most (wlStageCrash).
@@ -938,6 +942,10 @@ type Stats struct {
 	// 0 if never.
 	Replaced     int
 	QuorumLostAt int64
+	// StuckRemovalAt is when the membership work's removal left a
+	// cluster of two voters without a quorum for good, as etcd's
+	// (stuckRemoval), 0 if never.
+	StuckRemovalAt int64
 	// CertsExpiredAt is when the connections were reset after the nodes'
 	// certificate expired (Config.CertExpiresAt), and ExpiredWrites the
 	// writes that failed between then and the rotation.
@@ -1407,7 +1415,11 @@ func (s *Sim) run() error {
 	if err := s.settle(); err != nil {
 		return err
 	}
-	return s.lostQuorum()
+	if err := s.lostQuorum(); err != nil {
+		return err
+	}
+	s.stuckRemoval()
+	return nil
 }
 
 // formUnderFaults: one seed in formUnderFaults forms its cluster under
@@ -2171,6 +2183,9 @@ func (s *Sim) exited(p *proc, err error) {
 		// fences it.
 		s.stopNode(n)
 	case s.cfg.Membership && (core.FailureOf(err) == core.Leave || errors.Is(err, wl.ErrRemoved)):
+		if w := &s.membership; n.id == w.id && errors.Is(err, wl.ErrRemoved) {
+			w.stoppedAt, w.stoppedCommit = s.now(), n.hs.commit
+		}
 		n.inactive = true
 		s.down(n)
 	case injected(err):

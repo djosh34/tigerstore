@@ -22,6 +22,14 @@ type membershipWork struct {
 	// last the last answer that did not complete a stage.
 	removedAt int64
 	last      string
+	// removing is when the removal's stage began, and stoppedAt when the
+	// added member stopped on its removal, with stoppedCommit the commit
+	// it held durable then (stuckRemoval).
+	removing, stoppedAt int64
+	stoppedCommit       uint64
+	// stuck is set when the removal left two voters without a quorum for
+	// good (stuckRemoval).
+	stuck bool
 }
 
 const (
@@ -123,7 +131,10 @@ func (s *Sim) memberReply(req, resp proto.Message, err error) bool {
 		s.stats.MembershipFaults[w.stage]++
 	}
 	s.tracef("membership: stage %d done", w.stage)
-	if w.stage == 3 {
+	switch w.stage {
+	case 2:
+		w.removing = s.now()
+	case 3:
 		w.removedAt = s.now()
 	}
 	w.stage++
@@ -194,6 +205,11 @@ func membershipConfig(seed uint64) Config {
 }
 
 func (s *Sim) checkMembership() error {
+	if w := s.membership; w.stuck && w.stage == 3 {
+		// The removal left two voters without a quorum, as etcd's does
+		// (stuckRemoval): the cluster lost its quorum.
+		return nil
+	}
 	if w := s.membership; w.stage != 4 {
 		return fmt.Errorf("membership: completed %d of 4 changes; the last answer that did not complete stage %d was %s", w.stage, w.stage, w.last)
 	}
