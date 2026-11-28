@@ -413,7 +413,7 @@ func (n *node) storageApply(m *pb.Message) error {
 	}
 	if len(n.notDurable) > 0 {
 		// The apply is in order: it waits behind the one held.
-		n.notDurable = append(n.notDurable, heldApply{m: m})
+		n.notDurable = append(n.notDurable, holdApply(m, 0))
 		return nil
 	}
 	return n.storageApplyReady(m, 0)
@@ -424,6 +424,21 @@ func (n *node) storageApply(m *pb.Message) error {
 type heldApply struct {
 	m    *pb.Message
 	from int
+}
+
+// holdApply holds m from its entry at from on, with those entries' data
+// copied to the heap. A follower's lies in the receive or the proposal
+// ring, whose sweep lets a stable entry's span go, applied or not
+// (spanFree): the ring would write over it before the apply resumes
+// (#933's review). The responses keep theirs: Raft reads only their
+// sizes.
+func holdApply(m *pb.Message, from int) heldApply {
+	ents := slices.Clone(m.GetEntries())
+	for i := from; i < len(ents); i++ {
+		ents[i] = proto.CloneOf(ents[i])
+	}
+	m.Entries = ents
+	return heldApply{m: m, from: from}
 }
 
 // waitsForDurable reports whether committed entry idx is one whose apply
@@ -473,7 +488,7 @@ func (n *node) storageApplyReady(m *pb.Message, from int) error {
 		idx := e.GetIndex()
 		if n.waitsForDurable(idx) {
 			// Ahead of the applies that came after it.
-			n.notDurable = slices.Insert(n.notDurable, 0, heldApply{m: m, from: from + i})
+			n.notDurable = slices.Insert(n.notDurable, 0, holdApply(m, from+i))
 			n.flushEvents()
 			n.st.endApply()
 			n.serveReads()

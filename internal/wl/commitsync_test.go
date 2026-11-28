@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -115,6 +116,56 @@ func TestAProtectedCommitIsNeitherSkippedNorHeld(t *testing.T) {
 		m, st := moveTo(7)
 		if got := n.commitMove(m, st); got != c.move {
 			t.Errorf("a commit from 5 to 7 %s: commitMove %v, want %v", c.name, got, c.move)
+		}
+	}
+}
+
+// TestAHeldApplyKeepsItsEntriesWhenTheRingIsReused is #933's review: a
+// follower's entries lie in the receive ring, and the sweep lets their
+// spans go once they are stable, applied or not. An apply held for the
+// durable commit (waitsForDurable), and one queued behind it, must still
+// apply the entries' own bytes after the ring wrote over those spans.
+func TestAHeldApplyKeepsItsEntriesWhenTheRingIsReused(t *testing.T) {
+	n, l := testNode(t)
+	n.members = []member{{id: 1}, {id: 2}, {id: 3}}
+	n.st, _ = newTestStore(t)
+	t.Cleanup(func() { _ = n.st.close() })
+	want := []string{"entry one", "entry two"}
+	var ents []*pb.Entry
+	for i, w := range want {
+		d, _ := put(n.rx, w)
+		e := &pb.Entry{Index: new(uint64(i + 1)), Term: new(uint64(1)), Data: d}
+		if err := n.storage.append([]*pb.Entry{e}, []int64{addRecord(l, &pb.Entry{Index: e.Index, Term: e.Term, Data: []byte(w)})}); err != nil {
+			t.Fatal(err)
+		}
+		n.nameEntries([]*pb.Entry{e}, spanStored)
+		ents = append(ents, e)
+	}
+	n.wal.stable = int64(len(l.b))
+	n.wal.durableHS = &pb.HardState{}
+	n.mustSync = []uint64{1} // entry 1's commit is not durable yet
+	for _, e := range ents {
+		if err := n.storageApply(&pb.Message{Entries: []*pb.Entry{e}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(n.notDurable) != 2 || n.applied != 0 {
+		t.Fatalf("%d applies held, %d applied: want both held", len(n.notDurable), n.applied)
+	}
+	// The sweep lets the stable entries' spans go, and the ring wraps over
+	// them.
+	pushBehind(t, n.rx)
+	n.sweepRings(time.Now())
+	if n.rx.head != 2 {
+		t.Fatalf("the sweep let %d spans go, want the 2 entries'", n.rx.head)
+	}
+	put(n.rx, string(bytes.Repeat([]byte("f"), len(n.rx.mem)-n.rx.pos)))
+	if d, ok := put(n.rx, "XXXXXXXXXXXXXXXXXX"); !ok || n.rx.offset(d) != 0 {
+		t.Fatal("the ring did not write over the entries' spans")
+	}
+	for i, h := range n.notDurable {
+		if got := string(h.m.GetEntries()[h.from].GetData()); got != want[i] {
+			t.Errorf("held apply %d holds %q, want %q", i, got, want[i])
 		}
 	}
 }
