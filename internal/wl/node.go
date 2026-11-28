@@ -269,6 +269,10 @@ type node struct {
 	// sideSecret marks the side calls' own client, which names the
 	// client each call is for (side.go).
 	sideSecret string
+	// peerUnchecked is whether the node's peer TLS checks no certificate
+	// of the peers it dials (--peer-auto-tls): it forwards no client's
+	// token over it.
+	peerUnchecked bool
 	// leaseIDs is the suffix of the lease IDs the node gives grants that
 	// ask for none (newLeaseID).
 	leaseIDs uint64

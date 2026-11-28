@@ -286,7 +286,10 @@ func (n *node) forwardPromote(c *client, s *stream, msg []byte) error {
 	if i := n.memberAt(n.lead); i >= 0 {
 		addr = n.members[i].peerAddr()
 	}
-	if addr == "" || n.shell == nil {
+	// Over peer TLS that checks no certificate, the caller's token could
+	// go to whatever answers at the leader's address: the caller is told
+	// to ask the leader.
+	if addr == "" || n.shell == nil || n.peerUnchecked && s.token != "" {
 		n.reject(c, s, errNotLeader)
 		return nil
 	}

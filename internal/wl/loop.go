@@ -166,7 +166,7 @@ func run(ctx context.Context, cfg Config) error {
 		ckptDir: filepath.Join(cfg.DataDir, "ckpt"), ckptLog: cmp.Or(cfg.CheckpointLog, ckptMin), ckptKeys: cfg.CheckpointChunkKeys, catchup: cmp.Or(cfg.CatchupEntries, storageWindow), confState: &pb.ConfState{},
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
-		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
+		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt, peerUnchecked: cfg.PeerClientTLS != nil && cfg.PeerClientTLS.InsecureSkipVerify,
 	}
 	if cfg.TraceLargePuts {
 		n.putTimings = &putTimings{pending: make(map[uint64][]*putTiming)}

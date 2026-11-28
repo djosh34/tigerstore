@@ -295,12 +295,13 @@ func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc 
 
 // A follower hands a MemberPromote to the leader as etcd's does over its
 // peer API (#783): on a peer connection of its own, whose hello is
-// promoteAsk, with the peer TLS, it sends the caller's token and
-// certificate name and the request. The leader runs it through its own
-// client for that caller, as a side call's, so it checks the caller's
-// auth again where the auth store is newest, as etcd's leader checks
-// the token its peer forwards. Unlike etcd's, a caller known only by its
-// certificate name keeps it. The follower gives up after
+// promoteAsk, with the peer TLS, it sends the caller's token and the
+// request. The leader runs it through its own client with that token, as
+// a side call's, so it checks the caller's auth again where the auth
+// store is newest, as etcd v3.7.2's leader checks the token its peer
+// forwards. As there, a caller known only by its certificate has no
+// identity on the leader, which takes no name from a peer, and is
+// refused while auth is on (#938). The follower gives up after
 // forwardTimeout, the leader's call a second before.
 
 // promoteAsk is the hello of a promotion forwarded to the leader.
@@ -318,13 +319,13 @@ var errForwardTimeout = status.Error(codes.Unavailable, msgTimeout)
 // answers that client with the leader's answer. It returns what ends the
 // forward.
 func (l *loop) forwardPromote(h handle, addr string, req []byte) context.CancelFunc {
-	var token, name string
+	var token string
 	if c, s := l.n.clientOf(h); c != nil {
-		token, name = s.token, c.nameOf(s)
+		token = s.token
 	}
 	ctx, cancel := context.WithTimeout(l.ctx, forwardTimeout)
 	go func() {
-		reply, err := l.askPromote(ctx, addr, []byte(token), []byte(name), req)
+		reply, err := l.askPromote(ctx, addr, []byte(token), req)
 		l.post(func() error { l.n.sideEnd(h, true, reply, err); return nil })
 	}()
 	return cancel
@@ -390,10 +391,10 @@ func (l *loop) exchangePromote(ctx context.Context, addr string, frames [][]byte
 }
 
 // answerPromote runs the promotion a peer forwards, in the accept
-// goroutine, for the caller it names, and answers with a code, 0 or the
+// goroutine, with the caller's token, and answers with a code, 0 or the
 // gRPC error's, then the reply or the error's message.
 func (l *loop) answerPromote(s *sock) error {
-	var frames [3]string // the caller's token and certificate name, and the request
+	var frames [2]string // the caller's token and the request
 	for i := range frames {
 		b, err := readFrame(s)
 		if err != nil {
@@ -402,12 +403,14 @@ func (l *loop) answerPromote(s *sock) error {
 		frames[i] = string(b)
 	}
 	r := &etcdpb.MemberPromoteRequest{}
-	if err := proto.Unmarshal([]byte(frames[2]), r); err != nil {
+	if err := proto.Unmarshal([]byte(frames[1]), r); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(l.ctx, requestTimeout)
 	defer cancel()
-	md := []string{sideCallerHeader, l.n.sideSecret + ":" + frames[1]}
+	// The call is for a caller of no certificate name, not for the
+	// node's own.
+	md := []string{sideCallerHeader, l.n.sideSecret + ":"}
 	if frames[0] != "" {
 		md = append(md, "token", frames[0])
 	}
