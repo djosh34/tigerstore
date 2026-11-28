@@ -48,9 +48,9 @@ type shell interface {
 	// sideCall starts the side call of h with its request, and returns
 	// what ends it.
 	sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc
-	// forwardPromote calls the MemberPromote req on the leader, at urls,
-	// as a side call of h, and returns what ends it.
-	forwardPromote(h handle, urls []string, req []byte) context.CancelFunc
+	// forwardPromote has the leader at peer address addr run the
+	// MemberPromote req for the client of h, and returns what ends it.
+	forwardPromote(h handle, addr string, req []byte) context.CancelFunc
 }
 
 // logf logs through the shell, if the node has one.
@@ -473,6 +473,13 @@ func (l *loop) peerHello(h *handoff) {
 	}
 	if cluster != l.n.clusterID {
 		l.logger.Printf("refused a peer of cluster %x as %d: this is cluster %x", cluster, hello&^snapMark, l.n.clusterID)
+		_ = sysClose(h.fd)
+		return
+	}
+	if hello == promoteAsk {
+		if err := l.answerPromote(s); err != nil {
+			l.logger.Printf("answer a forwarded promotion: %v", err)
+		}
 		_ = sysClose(h.fd)
 		return
 	}

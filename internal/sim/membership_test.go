@@ -42,9 +42,29 @@ func TestMembershipFaults(t *testing.T) {
 	}
 }
 
+// TestAPromotionThroughAFollower runs the membership work with no faults
+// and its promotion sent to a follower, which forwards it to the leader.
+// The forward dialed the leader's client URL on the host's network, not
+// the simulator's, and the promotion never completed (#783).
+func TestAPromotionThroughAFollower(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := wlMembershipConfig(seed)
+		cfg.FormUnderFaults = true
+		cfg.Faults = Faults{DiskBudget: cfg.Faults.DiskBudget}
+		cfg.promoteThroughFollower = true
+		return checkMembership(t, cfg)
+	}, nil)
+}
+
 // runMembership runs seed of TestMembershipFaults and checks it.
 func runMembership(t *testing.T, seed uint64) Stats {
-	a := run(t, wlMembershipConfig(seed))
+	return checkMembership(t, wlMembershipConfig(seed))
+}
+
+// checkMembership runs cfg, whose membership work must complete each
+// change once, and checks it.
+func checkMembership(t *testing.T, cfg Config) Stats {
+	a := run(t, cfg)
 	for i, count := range a.Stats.MembershipChanges {
 		if count != 1 {
 			t.Fatalf("stage %d completed %d times", i, count)

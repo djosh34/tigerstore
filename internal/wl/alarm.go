@@ -70,29 +70,21 @@ func parseAlarm(m []byte) (alarmReq, error) {
 	return r, nil
 }
 
-// alarmRequest answers a GET at once and proposes the rest.
+// alarmRequest proposes an Alarm request, a GET too, as etcd's goes
+// through Raft: a list is the one the log holds where it applies, as a
+// linearizable read's, never a follower's that lags (#826).
 func (n *node) alarmRequest(c *client, s *stream, msg []byte) error {
-	r, err := parseAlarm(msg)
-	if err != nil {
+	if _, err := parseAlarm(msg); err != nil {
 		n.reject(c, s, badRequest(err))
-		return nil
-	}
-	if r.action != alarmActivate && r.action != alarmDeactivate {
-		var list []alarm
-		for _, a := range n.alarms {
-			if r.typ == alarmNone || a.typ == r.typ {
-				list = append(list, a)
-			}
-		}
-		n.replyAlarms(c, s, list)
 		return nil
 	}
 	n.addOp(mkHandle(c, s.id), kAlarm, msg)
 	return nil
 }
 
-// applyAlarm raises or clears an alarm, and answers with it if that
-// changed it or found it raised.
+// applyAlarm lists the alarms of a type, or every one, or raises or
+// clears an alarm and answers with it if that changed it or found it
+// raised, as etcd's apply does.
 func (n *node) applyAlarm(req []byte, c *client, s *stream) error {
 	r, err := parseAlarm(req)
 	if err != nil {
@@ -102,6 +94,16 @@ func (n *node) applyAlarm(req []byte, c *client, s *stream) error {
 	i, found := slices.BinarySearchFunc(n.alarms, a, compareAlarms)
 	var out []alarm
 	switch {
+	case r.action == alarmGet:
+		for _, a := range n.alarms {
+			if r.typ == alarmNone || a.typ == r.typ {
+				out = append(out, a)
+			}
+		}
+		if c != nil {
+			n.replyAlarms(c, s, out)
+		}
+		return nil
 	case r.action == alarmActivate && r.typ != alarmNone:
 		if !found {
 			n.alarms = slices.Insert(n.alarms, i, a)

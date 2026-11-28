@@ -511,7 +511,9 @@ var ckptHold atomic.Bool
 
 // testAdmit, if set, sees each put, delete, compaction and lease write a
 // node takes from a client, on its loop, before the ring and the alarms
-// judge it: what the node held then (TestAPutAfterADisarmIsTakenByAFollowerThatLags).
+// judge it, and each MemberPromote a follower forwards: what the node
+// held then (TestAPutAfterADisarmIsTakenByAFollowerThatLags,
+// TestAForwardedPromotionIsCheckedOnTheLeader).
 var testAdmit atomic.Pointer[func(n *node, kind uint8, msg []byte)]
 
 // ringRefuses refuses a write of stream s the log's ring has no room for,

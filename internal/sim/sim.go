@@ -216,6 +216,9 @@ type Config struct {
 	// wl checkpoint writes in one write (wl.Config.CheckpointChunkKeys).
 	ckptCrash     bool
 	ckptChunkKeys int
+	// promoteThroughFollower sends the membership work's promotion to a
+	// voter that does not lead, which forwards it to the leader (#783).
+	promoteThroughFollower bool
 	// stageUnwritten makes stageCrash's image keep the segment's growth by
 	// the write with zeros past what was synced (simfs.Unwritten).
 	stageUnwritten bool
@@ -1256,6 +1259,9 @@ func newSimFrom(cfg Config, from *Sim) (*Sim, error) {
 	s.clientLinks = make([][2]link, count)
 	for i := range s.links {
 		s.links[i] = make([]link, count)
+		// A node's link to itself is its loopback, always up, which no
+		// fault takes: its own client dials it (wl's side calls).
+		s.links[i][i].up = true
 		for j := range 2 {
 			// The client links have the delays of a client's calls.
 			s.clientLinks[i][j] = link{up: true, base: 20 * Microsecond, jitter: 300 * Microsecond}
