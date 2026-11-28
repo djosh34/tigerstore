@@ -30,7 +30,7 @@ func TestALowRingForcesItsCutBeforeAnsweringSnapshotWaiters(t *testing.T) {
 	for _, s := range streams {
 		n.snapshotRequest(c, s)
 	}
-	l := copyLoop(n)
+	l := copyLoop(t, n)
 	sh := &heldCopyShell{l: l}
 	n.shell = sh
 	t.Cleanup(func() {
@@ -38,7 +38,7 @@ func TestALowRingForcesItsCutBeforeAnsweringSnapshotWaiters(t *testing.T) {
 		for _, p := range sh.pending {
 			_ = p.src.Close()
 		}
-		waitStrays(t)
+		l.goes.Wait()
 		for _, cs := range n.clientSnaps {
 			_ = cs.f.Close()
 		}
@@ -79,7 +79,7 @@ func TestALowRingForcesItsCutBeforeAnsweringSnapshotWaiters(t *testing.T) {
 		l.prepareClientSnap(p.h, p.src)
 	}
 	sh.pending = nil
-	waitStrays(t)
+	l.goes.Wait()
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
 	}
@@ -174,11 +174,11 @@ func TestANoSpaceCheckpointRequeuesLiveClientsOnceAndKeepsRaftDemand(t *testing.
 				index := n.storage.lastIndex() + 1
 				copyAppend(t, n, testEntry(index, 2, ""))
 				n.id, n.applied = 1, index
-				l := copyLoop(n)
+				l := copyLoop(t, n)
 				n.shell = &copyShell{l: l}
 				t.Cleanup(func() {
 					n.abortCkpt()
-					waitStrays(t)
+					l.goes.Wait()
 					for _, cs := range n.clientSnaps {
 						_ = cs.f.Close()
 					}
@@ -231,7 +231,7 @@ func TestANoSpaceCheckpointRequeuesLiveClientsOnceAndKeepsRaftDemand(t *testing.
 						t.Fatal(err)
 					}
 				}
-				waitStrays(t)
+				l.goes.Wait()
 				if err := l.runPosts(); err != nil {
 					t.Fatal(err)
 				}

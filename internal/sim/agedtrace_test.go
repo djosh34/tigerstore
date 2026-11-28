@@ -12,6 +12,17 @@ import (
 // trace hash was recorded on origin/main at 70fc176d, under gosim. The
 // history hash covers each call's ambiguity bit, so #900's definite
 // refused dials changed it (401a6326a622c0c2 before); the trace did not.
+// #819 changed both (aa1af1b84b486b60, 709b8736985eb23a before). wl's
+// handshakes take their timeout from the node's context, not
+// Background: a context that can be cancelled selects on its parent's
+// Done, and under gosim each select yields, so the schedule parts in the
+// formation run, before any stop (d534b56cfeda2d34, f5e3ba206bc8fab2).
+// Then a node's start waits for its last Run to return: a process's exit
+// closes a channel, which yields, every start after a node's first
+// selects on it, and one whose old process still runs waits
+// (62d09ac87b7daa03, 337819a5c4c11655). Then a killed leader's leave
+// ends once the kill cuts its connection to the peer it hands the
+// leadership to, instead of after 5 s.
 func TestLeaseFreeForkTrace(t *testing.T) {
 	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
@@ -25,7 +36,7 @@ func TestLeaseFreeForkTrace(t *testing.T) {
 			t.Fatalf("lease-free fixture holds %d leases", st.ImageLeases)
 		}
 		if save, _ := forkMode(t, 1); !save && simrun.InGosim {
-			const want = "seed 1000: trace aa1af1b84b486b60 history 709b8736985eb23a"
+			const want = "seed 1000: trace a3efb3904ad01c43 history 6b26d37abda8e7af"
 			if got := hashLines[len(hashLines)-1]; !strings.HasPrefix(got, want+" ") {
 				t.Errorf("lease-free fork differs from main:\n got %s\nwant %s", got, want)
 			}

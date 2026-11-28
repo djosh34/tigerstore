@@ -99,7 +99,7 @@ func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = src.Close() }()
-	if err := selfContained(src, w, &bytes.Buffer{}); err != nil {
+	if err := selfContained(t.Context(), src, w, &bytes.Buffer{}); err != nil {
 		t.Fatalf("copy before the forced cut: %v", err)
 	}
 	if !n.ringDue() {
@@ -131,7 +131,7 @@ func TestALowRingWhoseNewestCheckpointCutNothingCheckpointsAgain(t *testing.T) {
 	// The old copy reports the cut rather than returning a wrong value
 	// or hanging. Snapshot completions retry that cut, not corruption.
 	copied := make(chan error, 1)
-	go func() { copied <- selfContained(src, w, &bytes.Buffer{}) }()
+	go func() { copied <- selfContained(t.Context(), src, w, &bytes.Buffer{}) }()
 	select {
 	case err := <-copied:
 		if err == nil || !errors.Is(err, errLogCut) && !errors.Is(err, ErrBadValue) && !strings.Contains(err.Error(), "does not hold") {

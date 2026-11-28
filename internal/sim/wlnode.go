@@ -136,7 +136,10 @@ func (s *Sim) startWL(n *node, p *proc) error {
 	}
 	p.wl = &wlProc{conn: conn}
 	n.proc, n.since, n.why = p, s.now(), ""
+	ran := make(chan struct{})
+	n.ran = ran
 	s.procs.Go(func() {
+		defer close(ran)
 		err := wl.Run(p.ctx, cfg)
 		if errors.Is(err, context.Canceled) {
 			err = nil

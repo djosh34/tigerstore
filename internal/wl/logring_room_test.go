@@ -52,7 +52,7 @@ func roomCluster(t *testing.T, o roomOpts) *roomRun {
 	r := &roomRun{loopOf: watchLoops(t)}
 	was := segSize
 	segSize = 16 << 10
-	t.Cleanup(func() { waitStrays(t); segSize = was })
+	t.Cleanup(func() { segSize = was })
 	const segs = 32
 	oldName, heldName := "", ""
 	r.tc = newTestClusterWith(t, func(tc *testCluster) {
@@ -606,7 +606,7 @@ func aFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T, followerRing int64)
 	was := segSize
 	segSize = 64 << 10
 	ringHoldCut.Store(true)
-	t.Cleanup(func() { waitStrays(t); segSize = was; ringHoldCut.Store(false) })
+	t.Cleanup(func() { segSize = was; ringHoldCut.Store(false) })
 	const segs = 8
 	loopOf := watchLoops(t)
 	var fid atomic.Uint64
@@ -753,18 +753,5 @@ func aFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T, followerRing int64)
 			t.Fatalf("a put once the cut may go on and the alarm is disarmed: %v", err)
 		}
 		time.Sleep(10 * time.Millisecond)
-	}
-}
-
-// waitStrays waits, at most 30 s, for the goroutines nodes started that may
-// outlive them (strays) to end: the test's cluster stopped, its cleanups
-// run in turn, and one that sets segSize back would race with them.
-func waitStrays(t testing.TB) {
-	t.Helper()
-	for deadline := time.Now().Add(30 * time.Second); strays.Load() != 0; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Errorf("%d goroutines of stopped nodes still run 30 s after the test", strays.Load())
-			return
-		}
 	}
 }

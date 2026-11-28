@@ -331,8 +331,8 @@ func (h *hsReader) Read(p []byte) (int, error) {
 // client for kindPeerOut, else as the server. It hands the socket over:
 // the returned fd is a non-blocking duplicate, and nc is closed. A
 // client of the client port that did not choose HTTP/2 keeps crypto/tls's
-// connection instead, in h1.
-func handshake(sys sysEnv, nc net.Conn, cfg *tls.Config, kind uint8) (*handoff, error) {
+// connection instead, in h1. It fails once ctx is done, or after 10 s.
+func handshake(ctx context.Context, sys sysEnv, nc net.Conn, cfg *tls.Config, kind uint8) (*handoff, error) {
 	server := kind != kindPeerOut
 	cfg = cfg.Clone()
 	keys := &keyLog{}
@@ -367,7 +367,7 @@ func handshake(sys sysEnv, nc net.Conn, cfg *tls.Config, kind uint8) (*handoff, 
 	} else {
 		tc = tls.Client(hr, cfg)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = nc.Close()

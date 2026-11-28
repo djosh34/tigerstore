@@ -60,14 +60,19 @@ type loop struct {
 	// waitScratch is serveWaiting's.
 	waitScratch []*client
 
-	ctx      context.Context
+	// ctx is done once the node stops: it ends the goroutines the node
+	// started (goes), which the stop then waits for (#819).
+	ctx    context.Context
+	cancel context.CancelFunc
+	goes   sync.WaitGroup
+
 	mu       sync.Mutex
 	stopped  bool
 	handoffs []*handoff
 	// recvSeq numbers the snapshots received, for their files' names.
 	recvSeq atomic.Uint64
 	// posts are what other goroutines hand the loop to run.
-	posts   []func() error
+	posts   []posted
 	dials   map[uint64]*dialer // by member, while it is one
 	peerTLS *tls.Config        // to dial peers
 	http1   *http1             // serves the clients that chose HTTP/1.1
@@ -80,8 +85,9 @@ type loop struct {
 	free []int
 	tick int64
 	// leaveBy is when a leader that stops gives up handing its
-	// leadership to a peer; zero while the node runs.
+	// leadership to a peer, leaveTo; zero while the node runs.
 	leaveBy time.Time
+	leaveTo uint64
 	logged  int64
 	last    counters
 	lastWAL walStats
@@ -128,6 +134,9 @@ func run(ctx context.Context, cfg Config) error {
 	if err := cfg.check(); err != nil {
 		return err
 	}
+	// A node that fails stops its goroutines as one that is stopped does.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	sys, err := newSysEnv(&cfg)
 	if err != nil {
 		return err
@@ -296,7 +305,7 @@ func run(ctx context.Context, cfg Config) error {
 	if err := n.sys.epollCtl(l.epfd, unix.EPOLL_CTL_ADD, n.wal.wakeFD, unix.EPOLLIN, evFsync); err != nil {
 		return err
 	}
-	l.ctx = ctx
+	l.ctx, l.cancel = ctx, cancel
 	// The node's own client dials a TLS client listener, or a plain one
 	// when the node has none.
 	selfLn := slices.Concat(cfg.ClientListeners, cfg.PlainClientListeners)[0]
@@ -335,24 +344,24 @@ func run(ctx context.Context, cfg Config) error {
 	for _, ln := range cfg.MetricsListeners {
 		srv := &http.Server{Handler: api.metricsHandler(), ReadHeaderTimeout: time.Minute}
 		l.metricsSrvs = append(l.metricsSrvs, srv)
-		go func() { _ = srv.Serve(ln) }()
+		l.goes.Go(func() { _ = srv.Serve(ln) })
 	}
 	up = true
 	defer l.shut(slices.Concat(cfg.ClientListeners, cfg.PlainClientListeners, cfg.PeerListeners)...)
-	go func() {
+	l.goes.Go(func() {
 		<-ctx.Done()
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		l.wake()
-	}()
+	})
 	for _, ln := range cfg.ClientListeners {
-		go l.accept(ln, cliTLS, kindClient, logger)
+		l.goes.Go(func() { l.accept(ln, cliTLS, kindClient, logger) })
 	}
 	for _, ln := range cfg.PlainClientListeners {
-		go l.accept(ln, nil, kindClient, logger)
+		l.goes.Go(func() { l.accept(ln, nil, kindClient, logger) })
 	}
 	for _, ln := range cfg.PeerListeners {
-		go l.accept(ln, cfg.PeerServerTLS, kindPeerIn, logger)
+		l.goes.Go(func() { l.accept(ln, cfg.PeerServerTLS, kindPeerIn, logger) })
 	}
 	n.metrics.learner.Store(n.isLearner())
 	l.syncDials()
@@ -373,7 +382,9 @@ func addrs(lns []net.Listener) []string {
 func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.Logger) {
 	for {
 		nc, err := ln.Accept()
-		if errors.Is(err, net.ErrClosed) {
+		// A listener may fail otherwise once closed: the stop ends the
+		// accepts either way.
+		if errors.Is(err, net.ErrClosed) || err != nil && l.ctx.Err() != nil {
 			return
 		}
 		if err != nil {
@@ -381,14 +392,14 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
-		go func() {
+		l.goes.Go(func() {
 			var h *handoff
 			var err error
 			if cfg == nil {
 				// A client of a listener without TLS.
-				h, err = plainHandoff(l.n.sys, nc)
+				h, err = plainHandoff(l.ctx, l.n.sys, nc)
 			} else {
-				h, err = handshake(l.n.sys, nc, cfg, kind)
+				h, err = handshake(l.ctx, l.n.sys, nc, cfg, kind)
 			}
 			if err != nil {
 				return
@@ -402,7 +413,7 @@ func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.
 				return
 			}
 			l.handOver(h)
-		}()
+		})
 	}
 }
 
@@ -442,8 +453,10 @@ func (l *loop) syncDials() {
 		l.stopDial(m.id)
 		d := &dialer{addr: addr, redial: make(chan struct{}, 1), rebeat: make(chan struct{}, 1), stop: make(chan struct{})}
 		l.dials[m.id] = d
-		go l.dial(m.id, d, false)
-		go l.dial(m.id, d, true)
+		// m points into the member list, which may change while they run.
+		id := m.id
+		l.goes.Go(func() { l.dial(id, d, false) })
+		l.goes.Go(func() { l.dial(id, d, true) })
 	}
 	for id := range l.dials {
 		if !keep[id] {
@@ -560,7 +573,7 @@ func (l *loop) dial(id uint64, d *dialer, beat bool) {
 			}
 			continue
 		}
-		h, err := handshake(l.n.sys, nc, c, kindPeerOut)
+		h, err := handshake(l.ctx, l.n.sys, nc, c, kindPeerOut)
 		if err != nil {
 			if !pause() {
 				return
@@ -620,15 +633,44 @@ func (l *loop) wakeStops() bool {
 	return false
 }
 
+// posted is a function another goroutine handed the loop, and what frees
+// what it would take over if the loop stops before it runs.
+type posted struct {
+	run  func() error
+	drop func()
+}
+
 // post hands the loop fn to run in its next turn.
-func (l *loop) post(fn func() error) {
+func (l *loop) post(fn func() error) { l.postOr(fn, nil) }
+
+// postOr is post with drop, if not nil, run instead of fn if the loop
+// stops first, as it ran fn's work for nothing.
+func (l *loop) postOr(fn func() error, drop func()) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.stopped {
+		l.mu.Unlock()
+		if drop != nil {
+			drop()
+		}
 		return
 	}
-	l.posts = append(l.posts, fn)
+	l.posts = append(l.posts, posted{fn, drop})
 	l.wake()
+	l.mu.Unlock()
+}
+
+// stopPosts stops the loop taking posts, and drops those it did not run.
+func (l *loop) stopPosts() {
+	l.mu.Lock()
+	l.stopped = true
+	ps := l.posts
+	l.posts = nil
+	l.mu.Unlock()
+	for _, p := range ps {
+		if p.drop != nil {
+			p.drop()
+		}
+	}
 }
 
 func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args...) }
@@ -636,18 +678,8 @@ func (l *loop) logf(format string, args ...any) { l.logger.Printf(format, args..
 // offLoop runs work in a goroutine of its own, and what it returns on the
 // loop.
 func (l *loop) offLoop(work func() func() error) {
-	strays.Add(1)
-	go func() {
-		defer strays.Add(-1)
-		l.post(work())
-	}()
+	l.goes.Go(func() { l.post(work()) })
 }
-
-// strays counts the goroutines a node starts that may go on after it
-// stops, reading its log (offLoop, sendSnapshot, prepareClientSnap): a
-// test that sets segSize waits for none before it sets it back
-// (waitStrays), which they read.
-var strays atomic.Int64
 
 // healthRead is the read of etcd's health checks, made on the loop as
 // etcd makes it in its server: a serializable one reads the store as it
@@ -723,7 +755,7 @@ func (l *loop) leave() bool {
 	}
 	l.logger.Printf("stopping: handing the leadership to %x", to)
 	n.rn.TransferLeader(to)
-	l.leaveBy = n.now.Add(moveTimeout)
+	l.leaveBy, l.leaveTo = n.now.Add(moveTimeout), to
 	return true
 }
 
@@ -734,8 +766,12 @@ func (l *loop) runPosts() error {
 	l.posts = nil
 	l.mu.Unlock()
 	l.turnPosts += len(ps)
-	for _, fn := range ps {
-		if err := fn(); err != nil {
+	for i, p := range ps {
+		if err := p.run(); err != nil {
+			// The loop stops on err: its stop drops the rest.
+			l.mu.Lock()
+			l.posts = append(ps[i+1:], l.posts...)
+			l.mu.Unlock()
 			return err
 		}
 	}
@@ -753,9 +789,11 @@ func (l *loop) wake() {
 	_, _ = sysWrite(l.hoFD, b[:])
 }
 
-// shut closes what a stopped loop had open: its listeners, sockets, log
-// and file descriptors.
+// shut ends the goroutines the node started and waits for them, then
+// closes what the stopped loop had open: its listeners, sockets, files,
+// log and file descriptors.
 func (l *loop) shut(listeners ...net.Listener) {
+	l.cancel()
 	for _, ln := range listeners {
 		_ = ln.Close()
 	}
@@ -765,20 +803,27 @@ func (l *loop) shut(listeners ...net.Listener) {
 	if err := errors.Join(l.http1.stop(), l.self.Close()); err != nil {
 		l.logger.Printf("stop the HTTP/1.1 server and the node's own client: %v", err)
 	}
+	l.stopPosts()
 	l.mu.Lock()
-	l.stopped = true
 	hs := l.handoffs
 	l.handoffs = nil
 	l.mu.Unlock()
 	for _, h := range hs {
 		_ = sysClose(h.fd)
 	}
+	// They may read the log until they end. A restart in this process
+	// would reuse its files (#819).
+	l.goes.Wait()
 	for idx, x := range l.n.socks {
 		if x != nil {
 			l.closeSock(idx)
 		}
 	}
 	l.n.abortCkpt()
+	for _, cs := range l.n.clientSnaps {
+		_ = cs.f.Close()
+	}
+	l.n.clientSnaps = nil
 	l.n.wal.close()
 	if l.n.rm != nil {
 		l.n.rm.close()
@@ -1030,7 +1075,7 @@ func (l *loop) run() error {
 		l.watch.tid, l.watch.goid = n.sys.gettid(), goid()
 		stop := make(chan struct{})
 		defer close(stop)
-		go l.watch.watch(stop, l.logger.Printf)
+		l.goes.Go(func() { l.watch.watch(stop, l.logger.Printf) })
 	}
 	events := make([]unix.EpollEvent, 256)
 	l.next = time.Now().Add(tickEvery)
@@ -1062,7 +1107,11 @@ func (l *loop) run() error {
 			// or discard the MemberRemove reply awaiting the output drain.
 			return n.stopErr
 		}
-		if !l.leaveBy.IsZero() && (n.lead != 0 && n.lead != n.id || n.now.After(l.leaveBy)) {
+		// A leave also ends once the connection to the peer it hands the
+		// leadership to is gone. Its dials ended with the stop, so it never
+		// comes back: as for a process the simulator kills, whose network
+		// it cuts, and whose restart waits for this Run (#937's ci).
+		if !l.leaveBy.IsZero() && (n.lead != 0 && n.lead != n.id || n.now.After(l.leaveBy) || n.peersOut[l.leaveTo] == nil) {
 			return errStopped
 		}
 		for i := range k {

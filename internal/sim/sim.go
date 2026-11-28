@@ -467,6 +467,9 @@ type node struct {
 	proc     *proc
 	starting bool
 	gen      uint64
+	// ran is closed once the last process's Run returned, nil before the
+	// node's first start: the next start waits for it (#819).
+	ran chan struct{}
 
 	// graySync makes its fsyncs slow while it is gray.
 	graySync bool
@@ -2074,8 +2077,9 @@ func (s *Sim) start(n *node) error {
 	// A process takes up to a tick to start, so that the nodes' ticks
 	// fall apart, as on real machines.
 	wait := s.rng.Int64N(TickTime)
+	ran := n.ran
 	s.mu.Unlock()
-	if !s.sleep(wait) {
+	if !s.sleep(wait) || !s.ran(ran) {
 		s.mu.Lock()
 		n.starting = false
 		s.mu.Unlock()
@@ -2097,6 +2101,21 @@ func (s *Sim) start(n *node) error {
 	}
 	p.wl.armed = armed
 	return nil
+}
+
+// ran waits for a node's last process to return from its Run, if it had
+// one: nothing of it then runs on the disk the next one starts from. It
+// reports false if the run ended meanwhile.
+func (s *Sim) ran(ran <-chan struct{}) bool {
+	if ran == nil {
+		return true
+	}
+	select {
+	case <-ran:
+		return true
+	case <-s.end:
+		return false
+	}
 }
 
 // refusesDamage reports whether err is recovery refusing a log it read

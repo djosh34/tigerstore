@@ -196,7 +196,7 @@ func aFullLogRingRaisesNOSPACE(t *testing.T, lateCut bool) {
 	was := segSize
 	segSize = 64 << 10
 	ringHoldCut.Store(true)
-	t.Cleanup(func() { waitStrays(t); segSize = was; ringHoldCut.Store(false) })
+	t.Cleanup(func() { segSize = was; ringHoldCut.Store(false) })
 	const segs = 8
 	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.logRing = segs * segSize })

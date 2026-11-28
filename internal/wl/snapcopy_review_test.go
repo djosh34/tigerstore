@@ -111,18 +111,18 @@ func TestASnapshotOffsetFlipIsCheckpointDamageNotACut(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = src.Close() }()
-			l := copyLoop(n)
+			l := copyLoop(t, n)
 			switch path {
 			case "copy":
-				err = selfContained(src, n.wal, &bytes.Buffer{})
+				err = selfContained(t.Context(), src, n.wal, &bytes.Buffer{})
 			case "client":
 				_, _, h := snapshotClient(t, n)
 				l.prepareClientSnap(h, src)
-				waitStrays(t)
+				l.goes.Wait()
 				err = l.runPosts()
 			case "peer":
 				l.sendSnapshot(message, src)
-				waitStrays(t)
+				l.goes.Wait()
 				err = l.runPosts()
 			}
 			if !errors.Is(err, ErrCorruptCheckpoint) {
@@ -160,9 +160,9 @@ func TestAPeerSnapshotCheckpointDamageStopsBeforeReportingFailure(t *testing.T) 
 			if err := os.WriteFile(src.Name(), b, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			l := copyLoop(n)
+			l := copyLoop(t, n)
 			l.sendSnapshot(message, src)
-			waitStrays(t)
+			l.goes.Wait()
 			if err := l.runPosts(); !errors.Is(err, ErrCorruptCheckpoint) {
 				t.Fatalf("the peer's checkpoint damage did not stop the node: %v", err)
 			}
@@ -183,9 +183,9 @@ func TestADisconnectedRequeuedSnapshotStartsNoCheckpoint(t *testing.T) {
 			n := copyRingNode(t)
 			c, s, h := snapshotClient(t, n)
 			src := retiredCopy(t, n)
-			l := copyLoop(n)
+			l := copyLoop(t, n)
 			l.prepareClientSnap(h, src)
-			waitStrays(t)
+			l.goes.Wait()
 			if err := l.runPosts(); err != nil {
 				t.Fatal(err)
 			}
@@ -271,7 +271,7 @@ func TestAnInstallDoesNotSpendASnapshotCutRetry(t *testing.T) {
 	if err := n.maybeCkpt(); err != nil {
 		t.Fatal(err)
 	}
-	waitStrays(t)
+	l.goes.Wait()
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
 	}
@@ -289,13 +289,13 @@ func TestAQuietSnapshotHeaderUsesTheCheckpointRevision(t *testing.T) {
 	// The copy must not synthesize its revision from mutable store
 	// metadata, even if it normally equals the checkpoint's today.
 	n.st.rev += 7
-	l := copyLoop(n)
+	l := copyLoop(t, n)
 	n.shell = &copyShell{l: l}
 	n.snapshotRequest(c, s)
 	if err := n.maybeCkpt(); err != nil {
 		t.Fatal(err)
 	}
-	waitStrays(t)
+	l.goes.Wait()
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
 	}

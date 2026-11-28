@@ -103,15 +103,13 @@ func clientSnapHead(cluster uint64, m ckptMeta) []byte {
 // prepareClientSnap writes the copy in a goroutine of its own and posts
 // it to the loop, which sends it.
 func (l *loop) prepareClientSnap(h handle, src file) {
-	strays.Add(1)
-	go func() {
-		defer strays.Add(-1)
+	l.goes.Go(func() {
 		defer func() { _ = src.Close() }()
 		f, err := l.n.sys.createTemp(l.n.ckptDir, "client-*.tmp")
 		if err == nil {
 			// The name goes now; the file stays open until it is sent.
 			_ = l.n.sys.remove(f.Name())
-			err = selfContained(src, l.n.wal, f)
+			err = selfContained(l.ctx, src, l.n.wal, f)
 		}
 		cs := &clientSnap{h: h, f: f}
 		if err == nil {
@@ -128,8 +126,13 @@ func (l *loop) prepareClientSnap(h handle, src file) {
 		if err == nil {
 			_, err = f.Seek(0, io.SeekStart)
 		}
-		l.post(func() error { return l.n.clientSnapCopied(cs, err) })
-	}()
+		// A stopped loop drops the copy: its file is closed here.
+		l.postOr(func() error { return l.n.clientSnapCopied(cs, err) }, func() {
+			if f != nil {
+				_ = f.Close()
+			}
+		})
+	})
 }
 
 // copiedClientSnapHead reads the metadata of a verified, self-contained

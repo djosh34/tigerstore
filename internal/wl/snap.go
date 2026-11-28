@@ -260,9 +260,7 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 			mem = x
 		}
 	}
-	strays.Add(1)
-	go func() {
-		defer strays.Add(-1)
+	l.goes.Go(func() {
 		err := l.sendSelfContained(mem, m, f)
 		_ = f.Close()
 		status := raft.SnapshotFinish
@@ -282,7 +280,7 @@ func (l *loop) sendSnapshot(m *pb.Message, f file) {
 			l.n.rn.ReportSnapshot(to, status)
 			return nil
 		})
-	}()
+	})
 }
 
 // sendSelfContained sends the follower the checkpoint in f with every
@@ -296,7 +294,7 @@ func (l *loop) sendSelfContained(mem member, m *pb.Message, f file) error {
 		_ = tmp.Close()
 		_ = l.n.sys.remove(tmp.Name())
 	}()
-	if err := selfContained(f, l.n.wal, tmp); err != nil {
+	if err := selfContained(l.ctx, f, l.n.wal, tmp); err != nil {
 		return err
 	}
 	size, err := tmp.Seek(0, io.SeekCurrent)
@@ -324,7 +322,7 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f file, size int64) err
 	}
 	cfg := l.peerTLS.Clone()
 	cfg.ServerName, _, _ = net.SplitHostPort(addr)
-	h, err := handshake(l.n.sys, nc, cfg, kindPeerOut)
+	h, err := handshake(l.ctx, l.n.sys, nc, cfg, kindPeerOut)
 	if err != nil {
 		return err
 	}
@@ -337,6 +335,10 @@ func (l *loop) streamSnapshot(mem member, m *pb.Message, f file, size int64) err
 	putFrame(s, hdr)
 	buf := make([]byte, snapFrame)
 	for first := true; ; {
+		// A stop ends the stream between frames.
+		if err := l.ctx.Err(); err != nil {
+			return err
+		}
 		k, err := f.Read(buf)
 		if k > 0 {
 			keep := l.n.simSnapshotChunk(m.GetTo(), first, buf[:k])
@@ -519,7 +521,7 @@ func (l *loop) receiveSnapshot(s *sock, from uint64) error {
 	}
 	term, index, snapTerm, size := v[1], v[2], v[3], int64(v[4])
 	path := l.recvPath(from, index)
-	if err := receiveFile(l.n.sys, s, path, size); err != nil {
+	if err := receiveFile(l.ctx, l.n.sys, s, path, size); err != nil {
 		_ = l.n.sys.remove(path)
 		return err
 	}
@@ -552,7 +554,7 @@ func (l *loop) recvPath(from, index uint64) string {
 
 // receiveFile writes the stream's frames to path, up to an empty one, and
 // checks that they are size bytes whose last four are the CRC of the rest.
-func receiveFile(sys sysEnv, s *sock, path string, size int64) error {
+func receiveFile(ctx context.Context, sys sysEnv, s *sock, path string, size int64) error {
 	f, err := sys.openFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
@@ -562,6 +564,10 @@ func receiveFile(sys sysEnv, s *sock, path string, size int64) error {
 	var crc uint32
 	var tail []byte
 	for {
+		// A stop ends the stream between frames.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		p, err := readFrame(s)
 		if err != nil {
 			return err

@@ -528,7 +528,7 @@ func askMembers(ctx context.Context, sys sysEnv, cfg *tls.Config, addr string) (
 	}
 	c := cfg.Clone()
 	c.ServerName, _, _ = net.SplitHostPort(addr)
-	h, err := handshake(sys, nc, c, kindPeerOut)
+	h, err := handshake(ctx, sys, nc, c, kindPeerOut)
 	if err != nil {
 		return nil, 0, err
 	}

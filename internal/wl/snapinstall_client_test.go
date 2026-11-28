@@ -2,11 +2,9 @@ package wl
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"io"
-	"log"
 	"os"
 	"testing"
 
@@ -39,7 +37,7 @@ func installWhileClientWaits(t *testing.T, gone bool, beforeInstall func(*stream
 		t.Fatal(err)
 	}
 	var b bytes.Buffer
-	if err := selfContained(incoming, n.st.log.(durableLog), &b); err != nil {
+	if err := selfContained(t.Context(), incoming, n.st.log.(durableLog), &b); err != nil {
 		_ = incoming.Close()
 		t.Fatal(err)
 	}
@@ -64,7 +62,7 @@ func installWhileClientWaits(t *testing.T, gone bool, beforeInstall func(*stream
 	n.socks, n.gens = []any{c}, []uint16{1}
 	s := c.newStream(1, kSnapshot)
 	h := mkHandle(c, s.id)
-	l := &loop{n: n, hoFD: -1, ctx: context.Background(), logger: log.New(io.Discard, "", 0)}
+	l := copyLoop(t, n)
 	n.shell = &installClientShell{l: l}
 	n.snapshotRequest(c, s)
 	if err := n.maybeCkpt(); err != nil {
@@ -109,7 +107,7 @@ func TestAnInstallDuringACheckpointStillAnswersItsSnapshotClient(t *testing.T) {
 			if err := n.maybeCkpt(); err != nil {
 				t.Fatal(err)
 			}
-			waitStrays(t)
+			l.goes.Wait()
 			if err := l.runPosts(); err != nil {
 				t.Fatal(err)
 			}
