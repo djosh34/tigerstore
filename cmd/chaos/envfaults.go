@@ -70,16 +70,15 @@ const livenessBound = 2 * requestTimeout
 // connected to its peers for 5 s.
 const memberRetry = 20 * time.Second
 
-// nodeArgs are the arguments every node gets under -env: sizes small
-// enough that a follower stopped for a few seconds falls behind the
-// window and needs a snapshot, and checkpoints and segment removal come
-// often; and a log ring of 128 segments of 1 MiB, which the node's small
-// disk holds with room left to fill (#751's CI: a ring of 512 MiB did not
-// fit its 512 MiB disk). wl takes none of the other sizes, so it
-// checkpoints every quarter of its ring, which a run does not reach: the
-// committed log's reader (internal/committed) reads a wl log only from
-// its start, which a checkpoint's cut takes away (#740).
-var nodeArgs = []string{"--unsafe-window-bytes", "16384", "--unsafe-checkpoint-bytes", "65536", "--unsafe-segment-bytes", strconv.Itoa(envSegment), "--unsafe-log-ring-bytes", "134217728"}
+// nodeArgs are the arguments every node gets under -env: a log ring of
+// 128 segments of 1 MiB, which the node's small disk holds with room left
+// to fill (#751's CI: a ring of 512 MiB did not fit its 512 MiB disk). A
+// node checkpoints every quarter of its ring, which a run does not reach:
+// the committed log's reader (internal/committed) reads a wl log only
+// from its start, which a checkpoint's cut takes away (#740). A smaller
+// ring is how chaos gets checkpoints, cuts and wraps back, once that
+// reader reads a cut log.
+var nodeArgs = []string{"--unsafe-segment-bytes", strconv.Itoa(envSegment), "--unsafe-log-ring-bytes", "134217728"}
 
 // envSegment is the size of a segment of -env's nodes' logs, which this
 // process reads its logs with too (wl.SetSegmentSize).

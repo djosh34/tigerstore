@@ -108,6 +108,26 @@ func TestVersionAndHelp(t *testing.T) {
 	}
 }
 
+// TestDroppedLogFlagsAreRefused is #742: wl has no byte window for
+// followers and checkpoints at least every quarter of its ring, so it
+// would drop --unsafe-window-bytes and --unsafe-checkpoint-bytes. They are
+// refused, as etcd refuses a flag it doesn't take, and the ring's flags,
+// which wl takes, still parse.
+func TestDroppedLogFlagsAreRefused(t *testing.T) {
+	for _, name := range []string{"--unsafe-window-bytes", "--unsafe-checkpoint-bytes"} {
+		if _, err := parseArgs(t, name, "65536"); !errors.Is(err, errUsage) {
+			t.Errorf("%s: %v, want it refused as a flag tigerstore doesn't take", name, err)
+		}
+	}
+	c, err := parseArgs(t, "--unsafe-segment-bytes", "1048576", "--unsafe-log-ring-bytes", "134217728", "--disk-budget-bytes", "1073741824")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.own.UnsafeSegment != 1<<20 || c.own.UnsafeLogRing != 128<<20 || c.own.DiskBudget != 1<<30 {
+		t.Errorf("segment %d, ring %d, disk budget %d", c.own.UnsafeSegment, c.own.UnsafeLogRing, c.own.DiskBudget)
+	}
+}
+
 func TestBadCommandLines(t *testing.T) {
 	if _, err := parseArgs(t, "--no-such-flag"); !errors.Is(err, errUsage) {
 		t.Errorf("unknown flag: %v", err)
