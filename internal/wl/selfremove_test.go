@@ -80,6 +80,18 @@ func TestRemovingLeaderWaitsForSurvivingCommitKnowledge(t *testing.T) {
 		t.Fatal("elapsed time bypassed the quorum barrier")
 	}
 	binary.BigEndian.PutUint64(ctx[:], n.selfRemoval.seq)
+	n.lead = 2
+	n.readState(ctx[:], 10)
+	if n.selfRemoval.ready {
+		t.Fatal("a forwarded ReadIndex after losing leadership permitted exit")
+	}
+	n.lead = n.id
+	n.selfRemoval.term++
+	n.readState(ctx[:], 10)
+	if n.selfRemoval.ready {
+		t.Fatal("a ReadIndex in another term permitted exit")
+	}
+	n.selfRemoval.term--
 	n.readState(ctx[:], 10)
 	if !n.selfRemoval.ready {
 		t.Fatal("the quorum's committed removal was not recognized")
@@ -94,7 +106,9 @@ func TestRemovingLeaderWaitsForSurvivingCommitKnowledge(t *testing.T) {
 		t.Fatal("later work passed the removal during output drain")
 	}
 	// A socket blocked on output delays exit, but only for ten heartbeats.
-	n.socks = []any{&client{sock: sock{wantOut: true}}}
+	c := new(client)
+	c.wantOut = true
+	n.socks = []any{c}
 	if n.selfRemovalDrained() {
 		t.Fatal("blocked output was not given a drain turn")
 	}
