@@ -86,6 +86,10 @@ on:
         description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs at the first RTT, tmpfs (all nodes on tmpfs) and alone (followers on tmpfs)
         default: ""
 
+      fetch_option_a_controls:
+        description: PR897 pre-correction leader profiles and fixed main CI controls, diagnostic only
+        type: boolean
+        default: false
       fetch_cache:
         description: PR897 cgroup-confirmed past-RAM/refused/evicted distinct-request reuse and tails
         type: boolean
@@ -121,6 +125,9 @@ on:
         default: false
 
 jobs:
+  option-a-controls:
+    if: inputs.fetch_option_a_controls
+    uses: ./.github/workflows/pr897-option-a-controls.yml
   cache-reuse:
     if: inputs.fetch_cache
     name: cache-${{ matrix.cache }}-${{ matrix.cohort }}-rtt${{ matrix.rtt }}
@@ -375,7 +382,7 @@ jobs:
           path: ${{ runner.temp }}/resident-evidence
           retention-days: 30
   plan:
-    if: ${{ !inputs.fetch_measure && !inputs.fetch_pr897 && !inputs.fetch_resident && !inputs.fetch_final_profiles && !inputs.fetch_cache }}
+    if: ${{ !inputs.fetch_measure && !inputs.fetch_pr897 && !inputs.fetch_resident && !inputs.fetch_final_profiles && !inputs.fetch_cache && !inputs.fetch_option_a_controls }}
     runs-on: ubuntu-24.04-arm
     outputs:
       jobs: ${{ steps.plan.outputs.jobs }}
