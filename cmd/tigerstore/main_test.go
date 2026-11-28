@@ -111,12 +111,21 @@ func TestVersionAndHelp(t *testing.T) {
 // TestDroppedLogFlagsAreRefused is #742: wl has no byte window for
 // followers and checkpoints at least every quarter of its ring, so it
 // would drop --unsafe-window-bytes and --unsafe-checkpoint-bytes. They are
-// refused, as etcd refuses a flag it doesn't take, and the ring's flags,
-// which wl takes, still parse.
+// refused, as etcd refuses a flag it doesn't take, and so are their keys
+// in a configuration file; the ring's flags, which wl takes, still parse.
 func TestDroppedLogFlagsAreRefused(t *testing.T) {
 	for _, name := range []string{"--unsafe-window-bytes", "--unsafe-checkpoint-bytes"} {
 		if _, err := parseArgs(t, name, "65536"); !errors.Is(err, errUsage) {
 			t.Errorf("%s: %v, want it refused as a flag tigerstore doesn't take", name, err)
+		}
+	}
+	for _, key := range retiredKeys {
+		path := filepath.Join(t.TempDir(), "etcd.yaml")
+		if err := os.WriteFile(path, []byte("name: fromfile\n"+key+": 65536\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := parseArgs(t, "--config-file", path); !errors.Is(err, errRetiredKey) {
+			t.Errorf("a configuration file with %s: %v, want it refused", key, err)
 		}
 	}
 	c, err := parseArgs(t, "--unsafe-segment-bytes", "1048576", "--unsafe-log-ring-bytes", "134217728", "--disk-budget-bytes", "1073741824")

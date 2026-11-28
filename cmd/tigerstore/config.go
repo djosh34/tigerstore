@@ -46,6 +46,14 @@ var (
 	errUsage = errors.New("bad usage")
 )
 
+// errRetiredKey refuses a configuration file's key of a flag tigerstore
+// no longer takes, as the command line refuses the flag (#742):
+// retiredKeys.
+var errRetiredKey = errors.New("a configuration file sets a key tigerstore no longer takes")
+
+// retiredKeys are the keys of the old engine's flags that wl would drop.
+var retiredKeys = []string{"unsafe-window-bytes", "unsafe-checkpoint-bytes"}
+
 // errMaxRequestBytes refuses a --max-request-bytes above
 // core.MaxRequestBytesCeiling: a request that large would not fit, with
 // its encoding, in one of tigerstore's peer frames and log records.
@@ -107,7 +115,7 @@ func newConfig(stderr io.Writer) *config {
 	fs.Int64Var(&c.own.DiskBudget, "disk-budget-bytes", 0, "bytes the data directory may take: the log's ring, formatted when the directory is made, takes half, and the rest is left to the checkpoints; at least 1 GiB, a ring of eight 64 MiB segments (0 means no budget: the ring is the quota's size, at least 512 MiB). A ring the disk's free space cannot hold is refused at start")
 	fs.Int64Var(&c.own.MemoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory); at least 137 MiB for three members, more for more; a member add checks the budget of the node asked alone, so give every member the same")
 	fs.Int64Var(&c.own.UnsafeSegment, "unsafe-segment-bytes", 0, "for tests only: the bytes of a segment of the log, a multiple of 4 KiB, which a data directory keeps from when it is made (0 means 64 MiB)")
-	fs.Int64Var(&c.own.UnsafeLogRing, "unsafe-log-ring-bytes", 0, "for tests only: bytes of the log's ring, formatted when the data directory is made; the node checkpoints at least every quarter of it, and takes requests of at most half of it (0 means half the disk budget, else the quota)")
+	fs.Int64Var(&c.own.UnsafeLogRing, "unsafe-log-ring-bytes", 0, "for tests only: bytes of the log's ring, formatted when the data directory is made; the node checkpoints at least every quarter of it, and takes requests of at most half of it, so give every member the same (0 means half the disk budget, else the quota)")
 	return c
 }
 
@@ -248,6 +256,15 @@ func (c *config) fromFile(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+	var keys map[string]any
+	if err := yaml.Unmarshal(b, &keys); err != nil {
+		return err
+	}
+	for _, k := range retiredKeys {
+		if _, ok := keys[k]; ok {
+			return fmt.Errorf("%w: %s", errRetiredKey, k)
+		}
 	}
 	// The file replaces the command line, tigerstore's flags too.
 	c.own = ownFlags{}
