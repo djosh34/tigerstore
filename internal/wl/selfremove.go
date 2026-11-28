@@ -159,6 +159,12 @@ func (n *node) selfRemovalDrained() bool {
 	if !n.now.Before(n.selfRemoval.drainBy) {
 		return true
 	}
+	// Piecewise producers can retain unsent response bytes outside both
+	// the socket buffer and flow.held, including while waiting for values
+	// or a snapshot's next chunk. Let them finish within the same bound.
+	if len(n.bigs) > 0 || len(n.bigWatches) > 0 || len(n.clientSnaps) > 0 {
+		return false
+	}
 	if len(n.dirty) > 0 || len(n.heldReplies) > 0 {
 		return false
 	}
