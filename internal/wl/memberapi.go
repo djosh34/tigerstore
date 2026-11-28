@@ -276,9 +276,12 @@ func (n *node) checkMoves() {
 
 // forwardPromote has the leader promote a learner, as etcd's follower
 // forwards a promotion: only the leader knows how far the learner is. It
-// sends the promotion over the peer link in a side call (side.go), and
+// sends the promotion over the peer link (side.go's forwardPromote), and
 // answers with the leader's answer.
 func (n *node) forwardPromote(c *client, s *stream, msg []byte) error {
+	if f := testAdmit.Load(); f != nil {
+		(*f)(n, s.kind, msg)
+	}
 	addr := ""
 	if i := n.memberAt(n.lead); i >= 0 {
 		addr = n.members[i].peerAddr()

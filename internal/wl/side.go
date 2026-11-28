@@ -294,11 +294,14 @@ func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc 
 }
 
 // A follower hands a MemberPromote to the leader as etcd's does over its
-// peer API: on a peer connection of its own, whose hello is promoteAsk,
-// with the peer TLS. The follower checked the caller's auth; the leader
-// runs the promotion through its own client as root, as etcd's leader
-// runs a promotion its peer forwards with no check (#783). Each side
-// gives up after forwardTimeout, the leader's call a second before.
+// peer API (#783): on a peer connection of its own, whose hello is
+// promoteAsk, with the peer TLS, it sends the caller's token and
+// certificate name and the request. The leader runs it through its own
+// client for that caller, as a side call's, so it checks the caller's
+// auth again where the auth store is newest, as etcd's leader checks
+// the token its peer forwards. Unlike etcd's, a caller known only by its
+// certificate name keeps it. The follower gives up after
+// forwardTimeout, the leader's call a second before.
 
 // promoteAsk is the hello of a promotion forwarded to the leader.
 const promoteAsk = ^uint64(1)
@@ -311,21 +314,26 @@ const forwardTimeout = requestTimeout + time.Second
 var errForwardTimeout = status.Error(codes.Unavailable, msgTimeout)
 
 // forwardPromote has the leader at peer address addr run the
-// MemberPromote req, in a goroutine of its own, and answers the client
-// of h with the leader's answer. It returns what ends the call's context.
+// MemberPromote req for the client of h, in a goroutine of its own, and
+// answers that client with the leader's answer. It returns what ends the
+// forward.
 func (l *loop) forwardPromote(h handle, addr string, req []byte) context.CancelFunc {
+	var token, name string
+	if c, s := l.n.clientOf(h); c != nil {
+		token, name = s.token, c.nameOf(s)
+	}
 	ctx, cancel := context.WithTimeout(l.ctx, forwardTimeout)
 	go func() {
-		reply, err := l.askPromote(ctx, addr, req)
+		reply, err := l.askPromote(ctx, addr, []byte(token), []byte(name), req)
 		l.post(func() error { l.n.sideEnd(h, true, reply, err); return nil })
 	}()
 	return cancel
 }
 
-// askPromote sends the leader at addr the promotion req, and returns its
-// answer: the reply, or the error it answered with.
-func (l *loop) askPromote(ctx context.Context, addr string, req []byte) ([]byte, error) {
-	b, err := l.exchangePromote(ctx, addr, req)
+// askPromote sends the leader at addr the frames of a promotion, and
+// returns its answer: the reply, or the error it answered with.
+func (l *loop) askPromote(ctx context.Context, addr string, frames ...[]byte) ([]byte, error) {
+	b, err := l.exchangePromote(ctx, addr, frames)
 	code, k := binary.Uvarint(b)
 	if err == nil && k <= 0 {
 		err = errRecord
@@ -340,52 +348,70 @@ func (l *loop) askPromote(ctx context.Context, addr string, req []byte) ([]byte,
 	return b[k:], nil
 }
 
-// exchangePromote sends the promotion req on a peer connection to addr,
-// and reads the answer, by ctx's deadline.
-func (l *loop) exchangePromote(ctx context.Context, addr string, req []byte) ([]byte, error) {
-	deadline, _ := ctx.Deadline()
-	nc, err := l.n.sys.dial(ctx, addr, time.Until(deadline))
+// exchangePromote sends frames on a peer connection to addr and reads
+// the answer, on Go's TLS: ctx's deadline bounds the dial, the handshake
+// and every read and write, and ctx's end ends them.
+func (l *loop) exchangePromote(ctx context.Context, addr string, frames [][]byte) ([]byte, error) {
+	nc, err := l.n.sys.dial(ctx, addr, 0)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = nc.Close() }()
+	deadline, _ := ctx.Deadline()
+	if err := nc.SetDeadline(deadline); err != nil {
+		return nil, err
+	}
+	defer context.AfterFunc(ctx, func() { _ = nc.SetDeadline(time.Now()) })()
 	cfg := l.peerTLS.Clone()
 	cfg.ServerName, _, _ = net.SplitHostPort(addr)
-	hs, err := handshake(l.n.sys, nc, cfg, kindPeerOut)
-	if err != nil {
+	cfg.MinVersion = tls.VersionTLS13
+	tc := tls.Client(nc, cfg)
+	b := peerHelloBytes(promoteAsk, l.n.clusterID, "")
+	for _, f := range frames {
+		b = binary.LittleEndian.AppendUint32(b, uint32(len(f)))
+		b = append(b, f...)
+	}
+	if _, err := tc.Write(b); err != nil {
 		return nil, err
 	}
-	defer func() { _ = sysClose(hs.fd) }()
-	d := time.Until(deadline)
-	if d <= 0 {
-		return nil, context.DeadlineExceeded
-	}
-	if err := l.n.sys.blocking(hs.fd, d); err != nil {
+	var h [4]byte
+	if _, err := io.ReadFull(tc, h[:]); err != nil {
 		return nil, err
 	}
-	s := newSock(hs, &counters{})
-	s.put(peerHelloBytes(promoteAsk, l.n.clusterID, ""))
-	putFrame(s, req)
-	if err := flushAll(s); err != nil {
+	size := binary.LittleEndian.Uint32(h[:])
+	if size > 2*snapFrame {
+		return nil, errRecord
+	}
+	answer := make([]byte, size)
+	if _, err := io.ReadFull(tc, answer); err != nil {
 		return nil, err
 	}
-	return readFrame(s)
+	return answer, nil
 }
 
 // answerPromote runs the promotion a peer forwards, in the accept
-// goroutine, and answers with a code, 0 or the gRPC error's, then the
-// reply or the error's message.
+// goroutine, for the caller it names, and answers with a code, 0 or the
+// gRPC error's, then the reply or the error's message.
 func (l *loop) answerPromote(s *sock) error {
-	b, err := readFrame(s)
-	if err != nil {
-		return err
+	var frames [3]string // the caller's token and certificate name, and the request
+	for i := range frames {
+		b, err := readFrame(s)
+		if err != nil {
+			return err
+		}
+		frames[i] = string(b)
 	}
 	r := &etcdpb.MemberPromoteRequest{}
-	if err := proto.Unmarshal(b, r); err != nil {
+	if err := proto.Unmarshal([]byte(frames[2]), r); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(l.ctx, requestTimeout)
 	defer cancel()
-	ctx = metadata.AppendToOutgoingContext(ctx, sideCallerHeader, l.n.sideSecret+":"+rootUser)
+	md := []string{sideCallerHeader, l.n.sideSecret + ":" + frames[1]}
+	if frames[0] != "" {
+		md = append(md, "token", frames[0])
+	}
+	ctx = metadata.AppendToOutgoingContext(ctx, md...)
 	resp, err := etcdpb.NewClusterClient(l.self.ActiveConnection()).MemberPromote(ctx, r)
 	var answer []byte
 	switch {
