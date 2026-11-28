@@ -9,6 +9,9 @@ on:
       run_main:
         type: boolean
         default: true
+      offcpu:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -44,8 +47,12 @@ jobs:
       - name: Both frozen refs, one diagnostic profile per side
         env:
           WORKLOAD: ${{ matrix.workload }}
+          OFFCPU: ${{ inputs.offcpu }}
           FETCH_ETCDCTL: ${{ runner.temp }}/etcd-v3.7.2-linux-arm64/etcdctl
-        run: python3 -B scripts/fetch-option-a-profile.py --case "$WORKLOAD" --out "$RUNNER_TEMP/leader-profile"
+        run: |
+          args=()
+          if [ "$OFFCPU" = true ]; then args+=(--offcpu); fi
+          python3 -B scripts/fetch-option-a-profile.py --case "$WORKLOAD" --out "$RUNNER_TEMP/leader-profile" "${args[@]}"
       - name: Preserve profiles and matching binaries
         if: always()
         run: |
@@ -56,7 +63,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: option-a-leader-${{ matrix.workload }}
+          name: option-a-${{ inputs.offcpu && 'offcpu' || 'leader' }}-${{ matrix.workload }}
           path: ${{ runner.temp }}/leader-profile
           retention-days: 30
   main-scenario:

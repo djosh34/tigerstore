@@ -93,6 +93,10 @@ on:
       fetch_option_a_cells:
         description: Diagnostic profile matrix only, never gate cells
         default: '["watch","txn","k8s"]'
+      fetch_option_a_offcpu:
+        description: Add identical diagnostic-only block/mutex/trace and txn refusal-cause observers
+        type: boolean
+        default: false
       fetch_option_a_main:
         description: Include fixed main controls with option A diagnostics
         type: boolean
@@ -138,6 +142,7 @@ jobs:
     with:
       profile_cases: ${{ inputs.fetch_option_a_cells }}
       run_main: ${{ inputs.fetch_option_a_main }}
+      offcpu: ${{ inputs.fetch_option_a_offcpu }}
   cache-reuse:
     if: inputs.fetch_cache
     name: cache-${{ matrix.cache }}-${{ matrix.cohort }}-rtt${{ matrix.rtt }}

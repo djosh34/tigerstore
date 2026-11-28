@@ -46,7 +46,7 @@ func windowMetrics(endpoints []string, start, stop int64, slack time.Duration) (
 		time.Sleep(time.Duration(at - now()))
 		var err error
 		if out[i], err = sampleMetrics(client, scheme, endpoints, at+int64(slack)); err != nil {
-			return out, err
+			return out, errors.Join(err, <-profile)
 		}
 	}
 	return out, <-profile

@@ -23,14 +23,14 @@ CASES = {
 FUNCTIONS = 'serveRange|rangeKVs|resident|Resident|watchWire|linkedWatchWire|writeEvent|flushEvents|replyRoom|direct|Direct|Stage|stage|eachRevEvent|stateAt'
 
 
-def run(case_name, out):
+def run(case_name, out, offcpu=False):
     if os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('Actions only')
     case = CASES[case_name]
     out = out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     refs = dict(baseline=BASE, candidate=HEAD)
-    manifest = dict(scope='pre-correction-leader-CPU-DIAGNOSTIC-NOT-GATE',
+    manifest = dict(scope='pre-correction-leader-offCPU-DIAGNOSTIC-NOT-GATE' if offcpu else 'pre-correction-leader-CPU-DIAGNOSTIC-NOT-GATE',
                     status='INCOMPLETE', refs=refs, case=case, layout='3 0 1 2',
                     tooling_ref=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
                     run_url=os.environ['FETCH_MEASURE_RUN_URL'], sides={})
@@ -38,6 +38,9 @@ def run(case_name, out):
     def save():
         (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 
+    if offcpu:
+        manifest['offcpu_sampling'] = dict(block_rate_ns=1000, mutex_fraction=1, trace_seconds=2,
+                                           causes='txn server wall-window deltas; not intended-send-cohort refusal shares')
     save()
     bins = out / 'bins'
     bins.mkdir()
@@ -46,6 +49,9 @@ def run(case_name, out):
         checkout = Path(os.environ['RUNNER_TEMP']) / f'profile-{side}'
         subprocess.run(['git', 'worktree', 'add', '--detach', str(checkout), ref], check=True)
         profiles.resident.prepare(checkout, out, side)
+        if offcpu:
+            overlay = profiles.module('offcpu', 'fetch-offcpu-overlay.py')
+            overlay.prepare(checkout, out, side)
         subprocess.run(['go', 'build', '-o', str(bins / side), './cmd/tigerstore'], cwd=checkout, check=True)
     shutil.copyfile(os.environ['FETCH_ETCDCTL'], bins / 'etcdctl')
     (bins / 'etcdctl').chmod(0o755)
@@ -62,7 +68,8 @@ def run(case_name, out):
             profile = out / f'{side}.cpu.pprof'
             with (out / f'{side}.log').open('w') as log:
                 process = subprocess.run(['bash', 'bench/run.sh', case['bench'], str(out / side)],
-                                         env=dict(env, TARGETS=side, FETCH_PROFILE_LEADER=str(profile)),
+                                         env=dict(env, TARGETS=side, FETCH_PROFILE_LEADER=str(profile),
+                                                  FETCH_PROFILE_OFFCPU_DIR=str(out / f'{side}-offcpu') if offcpu else ''),
                                          stdout=log, stderr=subprocess.STDOUT)
             row = dict(bench_exit=process.returncode,
                        failed_steps=[str(p.relative_to(out)) for p in (out / side).rglob('*.failed')])
@@ -91,7 +98,30 @@ def run(case_name, out):
                         if name != 'functions' or not text.startswith('no matches found for regexp:'):
                             listing.check_returncode()
                         row['function_listing'] = 'no matching sampled functions'
+            if offcpu:
+                folder = out / f'{side}-offcpu'
+                required = ('before.block.pprof', 'after.block.pprof', 'before.mutex.pprof',
+                            'after.mutex.pprof', 'before.metrics', 'after.metrics', 'execution.trace')
+                row['offcpu_sha256'] = {name: hashlib.sha256((folder / name).read_bytes()).hexdigest()
+                                        for name in required if (folder / name).exists()}
+                if len(row['offcpu_sha256']) == len(required):
+                    for kind in ('block', 'mutex'):
+                        with (folder / f'{kind}-delta.txt').open('w') as log:
+                            subprocess.run(['go', 'tool', 'pprof', '-top', '-cum', '-nodefraction=0',
+                                            '-base', str(folder / f'before.{kind}.pprof'),
+                                            str(bins / side), str(folder / f'after.{kind}.pprof')],
+                                           stdout=log, stderr=subprocess.STDOUT, check=True)
+                    for kind in ('net', 'sync', 'syscall', 'sched'):
+                        path = folder / f'trace-{kind}.pprof'
+                        with path.open('wb') as log:
+                            subprocess.run(['go', 'tool', 'trace', '-pprof=' + kind,
+                                            str(folder / 'execution.trace')], stdout=log, check=True)
+                        with (folder / f'trace-{kind}.txt').open('w') as log:
+                            subprocess.run(['go', 'tool', 'pprof', '-top', '-cum', '-nodefraction=0',
+                                            str(bins / side), str(path)], stdout=log, stderr=subprocess.STDOUT, check=True)
             save()
+        if offcpu and any(len(row.get('offcpu_sha256', {})) != 7 for row in manifest['sides'].values()):
+            return 2
         if all('profile_sha256' in row for row in manifest['sides'].values()):
             manifest['status'] = 'DIAGNOSTIC_COMPLETE_NOT_GATE'
             save()
@@ -105,5 +135,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case', choices=CASES, required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--offcpu', action='store_true')
     args = parser.parse_args()
-    raise SystemExit(run(args.case, args.out))
+    raise SystemExit(run(args.case, args.out, args.offcpu))

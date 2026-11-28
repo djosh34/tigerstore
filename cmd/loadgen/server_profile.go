@@ -13,6 +13,19 @@ import (
 // its result is collected after the two normal metric samples. No gate uses a
 // profiled run. Client TLS and leader placement are those of the actual load.
 func serverProfile(scheme string, endpoints []string, start, stop int64) <-chan error {
+	if os.Getenv("FETCH_PROFILE_LEADER") == "" && os.Getenv("FETCH_PROFILE_OFFCPU_DIR") == "" {
+		done := make(chan error, 1)
+		done <- nil
+		return done
+	}
+	cpu := serverCPUProfile(scheme, endpoints, start, stop)
+	offCPU := serverOffCPUProfile(scheme, endpoints, start, stop)
+	done := make(chan error, 1)
+	go func() { done <- errors.Join(<-cpu, <-offCPU) }()
+	return done
+}
+
+func serverCPUProfile(scheme string, endpoints []string, start, stop int64) <-chan error {
 	done := make(chan error, 1)
 	path := os.Getenv("FETCH_PROFILE_LEADER")
 	if path == "" {
