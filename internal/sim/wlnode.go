@@ -326,8 +326,7 @@ func (h *wlHooks) Applied(e *raftpb.Entry, hash uint64, state func() uint64) {
 // op. A replay without a removal waits for the removed member's vote,
 // and one without an auth change serves reads with the auth of before.
 func keptByReplay(e *raftpb.Entry) bool {
-	switch e.GetType() {
-	case raftpb.EntryConfChange, raftpb.EntryConfChangeV2:
+	if e.GetType() != raftpb.EntryNormal {
 		return true
 	}
 	b, err := wl.ParseBatch(e.GetData())

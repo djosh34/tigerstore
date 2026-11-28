@@ -83,8 +83,8 @@ func TestASurvivorOfARemovalRecoversItsCommit(t *testing.T) {
 // whether it is held (owing some): a commit that moves over a change of
 // members, an auth op, or an entry the node recovered at its start is
 // neither, so its sync starts at once, as every append's did before
-// (#821's ruling). The window between such an entry's apply and its
-// commit's sync is no wider than before; the apply does not wait for it.
+// (#821's ruling). The entry's apply waits for that sync
+// (waitsForDurable, #823).
 func TestAProtectedCommitIsNeitherSkippedNorHeld(t *testing.T) {
 	durable := &pb.HardState{Term: new(uint64(2)), Vote: new(uint64(1)), Commit: new(uint64(5))}
 	moveTo := func(commit uint64) (*pb.Message, *pb.HardState) {
