@@ -200,10 +200,14 @@ func aFullLogRingRaisesNOSPACE(t *testing.T, lateCut bool) {
 		t.Fatalf("after %d puts and %d refused as busy: %v; the rings: %s", puts, busy, err, strings.Join(states, "; "))
 	}
 	t.Logf("%d puts of about 1 KiB filled a ring of %d segments of %d bytes; %d were refused while a checkpoint could free it", puts, segs, segSize, busy)
+	var noSpaceMember uint64
 	for {
 		alarms, err := c.AlarmList(ctx)
-		if err == nil && slices.ContainsFunc(alarms.Alarms, func(a *pb.AlarmMember) bool { return a.Alarm == pb.AlarmType_NOSPACE }) {
-			break
+		if err == nil {
+			if i := slices.IndexFunc(alarms.Alarms, func(a *pb.AlarmMember) bool { return a.Alarm == pb.AlarmType_NOSPACE }); i >= 0 {
+				noSpaceMember = alarms.Alarms[i].MemberID
+				break
+			}
 		}
 		if ctx.Err() != nil {
 			t.Fatalf("alarms after the full ring: %v %v", alarms, err)
@@ -233,15 +237,18 @@ func aFullLogRingRaisesNOSPACE(t *testing.T, lateCut bool) {
 		}
 	}
 	if lateCut {
-		// Make the recovery window deterministic: the disarm has applied
-		// and its checkpoints have ended, but the tail is still held. A
-		// disarm clears an alarm, not the ring's shortage. Releasing the
-		// hook below does not itself call cutLog; without an allowed write
-		// to drive an apply, the next put raises NOSPACE again (#920).
+		// Exercise a related recovery window, not #920's CI schedule:
+		// the disarm has applied and the NOSPACE member's checkpoints have
+		// ended, but its tail is still held. A disarm clears an alarm, not
+		// the ring's shortage. Releasing the hook below does not itself
+		// call cutLog; without an allowed write to drive an apply, a put
+		// to that member raises NOSPACE again.
 		disarm()
 		for {
 			settled, short := false, false
-			l := loopOf(tc.ids[0])
+			// The filling client's member may be a follower whose own ring
+			// is not short: the leader refused its forwarded put instead.
+			l := loopOf(noSpaceMember)
 			if !onLoop(l, func() {
 				n := l.n
 				settled, short = n.ckpt == nil && !n.ringDue(), n.wal.ringShort()
@@ -250,7 +257,7 @@ func aFullLogRingRaisesNOSPACE(t *testing.T, lateCut bool) {
 			}
 			if settled {
 				if !short {
-					t.Fatal("the held ring is not short; the recovery window was not exercised")
+					t.Fatalf("NOSPACE member %d: the held ring is not short; the recovery window was not exercised", noSpaceMember)
 				}
 				break
 			}
