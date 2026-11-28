@@ -1,6 +1,8 @@
 package sim
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"slices"
 	"strconv"
 	"testing"
@@ -115,5 +117,25 @@ func TestCampaignKindRunningCost(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// campaignCycleSHA256 is the SHA-256 of one cycle of campaignKind, a
+// letter a seed (f, a or l) from seed 1. scripts/codex-campaign.mjs
+// plans Codex Cloud campaigns with its own copy of the allocation and
+// checks it against the same hash; a change to the costs or shares
+// changes both.
+const campaignCycleSHA256 = "b84598f8d62599e2f2b3331b667910dea986eb2aeeab2a38635def15acaea592"
+
+// TestCampaignKindCycleHash checks that the cycle is the one
+// scripts/codex-campaign.mjs plans with.
+func TestCampaignKindCycleHash(t *testing.T) {
+	letters := make([]byte, len(campaignKinds))
+	for i, kind := range campaignKinds {
+		letters[i] = kind[0]
+	}
+	sum := sha256.Sum256(letters)
+	if got := hex.EncodeToString(sum[:]); got != campaignCycleSHA256 {
+		t.Errorf("the cycle's SHA-256 is %s, want %s: update campaignCycleSHA256 here and the copy of the allocation in scripts/codex-campaign.mjs", got, campaignCycleSHA256)
 	}
 }

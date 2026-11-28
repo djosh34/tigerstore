@@ -1,0 +1,55 @@
+=== RUN   TestCampaign/47
+    native.go:362: the gosim run of seed 47 took 2s
+    native.go:362: === RUN   TestCampaign (seed 47)
+        === RUN   TestCampaign/47 (seed 47)
+        campaign_test.go:173: seed 47: membership on 1 voters, 3 clients (2 clientv3), 69.935 s of faults, crashes every 30.000 s, waves [{23816736653 1} {36512730069 1}], link delays up to 0.002 s, memory budget 615148740, disk budget 16777216, catch-up 64 entries, checkpoint chunks of 0 keys, values of 0 bytes
+        sim_test.go:718: revision witness used 14031 weighted steps (budget 360000000, native CPU 15.838ms, search wall 15.873635ms, 883918.52 steps/s)
+        --- PASS: TestCampaign/47 (106.52s simulated)
+        campaign_test.go:220: campaign: requested quorum loss, not lost: 0; by cost: fresh 0, aged 0, long 0 of 0
+        --- PASS: TestCampaign (106.52s simulated)
+    native.go:367: hashes: seed 47: trace 39f3281814a79cdb history 44c28bf2235d543c node1 831455fb085b3017 node2389213306 7d50d0b4476eb2a0
+simrun: seed TestCampaign/47 PASS
+=== RUN   TestCampaign/48
+    native.go:362: the gosim run of seed 48 took 1s
+    native.go:362: TestCampaign failed in gosim with seed 48: test failed
+        === RUN   TestCampaign (seed 48)
+        === RUN   TestCampaign/48 (seed 48)
+        campaign_test.go:173: seed 48: requested quorum loss on 1 voters, 8 clients (0 clientv3), 66.286 s of faults, crashes every 0.750 s, waves [], link delays up to 0.002 s, memory budget 352216529, disk budget 16777216, catch-up 64 entries, checkpoint chunks of 0 keys, values of 0 bytes
+        campaign_test.go:174: seed 48: watch 1 was never created; its last stream was on node 0, and a compaction last restarted it at 0.000 s, 320.547 s before the end
+        sim_test.go:230: trace of seed 48:
+            0.000 ms links 0
+           70.539 ms node 1: starting
+           70.539 ms the cluster formed at cluster version 4 in 1.057 s with no faults, in a run of its own; the nodes start from its disks
+           70.539 ms node 1: stopped: open /data/run.tmp: sim: crash during recovery
+           70.539 ms node 1: crashed during recovery
+          960.174 ms node 1: starting
+        68262.840 ms link client->1 stalled until 68546 ms
+        68546.892 ms healing
+        68546.892 ms links 0
+        sim_test.go:231: the nodes at the end of seed 48:
+        node 1: down since 23.614 s: refused to start on its damaged disk: simfs: input/output error: unreadable sector; fenced for good
+          at its last turn, 15.711 s: follower, term 4, leader 0, commit 39, applied 39, first entry held 1, cluster version 1; members 
+          21493.516 ms node 1: stopped: sim: crash during recovery
+          21493.516 ms node 1: crashed during recovery
+          22499.649 ms node 1: starting
+          22499.649 ms node 1: stopped: sim: crash during recovery
+          22499.649 ms node 1: crashed during recovery
+          23354.559 ms node 1: starting
+          23363.117 ms node 1: paused until 24412 ms
+          23400.699 ms node 1: crashed
+          23400.699 ms node 1: damage after a sync: bad sector
+          23613.703 ms node 1: starting
+          23613.703 ms node 1: stopped: simfs: input/output error: unreadable sector
+          23613.703 ms node 1: fenced: simfs: input/output error: unreadable sector
+        
+        sim_test.go:232: hashes of seed 48: trace 796ba8d9b82b0d28 history 9d63cd72f3abdf61 node1 f7629113761542ff
+        sim_test.go:234: replay: SIM_SEED=48 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestCampaign$/^48$'
+        --- FAIL: TestCampaign/48 (321.60s simulated)
+        campaign_test.go:220: campaign: requested quorum loss, not lost: 0; by cost: fresh 0, aged 0, long 0 of 0
+        --- FAIL: TestCampaign (321.60s simulated)
+    native.go:362: hashes:
+        seed 48: trace 796ba8d9b82b0d28 history 9d63cd72f3abdf61 node1 f7629113761542ff
+    native.go:362: replay: SIM_SEED=48 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestCampaign$/^48$'
+    native.go:362: the run is saved in /home/runner/work/_temp/sim-out/TestCampaign_48
+simrun: seed TestCampaign/48 FAIL
+    campaign_test.go:210: campaign: aged images with at least 3,000 leases: 1, answered calls: 4321, fresh: certificate expiry: 3, fresh: kubernetes: 18, fresh: membership: 9, fresh: small keys: 30, membership work completed: 9, requested quorum loss, not lost: 0; by cost: fresh 60, aged 0, long 0 of 60

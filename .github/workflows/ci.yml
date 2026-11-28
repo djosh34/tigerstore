@@ -51,6 +51,8 @@ jobs:
         with:
           version: v2.14.0
           args: --build-tags difftest,planted
+      # The Codex Cloud campaign script's planner and report parser.
+      - run: node --test scripts/codex-campaign.test.mjs
 
   build:
     strategy:

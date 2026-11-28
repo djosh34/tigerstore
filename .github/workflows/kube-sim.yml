@@ -1,4 +1,4 @@
-# The nightly campaign of the simulator's Kubernetes-shaped load
+# A campaign of the simulator's Kubernetes-shaped load
 # (TestKubernetesLoadLong, docs/testing.md): 20 jobs, each
 # running new seeds of 10,000 objects for 4 virtual hours, every checker
 # on each, one after the other for about 5 hours: a job starts seeds
@@ -7,8 +7,9 @@
 # The first seed of job 0 runs twice and must give the same hashes. The
 # seeds come from the date: YYYYMMDD followed by seven digits, a block of
 # 20,000 for each run of the day, the next free one when the campaign
-# runs more than once that day, and 1,000 of them for each job. Also
-# started by hand:
+# runs more than once that day, and 1,000 of them for each job. It runs
+# by hand only (#463, #501); seed campaigns run on Codex Cloud
+# (scripts/codex-campaign.mjs):
 #   gh workflow run kube-sim.yml --ref <branch>
 # -f minutes=1 runs one seed a job, as to measure their time and memory.
 # A job stays within GitHub's 6 hours: a seed may take 180 minutes.
@@ -17,11 +18,9 @@
 # prints its hashes, and its trace, how it left each node, its history
 # and its disks are uploaded with the job's logs.
 name: kube-sim
-run-name: kube-sim ${{ github.event_name == 'schedule' && 'nightly' || format('on {0}', github.ref_name) }}
+run-name: kube-sim on ${{ github.ref_name }}
 
 on:
-  schedule:
-    - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
       minutes:

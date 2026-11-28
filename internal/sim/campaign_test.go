@@ -192,6 +192,9 @@ func TestCampaign(t *testing.T) {
 				ran["membership work completed"]++
 			}
 		}
+		// The calls that got a definite answer, for the campaign's
+		// answered calls per core-second (scripts/codex-campaign.mjs).
+		ran["answered calls"] += r.Stats.OK + r.Stats.Failed
 		if r.Stats.QuorumLostAt > 0 {
 			ran["quorum lost for good"]++
 			if r.Stats.Replaced > 0 {

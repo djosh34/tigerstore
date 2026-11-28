@@ -2,8 +2,8 @@
 # with a memory limit below the values it holds, under Kubernetes-shaped
 # churn with leases, compactions and watches, a node kill every few
 # minutes and a follower held behind the window now and then; cmd/soak
-# says what it checks. It runs every night on main, for 5 hours with the
-# date, YYYYMMDD, as its seed, and can be started by hand:
+# says what it checks. It runs by hand only (#463, #501), for 5 hours
+# with the date, YYYYMMDD, as its seed unless -f seed= gives one:
 #   gh workflow run soak.yml --ref main
 # A shorter run for a try: -f duration=30m. release.yml looks for a run
 # whose title has "soak 5h".
@@ -11,8 +11,6 @@ name: soak
 run-name: soak ${{ inputs.duration || '5h' }}, seed ${{ inputs.seed || 'of the date' }}
 
 on:
-  schedule:
-    - cron: "0 22 * * *"
   workflow_dispatch:
     inputs:
       duration:
