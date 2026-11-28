@@ -124,11 +124,15 @@ func (n *node) ready() error {
 				return err
 			}
 		}
+		if err := n.resumeSelfRemoval(); err != nil {
+			return err
+		}
 		if len(rd.ReadStates) > 0 {
 			n.serveReads()
 		}
 	}
-	return nil
+	// A transport removal acknowledgement need not produce a Raft Ready.
+	return n.resumeSelfRemoval()
 }
 
 // storageAppend writes an append into the stage, or, while the stage has
@@ -394,13 +398,30 @@ func (n *node) fsyncDone() error {
 const slowSync = time.Second
 
 func (n *node) storageApply(m *pb.Message) error {
-	for _, e := range m.GetEntries() {
+	if n.selfRemoval.apply != nil || !n.selfRemoval.drainBy.IsZero() {
+		// No later apply can pass our committed removal, nor may it be
+		// acknowledged while the already-owned apply prefix is held.
+		return nil
+	}
+	return n.storageApplyReady(m, 0)
+}
+
+func (n *node) storageApplyReady(m *pb.Message, from int) error {
+	for i, e := range m.GetEntries()[from:] {
 		idx := e.GetIndex()
 		switch e.GetType() {
 		case pb.EntryConfChange:
 			var cc pb.ConfChange
 			if err := proto.Unmarshal(e.GetData(), &cc); err != nil {
 				return fmt.Errorf("apply a membership change: %w", err)
+			}
+			if n.deferSelfRemoval(m, from+i, &cc) {
+				// Release the applied prefix's borrowed store events before
+				// waiting for I/O; retain only the owned LocalApply message.
+				n.flushEvents()
+				n.st.endApply()
+				n.serveReads()
+				return nil
 			}
 			if err := n.applyConfChange(&cc, idx); err != nil {
 				return err

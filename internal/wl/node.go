@@ -72,6 +72,8 @@ type node struct {
 	// its Raft would drop them (confBlocked): followers' proposals, and
 	// its own clients' requests.
 	confHold confHold
+	// selfRemoval fences a removing leader's exit under the old voters.
+	selfRemoval selfRemoval
 	// rm removes files off the loop's thread.
 	rm *remover
 	// stopErr stops the loop at its next turn: the node was removed.
