@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import math
 from pathlib import Path
 import unittest
 s=importlib.util.spec_from_file_location('cache',Path(__file__).with_name('fetch-cache-measure.py'));m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
@@ -9,7 +10,7 @@ def probe(side='baseline'):
  for k in ('a','b'):b.update({f'{k}_off_lo':4096,f'{k}_mod':12,f'{k}_size':65536,f'{k}_sum':777})
  a=copy.deepcopy(b);a.update(jobs=1,values=1)
  if side=='baseline':a.update(a_cached=1,a_at_sec=123,a_at_nsec=456,cache_entries=1)
- return dict(case='get-get',Size=65536,Clients=10,Delay=100,Results=[{'request_id':i+1,'latency_ms':2,'busy_retries':0} for i in range(10)],ClientCores=.4,OriginBefore=b,OriginAfter=a,ReuseBefore=copy.deepcopy(a),ReuseAfter=copy.deepcopy(a),OriginRetries=0,ElapsedCacheMS=102,FinishedUnixNano=123102000456,DeviceReadBefore={'1':0},DeviceReadAfter={'1':4096},Throughput=5000,WallMS=2,Latency={'p95':2,'p99':2,'max':2},Refusals={'total':0,'max_per_range':0})
+ return dict(case='get-get',Size=65536,Clients=10,Delay=100,Results=[{'request_id':i+1,'latency_ms':2,'busy_retries':0} for i in range(10)],ClientCores=.4,GeneratorCPUs=[2,3],MemberCPUUsecBefore=[0,0,0],MemberCPUUsecAfter=[5000,1000,2000],MemberCores=[.5,.1,.2],FollowerCPUWallMS=10,FollowerCores=.3,OriginBefore=b,OriginAfter=a,ReuseBefore=copy.deepcopy(a),ReuseAfter=copy.deepcopy(a),OriginRetries=0,ElapsedCacheMS=102,FinishedUnixNano=123102000456,DeviceReadBefore={'1':0},DeviceReadAfter={'1':4096},Throughput=5000,WallMS=2,Latency={'p95':2,'p99':2,'max':2},Refusals={'total':0,'max_per_range':0})
 
 class CacheMeasure(unittest.TestCase):
  def test_native_lowercase_case_is_required_not_the_old_synthetic_schema(self):
@@ -28,7 +29,20 @@ class CacheMeasure(unittest.TestCase):
    p=probe();p['ReuseAfter'][key]+=1
    with self.assertRaises(ValueError):m.adapt(p,'baseline','past-ram-560m',560<<20)
  def test_no_generator_or_expired_cache_waiver(self):
-  for key,value in [('ClientCores',.81),('ElapsedCacheMS',1001)]:
+  for key,value in [('ClientCores',math.nextafter(1.6,math.inf)),('ElapsedCacheMS',1001)]:
+   p=probe();p[key]=value
+   with self.assertRaises(ValueError):m.adapt(p,'baseline','past-ram-560m',560<<20)
+ def test_generator_grant_is_raw_1_6_not_a_per_cell_waiver(self):
+  p=probe();p['ClientCores']=1.6;m.adapt(p,'baseline','past-ram-560m',560<<20)
+  p['ClientCores']=math.nextafter(1.6,math.inf)
+  with self.assertRaisesRegex(ValueError,'generator'):m.adapt(p,'baseline','past-ram-560m',560<<20)
+ def test_shared_follower_cutoff_is_inclusive_on_both_sides(self):
+  for side in ('baseline','candidate'):
+   p=probe(side);p.update(FollowerCores=.95,MemberCPUUsecAfter=[5000,4500,5000],MemberCores=[.5,.45,.5])
+   with self.assertRaisesRegex(ValueError,'shared followers CPU1'):m.adapt(p,side,'past-ram-560m',560<<20)
+   p.update(FollowerCores=.9499,MemberCPUUsecAfter=[5000,4499,5000],MemberCores=[.5,.4499,.5]);m.adapt(p,side,'past-ram-560m',560<<20)
+ def test_missing_forged_or_regressed_cpu_proof_is_rejected(self):
+  for key,value in [('FollowerCores',.01),('MemberCores',[0,0,0]),('MemberCPUUsecBefore',[0,2000,0]),('GeneratorCPUs',[3]),('ClientCores',float('nan')),('FollowerCPUWallMS',0)]:
    p=probe();p[key]=value
    with self.assertRaises(ValueError):m.adapt(p,'baseline','past-ram-560m',560<<20)
  def test_past_ram_must_exceed_actual_member_limit(self):

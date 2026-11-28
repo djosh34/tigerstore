@@ -22,6 +22,10 @@ policy=resident.policy
 BASE='55b32bb9e6ef692cdb9d1b0e3cdb16542811dec4';HEAD='0c41156a5dc285c1cffc79f80c11b725235031fd'
 CACHES=('past-ram-560m','tmpfs-nowait-refused','evicted-cache')
 COHORTS=('get-get','list-get','overlapping-list','failed-cas-get','overlapping-prev-kv')
+GENERATOR_CPUS='2,3'
+GENERATOR_LIMIT=1.6
+FOLLOWER_LIMIT=.95
+NODE_CPUS=(0,1,1)
 NAMES=('member','budget','routing','jobs','values','loads','cache_entries','blocking_reads','blocking_bytes','nowait_calls','nowait_bytes','nowait_refusals','live_bytes','slab_used')+tuple(f'{key}_{name}' for key in ('a','b') for name in ('off_hi','off_lo','mod','size','sum','cached','at_sec','at_nsec'))
 
 def prepare(checkout,out,side,root):
@@ -41,10 +45,28 @@ def prepare(checkout,out,side,root):
  for name in ('fetch_cache_observer.go','fetch_cache_io.go','prom.go','sys_os.go'):(dest/name).write_bytes((checkout/'internal/wl'/name).read_bytes())
  (dest/'tracked.diff').write_bytes(subprocess.check_output(['git','diff','--binary'],cwd=checkout))
 
+def cpu_observation(probe):
+ if probe.get('GeneratorCPUs')!=[2,3]:raise ValueError('actual generator affinity is not CPUs 2,3')
+ def number(v):return isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v)
+ gen,followers,wall=(probe[k] for k in ('ClientCores','FollowerCores','FollowerCPUWallMS'))
+ if not all(number(v) and v>=0 for v in (gen,followers)) or not number(wall) or wall<=0:raise ValueError('missing/nonfinite CPU observation')
+ before,after=(probe[k] for k in ('MemberCPUUsecBefore','MemberCPUUsecAfter'))
+ if not all(isinstance(x,list) and len(x)==3 for x in (before,after)) or any(not isinstance(v,int) or isinstance(v,bool) or v<0 for x in (before,after) for v in x):raise ValueError('need all three raw member CPU counters')
+ if any(a<b for a,b in zip(after,before)):raise ValueError('member CPU counter regressed')
+ cores=probe.get('MemberCores')
+ if not isinstance(cores,list) or len(cores)!=3 or any(not number(v) or v<0 for v in cores) or any(not math.isclose(v,(a-b)/(wall*1000),rel_tol=1e-12,abs_tol=0) for v,a,b in zip(cores,after,before)):raise ValueError('per-member CPU disagrees with raw counters')
+ expected=sum(after[i]-before[i] for i in (1,2))/(wall*1000)
+ if not math.isclose(followers,expected,rel_tol=1e-12,abs_tol=0):raise ValueError('shared follower CPU disagrees with raw counters')
+ reasons=[]
+ if gen>GENERATOR_LIMIT:reasons.append(f'generator {gen!r} > {GENERATOR_LIMIT}')
+ if followers>=FOLLOWER_LIMIT:reasons.append(f'shared followers CPU1 {followers!r} >= {FOLLOWER_LIMIT}')
+ return dict(generator_cores=gen,member_cores=cores,shared_follower_cores=followers,follower_wall_ms=wall,member_cpu_usec_before=before,member_cpu_usec_after=after,invalid_reasons=reasons)
+
 def adapt(probe,side,cache,budget):
  if probe.get('case') not in COHORTS:raise ValueError('missing/unknown native lowercase case')
  if probe.get('error') or len(probe['Results'])!=probe['Clients'] or any(x.get('error') for x in probe['Results']):raise ValueError('incomplete/incorrect request cohort')
- if not 0<=probe['ClientCores']<=.8:raise ValueError('reuse generator-limited; cannot qualify')
+ cpu=cpu_observation(probe)
+ if cpu['invalid_reasons']:raise ValueError('; '.join(cpu['invalid_reasons']))
  snaps=[probe[n] for n in ('OriginBefore','OriginAfter','ReuseBefore','ReuseAfter')]
  for x in snaps:
   if set(x)!=set(NAMES) or any(not isinstance(v,(float,int)) or not math.isfinite(v) for v in x.values()):raise ValueError('missing/nonfinite source snapshot')
@@ -70,7 +92,7 @@ def adapt(probe,side,cache,budget):
   if any(x['cache_entries']!=0 for x in snaps):raise ValueError('candidate unexpectedly retained fetched cache')
  q=probe['Latency']
  if not 0<q['p95']<=q['p99']<=q['max']:raise ValueError('invalid tails')
- return dict(throughput=probe['Throughput'],wall_ms=probe['WallMS'],latency_ms=q,refusals=probe['Refusals'],device_read_bytes=sum(probe['DeviceReadAfter'][pid]-v for pid,v in probe['DeviceReadBefore'].items()),io_delta={name:after[name]-before[name] for name in ('blocking_reads','blocking_bytes','nowait_calls','nowait_bytes','nowait_refusals')},origin_fulfillment=origin['values']-before['values'],same_consumer_retries=probe['OriginRetries']+sum(x['busy_retries'] for x in probe['Results']),distinct_request_reuses=probe['Clients'] if side=='baseline' else 0,source_snapshots=snaps)
+ return dict(throughput=probe['Throughput'],wall_ms=probe['WallMS'],latency_ms=q,refusals=probe['Refusals'],device_read_bytes=sum(probe['DeviceReadAfter'][pid]-v for pid,v in probe['DeviceReadBefore'].items()),io_delta={name:after[name]-before[name] for name in ('blocking_reads','blocking_bytes','nowait_calls','nowait_bytes','nowait_refusals')},origin_fulfillment=origin['values']-before['values'],same_consumer_retries=probe['OriginRetries']+sum(x['busy_retries'] for x in probe['Results']),distinct_request_reuses=probe['Clients'] if side=='baseline' else 0,source_snapshots=snaps,cpu=cpu)
 
 def fields(path):
  out={}
@@ -96,7 +118,7 @@ def experiment(a,out,binary,driver,ordinal,side):
   for i in (1,2,3):
    cg=parent/str(i);cg.mkdir();groups.append(cg);(cg/'memory.max').write_text(str(limit));(cg/'memory.swap.max').write_text('0')
    log=(out/f'node{i}.log').open('w');logs.append(log)
-   command=['taskset','-c',str(i-1),str(binary),'--name',f'n{i}','--data-dir',str(data/f'n{i}'),'--listen-client-urls',f'http://127.0.0.1:{20000+10*i}','--advertise-client-urls',f'http://127.0.0.1:{20000+10*i}','--listen-peer-urls',f'https://127.0.0.1:{20001+10*i}','--initial-advertise-peer-urls',f'https://127.0.0.1:{20001+10*i}','--initial-cluster',initial,'--initial-cluster-token','fetch897-cache','--peer-auto-tls','--memory-budget-bytes',str(budget),'--disk-budget-bytes',str(8<<30 if a.cache=='past-ram-560m' else 1<<30)]
+   command=['taskset','-c',str(NODE_CPUS[i-1]),str(binary),'--name',f'n{i}','--data-dir',str(data/f'n{i}'),'--listen-client-urls',f'http://127.0.0.1:{20000+10*i}','--advertise-client-urls',f'http://127.0.0.1:{20000+10*i}','--listen-peer-urls',f'https://127.0.0.1:{20001+10*i}','--initial-advertise-peer-urls',f'https://127.0.0.1:{20001+10*i}','--initial-cluster',initial,'--initial-cluster-token','fetch897-cache','--peer-auto-tls','--memory-budget-bytes',str(budget),'--disk-budget-bytes',str(8<<30 if a.cache=='past-ram-560m' else 1<<30)]
    env=dict(os.environ,GOMEMLIMIT='560MiB' if a.cache=='past-ram-560m' else '3GiB',GOMAXPROCS='2',FETCH_MEASURE_NOWAIT_REFUSED='1' if mounted else '0')
    nodes.append(subprocess.Popen(['sh','-ec','echo $$ > "$1/cgroup.procs"; shift; exec "$@"','probe',str(cg),*command],env=env,stdout=log,stderr=subprocess.STDOUT))
   deadline=time.monotonic()+180
@@ -113,8 +135,9 @@ def experiment(a,out,binary,driver,ordinal,side):
   if statuses[0]['Status']['leader']!=wanted:subprocess.run([a.etcdctl,'--endpoints',endpoints,'move-leader',f'{wanted:x}'],check=True)
   # Source actor and all peer ports share the exact same netem path.
   subprocess.run(['bash','bench/netem.sh','on',str(a.rtt)],check=True)
+  (out/'placement.json').write_text(json.dumps(dict(generator_cpus=GENERATOR_CPUS,node_cpus=NODE_CPUS,member_affinity=[subprocess.check_output(['taskset','-apc',str(p.pid)],text=True) for p in nodes]),indent=2)+'\n')
   with (out/'driver.log').open('w') as log:
-   result=subprocess.run(['taskset','-c','3',str(driver),'-endpoint','http://127.0.0.1:20010','-endpoints',endpoints,'-pids',','.join(str(p.pid) for p in nodes),'-data',str(data),'-out',str(out/'raw.json'),'-cohort',a.cohort,'-cache',a.cache,'-preload-keys','16384' if a.cache=='past-ram-560m' else '1024'],stdout=log,stderr=subprocess.STDOUT)
+   result=subprocess.run(['taskset','-c',GENERATOR_CPUS,str(driver),'-cpu-stats',','.join(str(cg/'cpu.stat') for cg in groups),'-endpoint','http://127.0.0.1:20010','-endpoints',endpoints,'-pids',','.join(str(p.pid) for p in nodes),'-data',str(data),'-out',str(out/'raw.json'),'-cohort',a.cohort,'-cache',a.cache,'-preload-keys','16384' if a.cache=='past-ram-560m' else '1024'],stdout=log,stderr=subprocess.STDOUT)
   if result.returncode:raise ValueError('cache driver correctness/preparation failed; see raw.json/driver.log')
   return json.loads((out/'raw.json').read_text())
  finally:
@@ -138,6 +161,9 @@ def run(a):
  if os.environ.get('GITHUB_ACTIONS')!='true' or os.geteuid()!=0:raise ValueError('Actions/root only')
  root=Path.cwd();out=a.out.resolve();out.mkdir(parents=True,exist_ok=False);bins=out/'bins';bins.mkdir()
  manifest=dict(schema=1,status='INCOMPLETE',refs={'baseline':BASE,'candidate':HEAD},cache=a.cache,cohort=a.cohort,rtt=a.rtt,cells={},pairs_completed=0,noise_method=policy.NOISE_METHOD,run_url=os.environ['FETCH_MEASURE_RUN_URL'],tooling_ref=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),proof='historical same-member offset/mod/length/checksum and unchanged fetched timestamp bracket distinct preconnected client requests; no cache-hit observer')
+ manifest['placement']=dict(generator_cpus=GENERATOR_CPUS,node_cpus=NODE_CPUS,generator_max_raw_cores=GENERATOR_LIMIT,shared_follower_invalid_at=FOLLOWER_LIMIT)
+ manifest['cpu_observations']=[]
+ manifest['invalid_cpu_cells']=[]
  def save():(out/'manifest.json').write_text(json.dumps(manifest,indent=2,allow_nan=False)+'\n')
  save()
  code=root/'bench/fetch-measure/cache-driver-build';code.mkdir();(code/'main.go').write_bytes((root/'bench/fetch-measure/cache_driver.go.txt').read_bytes())
@@ -153,6 +179,15 @@ def run(a):
    except Exception as e:manifest.update(status='INCOMPLETE',reasons=[str(e)]);save();raise
    if raw.get('complete') is not True or len(raw['probes'])!=18:raise ValueError('missing cache probe inventory')
    result={}
+   for p in raw['probes']:
+    key=f'{p["Size"]}bytes-{p["Clients"]}clients-{p["Delay"]}ms'
+    entry=dict(pair=number,side=side,cell=key)
+    try:entry.update(cpu_observation(p))
+    except (ValueError,KeyError,TypeError) as e:entry['invalid_reasons']=[str(e)]
+    manifest['cpu_observations'].append(entry)
+    if entry['invalid_reasons']:manifest['invalid_cpu_cells'].append(entry)
+   if manifest['invalid_cpu_cells']:
+    manifest.update(status='INCOMPLETE',reasons=['CPU-invalid cells remain gating; listed with raw observations for manager']);save();return 2
    for p in raw['probes']:
     key=f'{p["Size"]}bytes-{p["Clients"]}clients-{p["Delay"]}ms'
     try:

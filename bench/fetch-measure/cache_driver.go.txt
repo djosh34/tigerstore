@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"google.golang.org/protobuf/proto"
@@ -39,6 +40,10 @@ type probe struct {
 	Size, Clients, Delay                               int
 	Revision, HeaderRevision                           int64
 	ClientCores                                        float64
+	GeneratorCPUs                                      []int
+	MemberCPUUsecBefore, MemberCPUUsecAfter            []uint64
+	MemberCores                                        []float64
+	FollowerCPUWallMS, FollowerCores                   float64
 	WatchValidated                                     bool
 	OriginBefore, OriginAfter, ReuseBefore, ReuseAfter sample
 	OriginMS                                           float64
@@ -144,7 +149,37 @@ func deviceReads(pids string) (map[string]uint64, error) {
 	return out, nil
 }
 
+func memberCPU(paths string) ([]uint64, error) {
+	files := strings.Split(paths, ",")
+	if len(files) != 3 {
+		return nil, errors.New("need all three member cpu.stat paths")
+	}
+	values := make([]uint64, len(files))
+	for i, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		found := false
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 && fields[0] == "usage_usec" {
+				values[i], err = strconv.ParseUint(fields[1], 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				found = true
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("%s lacks usage_usec", path)
+		}
+	}
+	return values, nil
+}
+
 func main() {
+	cpuStats := flag.String("cpu-stats", "", "three member cgroup cpu.stat paths, leader first")
 	pids := flag.String("pids", "", "member PIDs for physical read bytes")
 	endpoint := flag.String("endpoint", "http://127.0.0.1:20100", "")
 	all := flag.String("endpoints", "", "")
@@ -165,6 +200,14 @@ func main() {
 		}
 	}
 	fail := func(e error) { result["error"] = e.Error(); save(); fmt.Fprintln(os.Stderr, e); os.Exit(1) }
+	var affinity unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &affinity); err != nil {
+		fail(err)
+	}
+	if affinity.Count() != 2 || !affinity.IsSet(2) || !affinity.IsSet(3) {
+		fail(errors.New("generator must run on exactly CPUs 2 and 3"))
+	}
+	result["generator_cpus"] = []int{2, 3}
 	cfg := clientv3.Config{Endpoints: []string{*endpoint}, DialTimeout: 5 * time.Second, MaxCallRecvMsgSize: 16 << 20, MaxCallSendMsgSize: 4 << 20}
 	origin, e := clientv3.New(cfg)
 	if e != nil {
@@ -213,7 +256,7 @@ func main() {
 	for _, size := range []int{65536, 262144, 1048576} {
 		for _, count := range []int{10, 20} {
 			for _, delay := range []int{0, 100, 500} {
-				p := probe{Case: *cohort, Size: size, Clients: count, Delay: delay}
+				p := probe{Case: *cohort, Size: size, Clients: count, Delay: delay, GeneratorCPUs: []int{2, 3}}
 				old := strings.Repeat("v", size)
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				if _, e = origin.Put(ctx, "/reuse/a", old); e != nil {
@@ -352,6 +395,13 @@ func main() {
 				if e != nil {
 					fail(e)
 				}
+				// The per-member cgroups contain all their threads. These
+				// reads bracket the RPC cohort; CPU 1 is members two + three.
+				followerStart := time.Now()
+				p.MemberCPUUsecBefore, e = memberCPU(*cpuStats)
+				if e != nil {
+					fail(e)
+				}
 				var cpuBefore, cpuAfter syscall.Rusage
 				if e = syscall.Getrusage(syscall.RUSAGE_SELF, &cpuBefore); e != nil {
 					fail(e)
@@ -380,6 +430,19 @@ func main() {
 				}
 				cpu := func(v syscall.Timeval) float64 { return float64(v.Sec) + float64(v.Usec)/1e6 }
 				p.ClientCores = (cpu(cpuAfter.Utime) + cpu(cpuAfter.Stime) - cpu(cpuBefore.Utime) - cpu(cpuBefore.Stime)) / (p.WallMS / 1000)
+				p.MemberCPUUsecAfter, e = memberCPU(*cpuStats)
+				p.FollowerCPUWallMS = float64(time.Since(followerStart)) / float64(time.Millisecond)
+				if e != nil {
+					fail(e)
+				}
+				p.MemberCores = make([]float64, 3)
+				for i, before := range p.MemberCPUUsecBefore {
+					if p.MemberCPUUsecAfter[i] < before {
+						fail(errors.New("member CPU counter regressed"))
+					}
+					p.MemberCores[i] = float64(p.MemberCPUUsecAfter[i]-before) / (p.FollowerCPUWallMS * 1000)
+				}
+				p.FollowerCores = p.MemberCores[1] + p.MemberCores[2]
 				p.DeviceReadAfter, e = deviceReads(*pids)
 				if e != nil {
 					fail(e)
