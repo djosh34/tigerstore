@@ -477,6 +477,9 @@ func (n *node) afterApply() error {
 // maybeCkpt starts a checkpoint once the log has grown enough since the
 // last, or when Raft's storage wants one for a follower.
 func (n *node) maybeCkpt() error {
+	if !n.selfRemoval.drainBy.IsZero() {
+		return nil
+	}
 	s := n.storage
 	n.pruneSnapWaiters()
 	clientDue := len(n.snapWaiters) > 0

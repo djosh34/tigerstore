@@ -1002,8 +1002,7 @@ func (l *loop) input(idx int, hup bool) {
 			// Nothing comes back on an outgoing peer connection but the
 			// notice that this node was removed.
 			if s.pw-s.pr >= 8 && binary.LittleEndian.Uint64(s.pt[s.pr:]) == removedNotice {
-				n.selfRemovalNotice(v.peer)
-				n.stopErr = ErrRemoved
+				n.removalNotice(v.peer)
 			}
 			s.pr = s.pw
 		}

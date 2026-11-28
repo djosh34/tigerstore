@@ -3,6 +3,7 @@ package wl
 import (
 	"encoding/binary"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	pb "go.etcd.io/raft/v3/raftpb"
@@ -14,8 +15,8 @@ import (
 // After confirmation, the loop drains output before closing the sockets.
 type selfRemoval struct {
 	apply      *pb.Message
+	change     *pb.ConfChange // parsed before the apply prefix's buffers can be released
 	index, seq uint64
-	term       uint64
 	offset     int
 	asked      time.Time
 	ready      bool
@@ -25,17 +26,17 @@ type selfRemoval struct {
 	drainBy time.Time
 }
 
+// testSelfRemovalApply observes only the fenced removal, immediately before apply.
+var testSelfRemovalApply atomic.Pointer[func(n *node)]
+
 func (n *node) deferSelfRemoval(m *pb.Message, offset int, cc *pb.ConfChange) bool {
-	if r := &n.selfRemoval; r.apply != nil {
-		return !r.ready || r.apply != m || r.offset != offset
-	}
 	if cc.GetType() != pb.ConfChangeRemoveNode || cc.GetNodeId() != n.id || !n.leading() || n.voters() < 2 || n.memberAt(n.id) < 0 {
 		return false
 	}
 	if _, _, _, err := parseCCContext(cc.GetContext()); err != nil {
 		return false // Preserve applyConfChange's ordinary corruption error.
 	}
-	n.selfRemoval = selfRemoval{apply: m, offset: offset, index: m.Entries[offset].GetIndex(), term: n.rn.BasicStatus().GetTerm(), quorum: n.voters()/2 + 1}
+	n.selfRemoval = selfRemoval{apply: m, change: cc, offset: offset, index: m.Entries[offset].GetIndex(), quorum: n.voters()/2 + 1}
 	n.selfRemoval.notices = make(map[uint64]bool, n.voters())
 	for _, member := range n.members {
 		if !member.learner {
@@ -52,9 +53,10 @@ func (n *node) askSelfRemovalRead() {
 	r.seq, r.asked = n.readSeq, n.now
 	var ctx [8]byte
 	binary.BigEndian.PutUint64(ctx[:], r.seq)
-	// Ask before ApplyConfChange: a quorum of the NEW configuration is
-	// insufficient. This needs the quorum's commit index, not application
-	// through that index, since applying the removal is exactly the exit.
+	// Ask before ApplyConfChange to keep publishing the removal's commit
+	// under the old configuration. A ReadIndex answer alone does NOT prove
+	// the respondents know that commit: Raft caps each heartbeat's commit
+	// at that follower's match index. Only explicit removal notices count.
 	n.stats.readIndex++
 	n.rn.ReadIndex(ctx[:])
 }
@@ -65,22 +67,28 @@ func (n *node) retrySelfRemovalRead() {
 	}
 }
 
-func (n *node) selfRemovalRead(seq, index uint64) bool {
+func (n *node) selfRemovalRead(seq, _ uint64) bool {
 	r := &n.selfRemoval
 	if r.apply == nil || seq != r.seq {
 		return false
 	}
-	// A forwarded read after losing leadership could be answered by the
-	// NEW configuration. Only this leader's original term can establish
-	// the old-configuration barrier; explicit old-voter notices remain
-	// valid even if it steps down while waiting.
-	if n.leading() && n.rn.BasicStatus().GetTerm() == r.term {
-		r.ready = r.ready || index >= r.index
-	}
+	// Even an answer in the original term at the removal index proves
+	// leadership, not each respondent's commit knowledge. Consume it but
+	// leave the barrier to distinct old voters' explicit removal notices.
 	return true
 }
 
-// selfRemovalNotice also accepts explicit commit knowledge: a peer only
+// removalNotice never lets a transport notice stop a leader before its
+// own removal applies. Followers retain their prompt removal exit; a fenced
+// leader, even if it steps down, must finish its quorum and reply drain.
+func (n *node) removalNotice(id uint64) {
+	n.selfRemovalNotice(id)
+	if !n.leading() && n.selfRemoval.apply == nil && n.selfRemoval.drainBy.IsZero() {
+		n.stopErr = ErrRemoved
+	}
+}
+
+// selfRemovalNotice accepts explicit commit knowledge: a peer only
 // emits removedNotice after applying our committed removal. Survivors close
 // the removed leader's connections at apply, so their notice on redial can
 // arrive instead of a ReadIndex heartbeat response. Count distinct OLD voters
@@ -110,7 +118,12 @@ func (n *node) resumeSelfRemoval() error {
 	if r.apply == nil || !r.ready {
 		return nil
 	}
-	err := n.storageApplyReady(r.apply, r.offset)
+	if f := testSelfRemovalApply.Load(); f != nil {
+		(*f)(n)
+	}
+	// Do not unmarshal again: flushEvents/endApply may have released the
+	// original entry data while this prefix waited for commit knowledge.
+	err := n.applyConfChange(r.change, r.index)
 	*r = selfRemoval{}
 	if errors.Is(err, ErrRemoved) {
 		// etcd allows ten heartbeats for removal output. Here the quorum
@@ -137,8 +150,15 @@ func (n *node) selfRemovalDrained() bool {
 		return false
 	}
 	for _, x := range n.socks {
-		if s := sockOf(x); s != nil && !s.dead && s.wantOut {
-			return false
+		if s := sockOf(x); s != nil && !s.dead {
+			if s.wantOut || len(s.out) > s.ow {
+				return false
+			}
+			if c, ok := x.(*client); ok && len(c.flow.held) > 0 {
+				// DATA and trailers behind a closed HTTP/2 window are
+				// pending output even when the socket itself is writable.
+				return false
+			}
 		}
 	}
 	return true
