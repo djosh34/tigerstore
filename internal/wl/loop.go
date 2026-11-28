@@ -85,8 +85,9 @@ type loop struct {
 	free []int
 	tick int64
 	// leaveBy is when a leader that stops gives up handing its
-	// leadership to a peer; zero while the node runs.
+	// leadership to a peer, leaveTo; zero while the node runs.
 	leaveBy time.Time
+	leaveTo uint64
 	logged  int64
 	last    counters
 	lastWAL walStats
@@ -754,7 +755,7 @@ func (l *loop) leave() bool {
 	}
 	l.logger.Printf("stopping: handing the leadership to %x", to)
 	n.rn.TransferLeader(to)
-	l.leaveBy = n.now.Add(moveTimeout)
+	l.leaveBy, l.leaveTo = n.now.Add(moveTimeout), to
 	return true
 }
 
@@ -1106,7 +1107,11 @@ func (l *loop) run() error {
 			// or discard the MemberRemove reply awaiting the output drain.
 			return n.stopErr
 		}
-		if !l.leaveBy.IsZero() && (n.lead != 0 && n.lead != n.id || n.now.After(l.leaveBy)) {
+		// A leave also ends once the connection to the peer it hands the
+		// leadership to is gone. Its dials ended with the stop, so it never
+		// comes back: as for a process the simulator kills, whose network
+		// it cuts, and whose restart waits for this Run (#937's ci).
+		if !l.leaveBy.IsZero() && (n.lead != 0 && n.lead != n.id || n.now.After(l.leaveBy) || n.peersOut[l.leaveTo] == nil) {
 			return errStopped
 		}
 		for i := range k {

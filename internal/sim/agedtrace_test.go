@@ -19,7 +19,10 @@ import (
 // formation run, before any stop (d534b56cfeda2d34, f5e3ba206bc8fab2).
 // Then a node's start waits for its last Run to return: a process's exit
 // closes a channel, which yields, every start after a node's first
-// selects on it, and one whose old process still runs waits.
+// selects on it, and one whose old process still runs waits
+// (62d09ac87b7daa03, 337819a5c4c11655). Then a killed leader's leave
+// ends once the kill cuts its connection to the peer it hands the
+// leadership to, instead of after 5 s.
 func TestLeaseFreeForkTrace(t *testing.T) {
 	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
@@ -33,7 +36,7 @@ func TestLeaseFreeForkTrace(t *testing.T) {
 			t.Fatalf("lease-free fixture holds %d leases", st.ImageLeases)
 		}
 		if save, _ := forkMode(t, 1); !save && simrun.InGosim {
-			const want = "seed 1000: trace 62d09ac87b7daa03 history 337819a5c4c11655"
+			const want = "seed 1000: trace a3efb3904ad01c43 history 6b26d37abda8e7af"
 			if got := hashLines[len(hashLines)-1]; !strings.HasPrefix(got, want+" ") {
 				t.Errorf("lease-free fork differs from main:\n got %s\nwant %s", got, want)
 			}
