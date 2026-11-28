@@ -1334,11 +1334,28 @@ func (l *loop) clientTick() {
 		}
 	}
 	l.serveWaiting()
-	if out := n.sizes.connOut(n.active); out != n.connOut && (len(n.roomWait) > 0 || len(n.heldReplies) > 0) {
+	out := n.sizes.connOut(n.sending())
+	if out != n.connOut && (len(n.roomWait) > 0 || len(n.heldReplies) > 0) {
 		// Growth may let a reply fit; shrinkage may require pieces.
 		n.roomFreed = true
 	}
-	n.connOut, n.connIn = n.sizes.connOut(n.active), n.sizes.connIn(n.active)
+	n.connOut, n.connIn = out, n.sizes.connIn(n.active)
+}
+
+// sending is how many clients share what waits to be sent (connOut):
+// those that hold buffers, and those idle but for a large reply under
+// way, which writes up to a share into its socket whenever its windows
+// open. Counted out once idle, readers stalled behind shut windows gave
+// the others their shares, past the client pool once they read on
+// (#919's review).
+func (n *node) sending() int {
+	k := n.active
+	for _, x := range n.socks {
+		if c, ok := x.(*client); ok && !c.dead && c.in == nil && c.larges > 0 {
+			k++
+		}
+	}
+	return k
 }
 
 // serveWaiting gives the clients whose request's part waits for room in

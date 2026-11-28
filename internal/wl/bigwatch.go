@@ -51,9 +51,10 @@ type bigWatch struct {
 	// written ends, and frag whether it is a fragment but the last.
 	next, end int
 	frag      bool
-	opened    bool // a message is begun: the stream holds it alone
-	msgLeft   int  // bytes of that message still to build, its prefix included
-	part      int  // bytes of the next event's field written already
+	opened    bool    // a message is begun: the stream holds it alone
+	msgLeft   int     // bytes of that message still to build, its prefix included
+	part      int     // bytes of the next event's field written already
+	sum       partSum // the sum of its value's bytes sent (bigpart.go)
 	// buf is what it built and has not sent yet, from pos.
 	buf      []byte
 	pos      int
@@ -172,6 +173,7 @@ func (n *node) startBigWatch(i int32, x *watcher, c *client, s *stream, j int) b
 	st.holdRead(b.rev)
 	x.big = true
 	n.bigWatches = append(n.bigWatches, b)
+	c.larges++
 	n.stats.bigWatches++
 	return true
 }
@@ -410,10 +412,10 @@ func (n *node) beginBigWatchMsg(b *bigWatch, x *watcher, c *client, s *stream) b
 	return true
 }
 
-// buildWatchPiece writes b's next events into its buf, at most target
-// bytes of them, once their values are all in memory; an event past
-// target goes in parts, as a range's record does (buildPiece). It reports
-// false if it ended b.
+// buildWatchPiece writes b's next events straight into the socket, at
+// most target bytes of them, once their values are all in memory; an
+// event past target goes in parts, as a range's record does (buildPiece).
+// It reports false if it ended b.
 func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream, target int) bool {
 	st := b.st
 	j := revStart(st, b.rev)
@@ -436,6 +438,10 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream, target int) bo
 		n.abortBigWatch(c, s)
 		return false
 	}
+	// An event past what the piece takes goes in parts: the first, when it
+	// goes on from a part sent already or is cut short here (bigpart.go).
+	split := b.part > 0 || size > target
+	writeFirst := func(w *msgW, get partGet) { writeEventPart(w, st, &evs[0].ev, get) }
 	recs := make([]event, len(evs))
 	away := false
 	st.noWait = true
@@ -443,6 +449,16 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream, target int) bo
 		ch := pe.ev.ch
 		recs[i] = event{del: ch.del, key: ch.key, rev: ch.rev}
 		var err error
+		if i == 0 && split {
+			if err = st.probePart(b.sum, b.part, target, writeFirst); errors.Is(err, errAway) {
+				away = true
+			} else if err != nil {
+				st.noWait = false
+				n.abortBigWatch(c, s)
+				return false
+			}
+			continue
+		}
 		if !ch.del {
 			if recs[i].kv, err = st.putAt(ch.key, ch.rev); errors.Is(err, errAway) {
 				away = true
@@ -470,12 +486,21 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream, target int) bo
 		n.fetchAway()
 		return true
 	}
-	w := msgW{c: c, held: b.buf[:0], left: b.msgLeft, view: true, skip: b.part, room: target}
-	end, at := b.part+target, 0
+	// The piece goes straight into the socket, within the share and the
+	// windows: target bytes of its events at most, from the part of the
+	// first sent already.
+	kept := min(target, size)
+	w := msgW{s: &c.sock, sid: s.id, left: kept, view: true, skip: b.part, room: kept}
+	end, at := b.part+kept, 0
+	var werr error
 	for i := range recs {
-		n.writeEvent(&w, &b.x, &recs[i])
+		if i == 0 && split {
+			werr = st.writePart(&w, &b.sum, writeFirst)
+		} else {
+			n.writeEvent(&w, &b.x, &recs[i])
+		}
 		start := at
-		at += sizeBytesField(11, n.eventSize(&b.x, &recs[i]))
+		at += sizeBytesField(11, evs[i].ev.size)
 		if at > end {
 			b.part = end - start
 			break
@@ -483,8 +508,16 @@ func (n *node) buildWatchPiece(b *bigWatch, c *client, s *stream, target int) bo
 		b.part = 0
 		b.next = evs[i].off + 1
 	}
-	b.buf, b.pos, b.msgLeft = w.held, 0, w.left
-	b.recount()
+	if werr != nil || w.left != 0 {
+		// A value that did not check, or an event of another size than its
+		// state said: the frames are cut short.
+		c.broken = true
+		n.abortBigWatch(c, s)
+		return false
+	}
+	c.spendWin(s, int64(kept))
+	b.msgLeft -= kept
+	n.markDirty(&c.sock)
 	return true
 }
 
@@ -497,6 +530,7 @@ func (b *bigWatch) recount() {
 
 // endBigWatch lets go of what b holds.
 func (n *node) endBigWatch(b *bigWatch) {
+	b.c.larges--
 	if b.st == n.st {
 		b.st.releaseRead(b.rev - 1)
 		b.st.releaseRead(b.rev)

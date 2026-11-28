@@ -483,9 +483,10 @@ type msgW struct {
 	c    *client
 	st   *stream
 	held []byte
-	// A held message's piece may be a view of its bytes (bigrange.go):
-	// it skips the first skip bytes written and keeps at most room more.
-	view       bool
+	// A piece of a large reply is a view of its message's bytes
+	// (bigrange.go): it skips the first skip bytes written and keeps at
+	// most room more. A dry one keeps none, and only counts them.
+	view, dry  bool
 	skip, room int
 }
 
@@ -527,13 +528,17 @@ func (w *msgW) newFrame() bool {
 }
 
 func (w *msgW) write(p []byte) {
+	if w.view {
+		k := min(w.skip, len(p))
+		w.skip -= k
+		p = p[k:min(len(p), k+w.room)]
+		w.room -= len(p)
+	}
+	if w.dry {
+		w.left -= len(p)
+		return
+	}
 	if w.c != nil {
-		if w.view {
-			k := min(w.skip, len(p))
-			w.skip -= k
-			p = p[k:min(len(p), k+w.room)]
-			w.room -= len(p)
-		}
 		w.held = append(w.held, p...)
 		w.left -= len(p)
 		return
@@ -555,6 +560,27 @@ func (w *msgW) varintField(num int, v uint64) {
 	n := putUvarint(b[:], uint64(num)<<3)
 	n += putUvarint(b[n:], v)
 	w.write(b[:n])
+}
+
+// value writes a value of n bytes, of which get reads only those the
+// view keeps, from a to b: a record split into parts reads no more of its
+// value than each part sends (#919).
+func (w *msgW) value(n int, get func(a, b int) []byte) {
+	a, b := 0, n
+	if w.view {
+		a = min(w.skip, n)
+		b = min(n, a+w.room)
+		w.skip -= a
+	}
+	switch {
+	case b == a:
+	case w.dry:
+		get(a, b)
+		w.room -= b - a
+		w.left -= b - a
+	default:
+		w.write(get(a, b))
+	}
 }
 
 func (w *msgW) bytesField(num int, p []byte) {

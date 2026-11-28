@@ -1,10 +1,11 @@
 package wl
 
 import (
-	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"strings"
+	"io"
+	"runtime"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -12,51 +13,79 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// bigValue is a value of 2 MiB less 256 bytes: under the request limit,
-// and past a client's share at a small budget.
-var bigValue = strings.Repeat("v", maxMsg-256)
+// bigValue is value i of 2 MiB less 256 bytes, each byte from its place:
+// under the request limit, and past a client's share at a small budget.
+func bigValue(i int) []byte {
+	v := make([]byte, maxMsg-256)
+	for j := range v {
+		v[j] = byte(j*7 + j/251 + i*13)
+	}
+	return v
+}
 
-// rangeReaders starts, on a node of budget bytes, k connections that each
-// read a range of four values of bigValue, past one piece, with HTTP/2
-// windows of 1,024 bytes.
-func rangeReaders(t *testing.T, budget int64, k int) (*node, []*client) {
+// bigReaders is a node of budget bytes with k client connections, each
+// with one stream of kind whose HTTP/2 windows are 1,024 bytes, and the
+// keys /b/0 to /b/3 put with bigValue(i) at revision rev. With history,
+// the puts of rev overwrote others before them, and are overwritten
+// since: a read of rev reads past revisions only.
+func bigReaders(t *testing.T, budget int64, k int, history bool, kind uint8) (n *node, cs []*client, rev int64) {
 	t.Helper()
-	n, _ := testNode(t)
-	st, log := newTestStore(t)
+	n, _ = testNode(t)
+	st, l := newTestStore(t)
 	t.Cleanup(func() { _ = st.close() })
 	n.st = st
 	st.setBudget(1, 0)
 	n.sizes = sizeFor(budget)
-	n.clients = k
-	n.connOut = n.sizes.connOut(k)
-	for i := range 4 {
-		putValue(t, st, log, fmt.Sprintf("/b/%d", i), bigValue)
+	revision := func(values func(i int) []byte) {
+		st.rev++
+		for i := range 4 {
+			id, err := st.intern(fmt.Appendf(nil, "/b/%d", i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := values(i)
+			if _, err := st.put(id, v, 0, st.rev, l.add(string(v)), false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		st.endApply()
 	}
-	msg := appendBytesField(appendBytesField(nil, 1, []byte("/b/")), 2, []byte("/b0"))
-	cs := make([]*client, k)
-	for i := range cs {
+	if history {
+		revision(func(i int) []byte { return bigValue(i + 4) })
+	}
+	revision(bigValue)
+	rev = st.rev
+	if history {
+		revision(func(i int) []byte { return []byte{byte(i)} })
+	}
+	for i := range k {
 		c := newClient(&handoff{fd: -1, plain: true}, n)
 		c.takeBufs()
 		c.idx, c.gen = i, 1
 		n.socks, n.gens = append(n.socks, c), append(n.gens, 1)
-		s := c.newStream(1, kRange)
+		s := c.newStream(1, kind)
 		c.flow.conn, s.win = 1024, 1024
-		n.startBig(c, s, msg)
-		cs[i] = c
+		cs = append(cs, c)
 	}
-	return n, cs
+	n.clients = k
+	n.connOut = n.sizes.connOut(n.sending())
+	return n, cs, rev
 }
 
-// sent takes what waits to be sent to client c, as its socket would,
-// and returns the DATA it carries.
+// sent takes what waits to be sent to client c, as its socket would, and
+// returns the DATA it carries.
 func sent(t *testing.T, c *client) []byte {
 	t.Helper()
-	fr := http2.NewFramer(nil, bytes.NewReader(c.out[c.ow:]))
+	c.seal()
+	fr := http2.NewFramer(nil, &readOnly{c.out[c.ow:]})
 	var data []byte
 	for {
 		f, err := fr.ReadFrame()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
+		}
+		if err != nil {
+			t.Fatalf("a frame sent to the client: %v", err)
 		}
 		if d, ok := f.(*http2.DataFrame); ok {
 			data = append(data, d.Data()...)
@@ -66,147 +95,198 @@ func sent(t *testing.T, c *client) []byte {
 	return data
 }
 
-// A large range reply to a slow reader holds no more than the reader's
-// share: a piece is built only as the windows take it, and a record past
-// that goes in parts (#919). Main built a piece of one whole 2 MiB record
-// for every slow reader and counted it only after: three of them at 83
-// MiB held 6 MiB of pieces and 7.5 MB of the client pool's 5.4 MB. What
-// the clients hold stays within the client pool for the three readers of
-// #919 and for the most the node admits at 83, 137 and 191 MiB (5, 9 and
-// 13, #919's correction). Among them a reader that reads gets its whole
-// reply, the records sent in parts as etcd sends them whole, while the
-// others read nothing.
-func TestSlowReadersOfLargeRangesStayWithinTheClientPool(t *testing.T) {
+// readOnly reads p, then io.EOF: a frame cut short is
+// io.ErrUnexpectedEOF.
+type readOnly struct{ p []byte }
+
+func (r *readOnly) Read(b []byte) (int, error) {
+	if len(r.p) == 0 {
+		return 0, io.EOF
+	}
+	k := copy(b, r.p)
+	r.p = r.p[k:]
+	return k, nil
+}
+
+// windowSteps are what the fast reader opens its windows by, turn after
+// turn: from one byte, which splits a record inside its tag, to a few
+// hundred KiB.
+var windowSteps = []int64{1, 3, 9, 100, 1000, 16385, 100_003, 300_007}
+
+// largeReplies are the large replies of a node under test: how each
+// starts on a client's stream, the loop's pump of them and its check of
+// whether one could move on (bigReady), and how many are under way.
+type largeReplies struct {
+	start func(c *client, s *stream)
+	pump  func()
+	ready func() bool
+	under func() int
+}
+
+// readLarge drives readers' large replies as the loop drives them: it
+// pumps only while r.ready says they could move on, which it must say
+// once the fast reader, the first, opens its windows, and may not say
+// while it could not. The slow readers start in turn, each its windows opened
+// by a share's worth, which it takes; then they read no more, their
+// sockets drain and they go idle, so that the share of the readers left
+// grows. What the clients hold stays within the client pool throughout,
+// and the fast reader's message, which it returns, comes whole.
+func readLarge(t *testing.T, n *node, cs []*client, r largeReplies) []byte {
+	t.Helper()
+	fast := cs[0]
+	l := &loop{n: n}
+	most := int64(0)
+	var alloc uint64
+	settle := func() {
+		for i := 0; r.ready(); i++ {
+			if i > 100 {
+				t.Fatal("the large replies stay ready without moving on")
+			}
+			var m0, m1 runtime.MemStats
+			runtime.ReadMemStats(&m0)
+			r.pump()
+			runtime.ReadMemStats(&m1)
+			alloc += m1.TotalAlloc - m0.TotalAlloc
+			used := n.cpool + n.cout + int64(n.clients)*idleConn
+			most = max(most, used)
+			if used > n.sizes.clientPool {
+				for i, c := range cs {
+					t.Logf("reader %d: buffers %v, send buffer %d bytes, %d of them waiting", i, c.in != nil, cap(c.out), c.waiting())
+				}
+				t.Fatalf("%d readers hold %d bytes of the client pool's %d: read %d, sent %d, %d active, share %d", len(cs), used, n.sizes.clientPool, n.cpool, n.cout, n.active, n.connOut)
+			}
+		}
+	}
+	r.start(fast, fast.get(1))
+	settle()
+	var got []byte
+	for turn := 0; turn < 20000 && (turn < len(cs) || r.under() == len(cs)); turn++ {
+		if i := turn + 1; i < len(cs) {
+			c := cs[i]
+			r.start(c, c.get(1))
+			c.flow.conn, c.get(1).win = n.connOut, n.connOut
+			settle()
+		}
+		got = append(got, sent(t, fast)...)
+		for _, c := range cs[1:] {
+			sent(t, c)
+		}
+		// A tick: the clients idle give their buffers back, and the shares
+		// are made again. The fast reader, whose WINDOW_UPDATEs it reads,
+		// is not idle.
+		l.tick += 2
+		fast.busy = l.tick
+		l.clientTick()
+		settle()
+		if fs := fast.get(1); r.under() == len(cs) && fast.flow.conn > 0 && fs.win > 0 {
+			t.Fatal("the fast reader's reply is not ready with its windows open and its socket drained")
+		}
+		step := windowSteps[turn%len(windowSteps)]
+		fast.windowUpdate(0, step)
+		fast.windowUpdate(1, step)
+		if r.under() == len(cs) && !r.ready() {
+			t.Fatal("the fast reader's reply is not ready once its windows opened")
+		}
+		settle()
+	}
+	got = append(got, sent(t, fast)...)
+	t.Logf("P %d: the clients held at most %d, the fast reader got %d bytes; the pumps allocated %d KiB", n.sizes.clientPool, most, len(got), alloc>>10)
+	// A part reads only the bytes of its value it sends. Built whole for
+	// each part, a past revision's record was copied whole for each of the
+	// fast reader's about 160 parts: 320 MiB.
+	if alloc > 64<<20 {
+		t.Fatalf("the pumps allocated %d MiB", alloc>>20)
+	}
+	if r.under() != len(cs)-1 {
+		t.Fatalf("%d large replies under way, want the %d slow readers'", r.under(), len(cs)-1)
+	}
+	if len(got) < 5 || int(binary.BigEndian.Uint32(got[1:5])) != len(got)-5 {
+		t.Fatalf("the fast reader got %d bytes, not one whole message", len(got))
+	}
+	return got[5:]
+}
+
+// readerCases are #919's three readers at 83 MiB and the most the node
+// admits at 83, 137 and 191 MiB (#919's correction), each with values
+// live and resident, and with values of past revisions only.
+func readerCases(t *testing.T, f func(t *testing.T, budget int64, readers int, history bool)) {
 	for _, tc := range []struct {
 		budget  int64
 		readers int
 	}{{83 << 20, 3}, {83 << 20, 5}, {137 << 20, 9}, {191 << 20, 13}} {
-		t.Run(fmt.Sprintf("%dMiB/%d", tc.budget>>20, tc.readers), func(t *testing.T) {
-			n, cs := rangeReaders(t, tc.budget, tc.readers)
-			fast := cs[0]
-			var got []byte
-			most := int64(0)
-			for turn := 0; len(n.bigs) == tc.readers && turn < 10000; turn++ {
-				// The fast reader reads what was sent, and opens its
-				// windows by an odd amount, so that records go in parts.
-				got = append(got, sent(t, fast)...)
-				fast.flow.conn, fast.get(1).win = 100_003, 100_003
-				n.pumpBig()
-				most = max(most, n.cpool+n.cout+int64(n.clients)*idleConn)
-			}
-			got = append(got, sent(t, fast)...)
-			t.Logf("P %d: the clients held at most %d, the fast reader got %d bytes", n.sizes.clientPool, most, len(got))
-			if most > n.sizes.clientPool {
-				t.Fatalf("%d readers, %d of them slow, held %d bytes of the client pool's %d", tc.readers, tc.readers-1, most, n.sizes.clientPool)
-			}
-			if len(n.bigs) != tc.readers-1 {
-				t.Fatalf("%d large replies under way, want the %d slow readers'", len(n.bigs), tc.readers-1)
-			}
-			if len(got) < 5 || int(binary.BigEndian.Uint32(got[1:5])) != len(got)-5 {
-				t.Fatalf("the fast reader got %d bytes, not one whole message", len(got))
-			}
-			var reply pb.RangeResponse
-			if err := proto.Unmarshal(got[5:], &reply); err != nil {
-				t.Fatal(err)
-			}
-			if len(reply.Kvs) != 4 || reply.Count != 4 {
-				t.Fatalf("the fast reader got %d records and a count of %d, want 4", len(reply.Kvs), reply.Count)
-			}
-			for i, kv := range reply.Kvs {
-				if string(kv.Key) != fmt.Sprintf("/b/%d", i) || string(kv.Value) != bigValue {
-					t.Fatalf("record %d: key %q, a value of %d bytes", i, kv.Key, len(kv.Value))
-				}
-			}
-		})
+		for _, history := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%dMiB/%d/history=%v", tc.budget>>20, tc.readers, history), func(t *testing.T) {
+				f(t, tc.budget, tc.readers, history)
+			})
+		}
 	}
 }
 
-// watchReaders has, on a node of budget bytes, k connections each watch a
-// revision of four puts of bigValue, past one piece, with HTTP/2 windows
-// of 1,024 bytes.
-func watchReaders(t *testing.T, budget int64, k int) (*node, []*client) {
-	t.Helper()
-	n, _ := testNode(t)
-	st, l := newTestStore(t)
-	t.Cleanup(func() { _ = st.close() })
-	n.st = st
-	st.setBudget(1, 0)
-	n.sizes = sizeFor(budget)
-	n.clients = k
-	n.connOut = n.sizes.connOut(k)
-	st.rev++
-	for i := range 4 {
-		id, err := st.intern(fmt.Appendf(nil, "/b/%d", i))
-		if err != nil {
+// A large range reply to a slow reader holds no more than the reader's
+// share: a piece is built only as the windows take it, straight into the
+// socket, and a record past that goes in parts, each reading only the
+// bytes of its value it sends (#919). Main built a piece of one whole
+// 2 MiB record for every slow reader, and counted it only after: three
+// of them at 83 MiB held 7.5 MB of the client pool's 5.4 MB. A reader
+// that reads gets its whole reply, while the others read nothing.
+func TestSlowReadersOfLargeRangesStayWithinTheClientPool(t *testing.T) {
+	readerCases(t, func(t *testing.T, budget int64, readers int, history bool) {
+		n, cs, rev := bigReaders(t, budget, readers, history, kRange)
+		msg := appendVarintField(appendBytesField(appendBytesField(nil, 1, []byte("/b/")), 2, []byte("/b0")), 4, uint64(rev))
+		got := readLarge(t, n, cs, largeReplies{
+			start: func(c *client, s *stream) { n.startBig(c, s, msg) },
+			pump:  n.pumpBig,
+			ready: n.bigReady,
+			under: func() int { return len(n.bigs) },
+		})
+		var reply pb.RangeResponse
+		if err := proto.Unmarshal(got, &reply); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := st.put(id, []byte(bigValue), 0, st.rev, l.add(bigValue), false); err != nil {
-			t.Fatal(err)
+		if len(reply.Kvs) != 4 || reply.Count != 4 {
+			t.Fatalf("the fast reader got %d records and a count of %d, want 4", len(reply.Kvs), reply.Count)
 		}
-	}
-	st.endApply()
-	cs := make([]*client, k)
-	for i := range cs {
-		c := newClient(&handoff{fd: -1, plain: true}, n)
-		c.takeBufs()
-		c.idx, c.gen = i, 1
-		n.socks, n.gens = append(n.socks, c), append(n.gens, 1)
-		s := c.newStream(1, kWatch)
-		s.watch = true
-		c.flow.conn, s.win = 1024, 1024
-		wi := n.w.add(watcher{sock: i, gen: 1, sid: s.id, id: 1, key: []byte("/b/"), end: []byte("/b0"), syncRev: st.rev})
-		s.wids = append(s.wids, wi)
-		if !n.startBigWatch(wi, &n.w.ws[wi], c, s, revStart(st, st.rev)) {
-			t.Fatal("the large watch response did not start")
+		for i, kv := range reply.Kvs {
+			if string(kv.Key) != fmt.Sprintf("/b/%d", i) || string(kv.Value) != string(bigValue(i)) {
+				t.Fatalf("record %d: key %q, a value of %d bytes not the one put", i, kv.Key, len(kv.Value))
+			}
 		}
-		cs[i] = c
-	}
-	return n, cs
+	})
 }
 
 // A large watch response to a slow watcher holds no more than its share,
-// as a large range reply does (#919): main built a piece of one whole
-// 2 MiB event for every slow watcher. Among them a watcher that reads
-// gets the whole response.
+// as a large range reply does (#919), with the values before too, which
+// lie in past revisions only.
 func TestSlowWatchersOfLargeRevisionsStayWithinTheClientPool(t *testing.T) {
-	for _, tc := range []struct {
-		budget  int64
-		readers int
-	}{{83 << 20, 3}, {83 << 20, 5}, {137 << 20, 9}, {191 << 20, 13}} {
-		t.Run(fmt.Sprintf("%dMiB/%d", tc.budget>>20, tc.readers), func(t *testing.T) {
-			n, cs := watchReaders(t, tc.budget, tc.readers)
-			fast := cs[0]
-			var got []byte
-			most := int64(0)
-			for turn := 0; len(n.bigWatches) == tc.readers && turn < 10000; turn++ {
-				got = append(got, sent(t, fast)...)
-				fast.flow.conn, fast.get(1).win = 100_003, 100_003
-				n.pumpBigWatches()
-				most = max(most, n.cpool+n.cout+int64(n.clients)*idleConn)
-			}
-			got = append(got, sent(t, fast)...)
-			t.Logf("P %d: the clients held at most %d, the fast watcher got %d bytes", n.sizes.clientPool, most, len(got))
-			if most > n.sizes.clientPool {
-				t.Fatalf("%d watchers, %d of them slow, held %d bytes of the client pool's %d", tc.readers, tc.readers-1, most, n.sizes.clientPool)
-			}
-			if len(n.bigWatches) != tc.readers-1 {
-				t.Fatalf("%d large watch responses under way, want the %d slow watchers'", len(n.bigWatches), tc.readers-1)
-			}
-			if len(got) < 5 || int(binary.BigEndian.Uint32(got[1:5])) != len(got)-5 {
-				t.Fatalf("the fast watcher got %d bytes, not one whole message", len(got))
-			}
-			var resp pb.WatchResponse
-			if err := proto.Unmarshal(got[5:], &resp); err != nil {
-				t.Fatal(err)
-			}
-			if len(resp.Events) != 4 {
-				t.Fatalf("the fast watcher got %d events, want 4", len(resp.Events))
-			}
-			for i, ev := range resp.Events {
-				if string(ev.Kv.Key) != fmt.Sprintf("/b/%d", i) || string(ev.Kv.Value) != bigValue {
-					t.Fatalf("event %d: key %q, a value of %d bytes", i, ev.Kv.Key, len(ev.Kv.Value))
+	readerCases(t, func(t *testing.T, budget int64, readers int, history bool) {
+		n, cs, rev := bigReaders(t, budget, readers, history, kWatch)
+		got := readLarge(t, n, cs, largeReplies{
+			start: func(c *client, s *stream) {
+				s.watch = true
+				wi := n.w.add(watcher{sock: c.idx, gen: 1, sid: s.id, id: 1, key: []byte("/b/"), end: []byte("/b0"), prevKV: history})
+				s.wids = append(s.wids, wi)
+				if !n.startBigWatch(wi, &n.w.ws[wi], c, s, revStart(n.st, rev)) {
+					t.Fatal("the large watch response did not start")
 				}
-			}
+			},
+			pump:  n.pumpBigWatches,
+			ready: n.bigWatchReady,
+			under: func() int { return len(n.bigWatches) },
 		})
-	}
+		var resp pb.WatchResponse
+		if err := proto.Unmarshal(got, &resp); err != nil {
+			t.Fatal(err)
+		}
+		if len(resp.Events) != 4 {
+			t.Fatalf("the fast watcher got %d events, want 4", len(resp.Events))
+		}
+		for i, ev := range resp.Events {
+			if string(ev.Kv.Key) != fmt.Sprintf("/b/%d", i) || string(ev.Kv.Value) != string(bigValue(i)) {
+				t.Fatalf("event %d: key %q, a value of %d bytes not the one put", i, ev.Kv.Key, len(ev.Kv.Value))
+			}
+			if history && (ev.PrevKv == nil || string(ev.PrevKv.Value) != string(bigValue(i+4))) {
+				t.Fatalf("event %d: not the value before", i)
+			}
+		}
+	})
 }

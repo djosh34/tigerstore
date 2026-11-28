@@ -233,6 +233,9 @@ type client struct {
 	// may write on the connection, from its first message to its end.
 	bigs int
 	bigW *bigWatch
+	// larges counts its large replies under way, ranges' and watches'
+	// (node.sending).
+	larges int
 }
 
 // The client buffers (sizes.clientOut) bound what waits unsent to each
