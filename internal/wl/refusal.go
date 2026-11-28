@@ -232,8 +232,8 @@ func (n *node) followerDrops(m *pb.Message) bool {
 // Raft's storage no longer holds, at or before its snapshot, does not,
 // and Raft answers such an append with its commit, writing none of it.
 // One taken in this turn and not handed to the log yet (appendLast), or
-// waiting for the stage, is held at the term it was taken at, or, past
-// that, taken as held.
+// waiting for the stage, is held at the term it was taken at, as Raft's
+// unstable log holds it (#946's review); past those, it is taken as held.
 func (n *node) holdsAt(i, t uint64) bool {
 	if i == 0 {
 		return true
@@ -241,11 +241,32 @@ func (n *node) holdsAt(i, t uint64) bool {
 	if i == n.appendLast && n.appendLast > n.storage.lastIndex() {
 		return n.appendLastTerm == t
 	}
+	if term, ok := n.wal.waitingTerm(i); ok {
+		return term == t
+	}
 	if i > n.storage.lastIndex() {
 		return true
 	}
 	held, err := n.storage.Term(i)
 	return err == nil && held == t
+}
+
+// waitingTerm is the term of the entry at index i that the appends waiting
+// for the stage leave, the newest first, and whether they say: one that
+// starts at i or before and ends before i cut the log short of it, as
+// Raft truncates the log at an append's first new entry, and holds none.
+func (w *wal) waitingTerm(i uint64) (uint64, bool) {
+	for _, m := range slices.Backward(w.waiting) {
+		ents := m.GetEntries()
+		if len(ents) == 0 || ents[0].GetIndex() > i {
+			continue
+		}
+		if k := i - ents[0].GetIndex(); k < uint64(len(ents)) {
+			return ents[k].GetTerm(), true
+		}
+		return 0, true
+	}
+	return 0, false
 }
 
 // waitingLast is the last index of the appends that wait for the stage.

@@ -299,21 +299,15 @@ func TestAFollowerTrimsDropsOrPassesAnAppend(t *testing.T) {
 // at 6 and writes all four (findConflict), so the room counts them, from
 // the first conflict on: on the ring of TestAFollowerTrimsDropsOrPassesAnAppend,
 // with room for three entries of 60000 bytes, the append is cut to three.
-// Before the fix, the entries at the follower's last index or before took
-// no room, and all four went to a log with room for three.
+// The follower holds the old entries in Raft's storage, or in an append
+// that waits for the stage, which Raft's unstable log holds as well
+// (#946's review). Before the fix, the entries at the follower's last
+// index or before took no room, and all four went to a log with room for
+// three.
 func TestAFollowerCountsTheEntriesAConflictRewrites(t *testing.T) {
 	was := segSize
 	segSize = 16 << 10
 	t.Cleanup(func() { segSize = was })
-	w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, 32*(16<<10), 0, 0, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(w.close)
-	w.off = 20 * segSize
-	n := &node{wal: w, storage: newLogStorage(nil)}
-	n.storage.snapIndex, n.storage.snapTerm = 5, 2
-	n.storage.hs = &pb.HardState{Term: new(uint64(3)), Commit: new(uint64(5))}
 	entries := func(term uint64, size int) []*pb.Entry {
 		var ents []*pb.Entry
 		for i := range uint64(4) {
@@ -321,28 +315,47 @@ func TestAFollowerCountsTheEntriesAConflictRewrites(t *testing.T) {
 		}
 		return ents
 	}
-	if err := n.storage.append(entries(2, 100), make([]int64, 4)); err != nil {
-		t.Fatal(err)
-	}
-	rn, err := raft.NewRawNode(&raft.Config{ID: 2, ElectionTick: 10, HeartbeatTick: 1, Storage: n.storage, Applied: 5, MaxSizePerMsg: 1 << 20, MaxInflightMsgs: 256})
-	if err != nil {
-		t.Fatal(err)
-	}
-	n.rn = rn
-	one := int64(60000 + walEntHdr)
-	app := func(term uint64) *pb.Message {
-		return &pb.Message{Type: pb.MsgApp.Enum(), Term: new(uint64(3)), Index: new(uint64(5)), LogTerm: new(uint64(2)), Entries: entries(term, 60000)}
-	}
-	// The same entries again, as Raft sends them again, write nothing.
-	if m := app(2); n.followerDrops(m) || len(m.Entries) != 4 || n.appendPledged != 0 {
-		t.Fatalf("entries the follower holds, sent again: %d kept, pledged %d; want all 4 and nothing taken", len(m.Entries), n.appendPledged)
-	}
-	m := app(3)
-	if n.followerDrops(m) {
-		t.Fatal("an append whose first three entries fit was dropped")
-	}
-	if len(m.Entries) != 3 || n.appendPledged != 3*one || n.stats.appendsTrimmed != 1 {
-		t.Fatalf("an append that rewrites 4 entries, with room for 3: %d kept, pledged %d, trimmed %d; want 3, %d, 1", len(m.Entries), n.appendPledged, n.stats.appendsTrimmed, 3*one)
+	for _, waiting := range []bool{false, true} {
+		name := "held in storage"
+		if waiting {
+			name = "waiting for the stage"
+		}
+		t.Run(name, func(t *testing.T) {
+			w, err := openWALRing(sysEnv{}, t.TempDir(), 64<<10, 32*(16<<10), 0, 0, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(w.close)
+			w.off = 20 * segSize
+			n := &node{wal: w, storage: newLogStorage(nil)}
+			n.storage.snapIndex, n.storage.snapTerm = 5, 2
+			n.storage.hs = &pb.HardState{Term: new(uint64(3)), Commit: new(uint64(5))}
+			if waiting {
+				w.waiting = []*pb.Message{{Type: pb.MsgStorageAppend.Enum(), Entries: entries(2, 100)}}
+			} else if err := n.storage.append(entries(2, 100), make([]int64, 4)); err != nil {
+				t.Fatal(err)
+			}
+			rn, err := raft.NewRawNode(&raft.Config{ID: 2, ElectionTick: 10, HeartbeatTick: 1, Storage: n.storage, Applied: 5, MaxSizePerMsg: 1 << 20, MaxInflightMsgs: 256})
+			if err != nil {
+				t.Fatal(err)
+			}
+			n.rn = rn
+			one := int64(60000 + walEntHdr)
+			app := func(term uint64) *pb.Message {
+				return &pb.Message{Type: pb.MsgApp.Enum(), Term: new(uint64(3)), Index: new(uint64(5)), LogTerm: new(uint64(2)), Entries: entries(term, 60000)}
+			}
+			// The same entries again, as Raft sends them again, write nothing.
+			if m := app(2); n.followerDrops(m) || len(m.Entries) != 4 || n.appendPledged != 0 {
+				t.Fatalf("entries the follower holds, sent again: %d kept, pledged %d; want all 4 and nothing taken", len(m.Entries), n.appendPledged)
+			}
+			m := app(3)
+			if n.followerDrops(m) {
+				t.Fatal("an append whose first three entries fit was dropped")
+			}
+			if len(m.Entries) != 3 || n.appendPledged != 3*one || n.stats.appendsTrimmed != 1 {
+				t.Fatalf("an append that rewrites 4 entries, with room for 3: %d kept, pledged %d, trimmed %d; want 3, %d, 1", len(m.Entries), n.appendPledged, n.stats.appendsTrimmed, 3*one)
+			}
+		})
 	}
 }
 
