@@ -36,8 +36,10 @@ func TestSelfRemovalDrainsLargeRange(t *testing.T) {
 					n.endBig(b)
 				}
 			})
-			if len(n.bigs) != 1 || s.win != 0 || n.bigs[0].pos >= len(n.bigs[0].buf) || len(c.flow.held) != 0 {
-				t.Fatal("range did not retain unsent bytes outside the socket and flow.held")
+			// It waits behind its shut stream window with the rest of its
+			// reply unbuilt, outside the socket and flow.held (#919).
+			if len(n.bigs) != 1 || s.win != 0 || len(c.flow.held) != 0 {
+				t.Fatal("the large Range is not under way behind its shut stream window")
 			}
 			// Model successful socket writes while preserving every DATA
 			// byte for the complete protobuf reply check below.
