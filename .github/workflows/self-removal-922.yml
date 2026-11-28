@@ -1,4 +1,5 @@
-name: self-removal-922 qualification
+# Supplemental fixed scenario shard; full qualification is run 46100868364.
+name: self-removal-922 fixed scenarios
 on:
   push:
     branches: [scratch/922-self-removal-validation]
@@ -7,111 +8,24 @@ permissions:
 env:
   ETCD_UNSAFE_LOG_RING_BYTES: "536870912"
 jobs:
-  pins:
+  scenarios:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Unchanged trace pin and hash regressions
-        shell: bash
-        run: |
-          scripts/sim.sh ./internal/sim '^(TestLeaseFreeForkTrace|TestLongRunHashes|TestHashesCoverHistory|TestAForkReplaysAlone)$' -test.v -test.timeout 20m 2>&1 | tee "$RUNNER_TEMP/pins.log"
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: pins
-          path: ${{ runner.temp }}/pins.log
-          retention-days: 7
-  sweep:
-    needs: pins
-    strategy:
-      fail-fast: false
-      matrix:
-        first: [1, 51, 101, 151, 201, 251]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: One-voter membership sweep
+      - name: Second CI fixed scenario shard under gosim
         shell: bash
         env:
-          SIM_SEED: ${{ matrix.first }}
-          SIM_SEEDS: "50"
-          SIM_OUT: ${{ runner.temp }}/sim-out
+          SIM_SEED: "401"
+          SIM_SEEDS: "100"
         run: |
-          scripts/sim.sh ./internal/sim '^TestSelfRemovalOneVoterMembership$' -test.v -test.timeout 25m 2>&1 | tee "$RUNNER_TEMP/sweep.log"
-          echo '== seed outcomes =='
-          grep -E 'simrun: seed .* (PASS|FAIL)' "$RUNNER_TEMP/sweep.log" | awk '{print $NF}' | sort | uniq -c
+          scripts/sim.sh ./internal/sim '^TestScenarios$' -test.v -test.timeout 15m 2>&1 | tee "$RUNNER_TEMP/scenarios.log"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: sweep-${{ matrix.first }}
-          path: |
-            ${{ runner.temp }}/sweep.log
-            ${{ runner.temp }}/sim-out
-          retention-days: 7
-  membership:
-    needs: pins
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Existing membership regressions under gosim
-        shell: bash
-        run: |
-          scripts/sim.sh ./internal/sim '^(TestMembershipFaults|TestMembershipFaultSeeds|TestOneVoterMembership)$' -test.v -test.timeout 25m 2>&1 | tee "$RUNNER_TEMP/membership.log"
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: membership
-          path: ${{ runner.temp }}/membership.log
-          retention-days: 7
-  scenarios:
-    needs: pins
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Fixed scenario seeds under gosim
-        shell: bash
-        run: |
-          SIM_SEED=1 SIM_SEEDS=100 scripts/sim.sh ./internal/sim '^TestScenarios$' -test.v -test.timeout 20m 2>&1 | tee "$RUNNER_TEMP/scenarios.log"
-          for seed in 446 465 1292; do
-            SIM_SEED=$seed SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestScenarios$' -test.v -test.timeout 2m 2>&1 | tee -a "$RUNNER_TEMP/scenarios.log"
-          done
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: scenarios
+          name: scenarios-401
           path: ${{ runner.temp }}/scenarios.log
-          retention-days: 7
-  wl:
-    needs: pins
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: All wl tests
-        shell: bash
-        run: go test ./internal/wl -count=1 -timeout 20m -v 2>&1 | tee "$RUNNER_TEMP/wl.log"
-      - uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: wl
-          path: ${{ runner.temp }}/wl.log
           retention-days: 7
