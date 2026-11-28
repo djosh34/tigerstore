@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -278,92 +277,4 @@ func TestAPutAfterADisarmIsTakenByAFollowerThatLags(t *testing.T) {
 		return
 	}
 	t.Fatal("in 5 attempts no put came to the follower before it applied the disarm")
-}
-
-// TestAnAlarmListAfterADisarmThroughAFollowerThatLags is #826: an
-// AlarmList sent once AlarmDisarm answered comes after the disarm, as
-// etcd's list goes through Raft. A follower answered it from the alarms
-// it had applied. Here the follower's loop is held while the leader
-// applies the disarm, and the list reaches the follower before its loop
-// goes on: the list must be empty. The follower records its alarm as it
-// takes the list (testAdmit); a list that came after it applied the
-// disarm tests nothing, and the test runs again.
-func TestAnAlarmListAfterADisarmThroughAFollowerThatLags(t *testing.T) {
-	loopOf := watchLoops(t)
-	var fid atomic.Uint64
-	seen := make(chan bool, 64)
-	hook := func(n *node, kind uint8, _ []byte) {
-		if kind == kAlarm && n.id == fid.Load() {
-			select {
-			case seen <- n.noSpace:
-			default:
-			}
-		}
-	}
-	testAdmit.Store(&hook)
-	t.Cleanup(func() { testAdmit.Store(nil) })
-	tc := newTestCluster(t)
-	all := tc.clientOf(t, tc.endpoints...)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	for attempt := range 5 {
-		lead := tc.leaderEndpoint(t, all)
-		f := slices.IndexFunc(tc.endpoints, func(ep string) bool { return ep != lead })
-		li := slices.Index(tc.endpoints, lead)
-		fid.Store(tc.ids[f])
-		lc, fc := tc.clientOf(t, lead), tc.clientOf(t, tc.endpoints[f])
-		alarm := &clientv3.AlarmMember{MemberID: tc.ids[li], Alarm: etcdpb.AlarmType_NOSPACE}
-		nospace := &etcdpb.AlarmRequest{Action: etcdpb.AlarmRequest_ACTIVATE, MemberID: alarm.MemberID, Alarm: alarm.Alarm}
-		if _, err := etcdpb.NewMaintenanceClient(lc.ActiveConnection()).Alarm(ctx, nospace); err != nil {
-			t.Fatalf("raise NOSPACE: %v", err)
-		}
-		// The follower applied the alarm once it refuses a put with it.
-		for {
-			_, err := fc.Put(ctx, "/lag/before", "v")
-			if errors.Is(err, rpctypes.ErrNoSpace) {
-				break
-			}
-			if ctx.Err() != nil {
-				t.Fatalf("the follower never refused a put while NOSPACE was up: %v", err)
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		for len(seen) > 0 {
-			<-seen
-		}
-		release := holdLoop(t, loopOf(tc.ids[f]))
-		if _, err := lc.AlarmDisarm(ctx, alarm); err != nil {
-			release()
-			t.Fatalf("disarm NOSPACE: %v", err)
-		}
-		type listed struct {
-			r   *clientv3.AlarmResponse
-			err error
-		}
-		list := make(chan listed, 1)
-		go func() {
-			r, err := fc.AlarmList(ctx)
-			list <- listed{r, err}
-		}()
-		// The list reaches the follower's socket while its loop is held,
-		// so its next turn reads it before it applies the disarm.
-		time.Sleep(200 * time.Millisecond)
-		release()
-		got := <-list
-		var noSpace bool
-		select {
-		case noSpace = <-seen:
-		case <-time.After(10 * time.Second):
-			t.Fatalf("the follower never took the list: %v %v", got.r, got.err)
-		}
-		if !noSpace {
-			t.Logf("attempt %d: the list came to the follower after it applied the disarm, which tests nothing: again", attempt)
-			continue
-		}
-		if got.err != nil || len(got.r.Alarms) != 0 {
-			t.Fatalf("an AlarmList through a follower sent after AlarmDisarm answered, taken with NOSPACE still up in the follower's view: %v %v; want no alarm", got.r, got.err)
-		}
-		return
-	}
-	t.Fatal("in 5 attempts no list came to the follower before it applied the disarm")
 }

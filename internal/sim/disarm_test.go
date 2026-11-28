@@ -112,3 +112,83 @@ func TestNoSpaceOperators(t *testing.T) {
 		})
 	}
 }
+
+// TestAnAlarmListThroughACutOffFollower is #826: NOSPACE is disarmed
+// through the leader while a follower is cut off from the other nodes,
+// and then the alarms are listed through that follower. etcd's list goes
+// through Raft. wl's follower answered at once from the alarms it had
+// applied, and listed the alarm the disarm had cleared.
+func TestAnAlarmListThroughACutOffFollower(t *testing.T) {
+	if simrun.Drive(t, 3803) {
+		return
+	}
+	cfg := DefaultConfig(3803)
+	cfg.Faults = Faults{DiskBudget: cfg.Faults.DiskBudget}
+	cfg.Duration, cfg.Heal = 60*Second, 20*Second
+	s, err := newSim(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.shutdown)
+	for _, n := range s.nodes {
+		if err := s.start(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(3 * time.Second)
+	s.mu.Lock()
+	i := s.leaderIdx()
+	s.mu.Unlock()
+	if i < 0 {
+		t.Fatal("no leader after 3 s")
+	}
+	leader, f := s.nodes[i], (i+1)%len(s.nodes)
+	follower := s.nodes[f]
+	list := func(n *node) ([]*pb.AlarmMember, error) {
+		resp, err := s.call(n, &pb.AlarmRequest{Action: pb.AlarmRequest_GET}, cfg.ClientTimeout)
+		if err != nil {
+			return nil, err
+		}
+		return resp.(*pb.AlarmResponse).Alarms, nil
+	}
+	alarm := &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, MemberID: leader.id, Alarm: pb.AlarmType_NOSPACE}
+	if _, err := s.call(leader, alarm, cfg.ClientTimeout); err != nil {
+		t.Fatal(err)
+	}
+	// The follower applied the alarm once it lists it.
+	for {
+		as, err := list(follower)
+		if err == nil && len(as) == 1 {
+			break
+		}
+		if s.now() >= s.stopAt {
+			t.Fatalf("the follower lists %v (%v) after the alarm was raised, want it", as, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	s.mu.Lock()
+	s.setLinks(s.linksWithout(f))
+	s.mu.Unlock()
+	alarm.Action = pb.AlarmRequest_DEACTIVATE
+	if _, err := s.call(leader, alarm, cfg.ClientTimeout); err != nil {
+		t.Fatal(err)
+	}
+	if as, err := list(follower); err == nil && len(as) > 0 {
+		t.Fatalf("the cut-off follower lists %v after the disarm was answered", as)
+	}
+	s.mu.Lock()
+	s.setLinks(s.allLinks())
+	s.mu.Unlock()
+	for {
+		as, err := list(follower)
+		if err == nil {
+			if len(as) > 0 {
+				t.Fatalf("the follower lists %v after healing", as)
+			}
+			return
+		}
+		if s.now() >= s.stopAt {
+			t.Fatalf("the follower never answered a list after healing: %v", err)
+		}
+	}
+}

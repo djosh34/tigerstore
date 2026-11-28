@@ -78,9 +78,6 @@ func (n *node) alarmRequest(c *client, s *stream, msg []byte) error {
 		n.reject(c, s, badRequest(err))
 		return nil
 	}
-	if f := testAdmit.Load(); f != nil {
-		(*f)(n, s.kind, msg)
-	}
 	n.addOp(mkHandle(c, s.id), kAlarm, msg)
 	return nil
 }
