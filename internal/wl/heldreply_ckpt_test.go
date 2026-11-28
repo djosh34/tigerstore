@@ -27,7 +27,7 @@ func TestAHeldReplyOfAPutDeletedInItsRevisionOutlivesTheCut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := checkRequest(kTxn, req, 0); err != nil {
+	if err := checkRequest(kTxn, req, 0, maxRequestBytes); err != nil {
 		t.Fatalf("checkRequest refused the Txn: %v", err)
 	}
 	if err := n.applyTxn(req, l.add(string(req)), nil, nil); err != nil {

@@ -107,7 +107,7 @@ func newConfig(stderr io.Writer) *config {
 	fs.Int64Var(&c.own.DiskBudget, "disk-budget-bytes", 0, "bytes the data directory may take: the log's ring, formatted when the directory is made, takes half, and the rest is left to the checkpoints; at least 1 GiB, a ring of eight 64 MiB segments (0 means no budget: the ring is the quota's size, at least 512 MiB). A ring the disk's free space cannot hold is refused at start")
 	fs.Int64Var(&c.own.MemoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory); at least 137 MiB for three members, more for more; a member add checks the budget of the node asked alone, so give every member the same")
 	fs.Int64Var(&c.own.UnsafeSegment, "unsafe-segment-bytes", 0, "for tests only: the bytes of a segment of the log, a multiple of 4 KiB, which a data directory keeps from when it is made (0 means 64 MiB)")
-	fs.Int64Var(&c.own.UnsafeLogRing, "unsafe-log-ring-bytes", 0, "for tests only: bytes of the log's ring, formatted when the data directory is made; the node checkpoints at least every quarter of it (0 means half the disk budget, else the quota)")
+	fs.Int64Var(&c.own.UnsafeLogRing, "unsafe-log-ring-bytes", 0, "for tests only: bytes of the log's ring, formatted when the data directory is made; the node checkpoints at least every quarter of it, and takes requests of at most half of it (0 means half the disk budget, else the quota)")
 	return c
 }
 

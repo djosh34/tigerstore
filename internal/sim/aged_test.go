@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/simrun"
 )
@@ -397,10 +400,10 @@ func TestAgedBulk(t *testing.T) {
 // client's calls follow one another (history.Validate), and the values
 // are in the log and the store. Its disk budget sizes the log's ring to
 // 8 MiB, and its disks hold twice the budget, as TestAgedBulk's do: the
-// default ring of 1 MiB holds no Txn of four values, whose append then
-// waits for room for good, and the default disk fills with the values'
-// checkpoints (#769). TestAgedBulk is the same load at hundreds of MB, on
-// Actions.
+// default ring of 128 KiB takes requests of half of it at most, and
+// refuses a Txn of four values as too large (TestATxnPastTheRingIsTooLarge),
+// and the default disk fills with the values' checkpoints (#769).
+// TestAgedBulk is the same load at hundreds of MB, on Actions.
 func TestBulkLoad(t *testing.T) {
 	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
 		cfg := DefaultConfig(seed)
@@ -409,6 +412,26 @@ func TestBulkLoad(t *testing.T) {
 		cfg.Faults.DiskCapacity = int(2 * cfg.Faults.DiskBudget)
 		res := run(t, cfg)
 		checkers(t, res)
+		return res.Stats
+	}, nil)
+}
+
+// TestATxnPastTheRingIsTooLarge is #797: the bulk load's Txn of four
+// values of 256 KiB, 1 MiB, on DefaultConfig's log ring of 128 KiB, which
+// no cut makes room for. A node takes requests of half its ring at most
+// (wl's requestLimit), so it refuses the Txn at once as too large, as etcd
+// refuses a request past its limit, and the load ends on it. Before, the
+// Txn was refused as busy until the load's limit, 0 of 4 values in; and
+// before #814 its append waited for room for good, and the cluster
+// elected no leader for the rest of the run.
+func TestATxnPastTheRingIsTooLarge(t *testing.T) {
+	simrun.Each(t, []uint64{1}, func(t *testing.T, seed uint64) Stats {
+		cfg := DefaultConfig(seed)
+		cfg.Duration, cfg.BulkBytes = 10*Second, bulkPerTxn*bulkValue
+		res, err := runSeed(t, cfg)
+		if !errors.Is(err, rpctypes.ErrGRPCRequestTooLarge) {
+			t.Fatalf("a Txn of 1 MiB on a ring of 128 KiB: %v; want it refused as too large", err)
+		}
 		return res.Stats
 	}, nil)
 }

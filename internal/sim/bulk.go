@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 )
 
 // errBulkEnded is a bulk load the end of the run cut short.
@@ -72,6 +73,10 @@ func (s *Sim) bulkLoad() error {
 			}
 			if err == nil {
 				break
+			}
+			if errors.Is(err, rpctypes.ErrGRPCRequestTooLarge) {
+				// Refused for good: no attempt of it is ever taken.
+				return fmt.Errorf("bulk load: a Txn of %d values of %d bytes: %w", min(bulkPerTxn, n-i), bulkValue, err)
 			}
 			if !s.sleep(100 * Millisecond) {
 				return errBulkEnded

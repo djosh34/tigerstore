@@ -39,7 +39,7 @@ func (m *heldModel) nested() {
 		m.fail("marshal nested: %v", err)
 		return
 	}
-	if err := checkRequest(kTxn, wire, 0); err != nil {
+	if err := checkRequest(kTxn, wire, 0, maxRequestBytes); err != nil {
 		m.fail("validate nested: %v", err)
 		return
 	}
