@@ -154,10 +154,13 @@ func (tc *testCluster) certClient(t *testing.T, endpoint, cn, user, password str
 	return c
 }
 
-// TestAForwardedPromotionKeepsTheCallersIdentity is #783's point 3: with
-// auth on, root promotes through a follower, known by its certificate's
-// name or by its token. The leader checked the follower's own
-// certificate name instead, and refused it.
+// TestAForwardedPromotionKeepsTheCallersIdentity is #783's point 3, as
+// etcd v3.7.2 has it (#938): with auth on, root promotes through a
+// follower. By its token it gets the leader's answer; the leader checked
+// the follower's own certificate name instead, and refused it. By its
+// certificate alone it is refused as etcd's leader refuses it: a
+// certificate is the follower's to check, and the leader takes no name
+// from a peer.
 func TestAForwardedPromotionKeepsTheCallersIdentity(t *testing.T) {
 	tc := newTestCluster(t)
 	c := tc.client(t)
@@ -165,14 +168,40 @@ func TestAForwardedPromotionKeepsTheCallersIdentity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	enableAuth(t, ctx, c)
-	for _, who := range []struct{ what, cn, user, password string }{
-		{"by its certificate", "root", "", ""},
-		{"by its token", "nobody", "root", "rootpw"},
+	for _, who := range []struct {
+		what, cn, user, password string
+		want                     error
+	}{
+		{"by its token", "nobody", "root", "rootpw", rpctypes.ErrMemberLearnerNotReady},
+		{"by its certificate", "root", "", "", rpctypes.ErrUserEmpty},
 	} {
 		cl := tc.certClient(t, tc.endpoints[f], who.cn, who.user, who.password)
-		if _, err := cl.MemberPromote(ctx, id); !errors.Is(err, rpctypes.ErrMemberLearnerNotReady) {
-			t.Errorf("root's promotion %s of a learner that never started, through a follower: %v; want the leader's %v", who.what, err, rpctypes.ErrMemberLearnerNotReady)
+		if _, err := cl.MemberPromote(ctx, id); !errors.Is(err, who.want) {
+			t.Errorf("root's promotion %s of a learner that never started, through a follower: %v; want %v", who.what, err, who.want)
 		}
+	}
+}
+
+// TestAForwardSendsNoTokenOverUnverifiedTLS is #938's item 2: with peer
+// TLS that checks no certificate, as --peer-auto-tls's, a follower sent
+// the caller's token to whatever answered at the leader's peer URL. It
+// must answer that it does not lead instead.
+func TestAForwardSendsNoTokenOverUnverifiedTLS(t *testing.T) {
+	tc := newTestClusterWith(t, func(tc *testCluster) {
+		tc.config = func(c *Config) {
+			c.PeerClientTLS = c.PeerClientTLS.Clone()
+			c.PeerClientTLS.InsecureSkipVerify = true
+		}
+	})
+	c := tc.client(t)
+	id, _, f := idleLearner(t, tc, c)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	enableAuth(t, ctx, c)
+	root := tc.certClient(t, tc.endpoints[f], "nobody", "root", "rootpw")
+	const want = "etcdserver: not leader"
+	if _, err := root.MemberPromote(ctx, id); rpctypes.ErrorDesc(err) != want {
+		t.Fatalf("root's promotion by its token through a follower whose peer TLS checks nothing: %v; want %q", err, want)
 	}
 }
 
@@ -204,8 +233,8 @@ func TestAForwardedPromotionIsCheckedOnTheLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	enableAuth(t, ctx, c)
-	root := tc.certClient(t, tc.endpoints[li], "root", "", "")
-	alice := tc.certClient(t, tc.endpoints[f], "alice", "", "")
+	root := tc.certClient(t, tc.endpoints[li], "nobody", "root", "rootpw")
+	alice := tc.certClient(t, tc.endpoints[f], "nobody", "alice", "alicepw")
 	for attempt := range 5 {
 		if _, err := root.UserGrantRole(ctx, "alice", "root"); err != nil {
 			t.Fatal(err)
