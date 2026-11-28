@@ -12,9 +12,13 @@ import (
 // trace hash was recorded on origin/main at 70fc176d, under gosim. The
 // history hash covers each call's ambiguity bit, so #900's definite
 // refused dials changed it (401a6326a622c0c2 before); the trace did not.
-// #819 changed both (aa1af1b84b486b60, 709b8736985eb23a before): a
-// node's stop now ends and waits for the goroutines it started, which
-// moves the schedule from the image's formation run on.
+// #819 changed both (aa1af1b84b486b60, 709b8736985eb23a before). wl's
+// handshakes take their timeout from the node's context, not
+// Background: a context that can be cancelled selects on its parent's
+// Done, and under gosim each select yields, so the schedule parts in the
+// formation run, before any stop (d534b56cfeda2d34, f5e3ba206bc8fab2).
+// Then a node's start waits for its last Run to return: one select more
+// at each start, and a start whose old process still runs waits.
 func TestLeaseFreeForkTrace(t *testing.T) {
 	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
@@ -28,7 +32,7 @@ func TestLeaseFreeForkTrace(t *testing.T) {
 			t.Fatalf("lease-free fixture holds %d leases", st.ImageLeases)
 		}
 		if save, _ := forkMode(t, 1); !save && simrun.InGosim {
-			const want = "seed 1000: trace d534b56cfeda2d34 history f5e3ba206bc8fab2"
+			const want = "seed 1000: trace 62d09ac87b7daa03 history 337819a5c4c11655"
 			if got := hashLines[len(hashLines)-1]; !strings.HasPrefix(got, want+" ") {
 				t.Errorf("lease-free fork differs from main:\n got %s\nwant %s", got, want)
 			}
