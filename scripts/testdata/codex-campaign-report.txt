@@ -1,0 +1,12 @@
+commit 7c53d3b6114d0d86a674bf61db6cad25f607805f
+state done 1
+elapsed 1234
+cpu 4321
+reported TestCampaign 1-244,300
+fail TestCampaign 48 seed 48: watch 1 was never created; its last stream was on node 0, and a compaction last restarted it at 0.000 s, 320.547 s before the end
+replay TestCampaign 48 SIM_SEED=48 SIM_SEEDS=1 scripts/sim.sh ./internal/sim '^TestCampaign$/^48$'
+campaign TestCampaign answered calls: 3000, fresh: certificate expiry: 3, fresh: kubernetes: 18, fresh: membership: 9, fresh: small keys: 30, membership work completed: 9, requested quorum loss, not lost: 0; by cost: fresh 60, aged 0, long 0 of 60
+fail TestCampaign 99 seed 99: liveness: only 34 calls completed after healing
+known TestCampaign 412 https://github.com/djosh34/tigerstore/issues/785
+campaign TestCampaign answered calls: 2000, fresh: kubernetes: 9, requested quorum loss, not lost: 0; by cost: fresh 9, aged 0, long 0 of 9
+more-failures 3
