@@ -169,8 +169,8 @@ func run(ctx context.Context, cfg Config) error {
 		self:   member{id: cfg.ID, name: cfg.Name, clientURLs: cfg.ClientURLs},
 		format: baseFormat, auth: newAuthStore(), tokens: map[string]*simpleToken{}, logins: map[handle]authLogin{},
 		oldPeerWire: cfg.oldPeerWire, holdCkpt: cfg.holdCkpt,
-		// TestWatchControlCannotSpendProtectedFetchCapacity is still a
-		// mandatory failing global gate; do not activate production yet.
+		// Resident output uses the main selector/serializer; only actual
+		// cold dependencies enter the off-loop fill scheduler.
 		cursorFetch: true,
 	}
 	if cfg.TraceLargePuts {
@@ -1220,7 +1220,9 @@ func (l *loop) run() error {
 		}
 		t3 := time.Now()
 		l.flush()
-		if n.cursorFetch {
+		if n.cursorFetch && l.handoffWaiting {
+			// New handoffs have their eventfd wake. Only deferred ones need
+			// this credit recheck; an empty hot turn must not take l.mu.
 			l.takeHandoffs()
 		}
 		if len(n.waiting) > 0 || l.handoffWaiting {

@@ -124,6 +124,9 @@ func (n *node) ready() error {
 				return err
 			}
 		}
+		if err := n.resumeSelfRemoval(); err != nil {
+			return err
+		}
 		if len(rd.ReadStates) > 0 {
 			n.serveReads()
 		}
@@ -394,13 +397,31 @@ func (n *node) fsyncDone() error {
 const slowSync = time.Second
 
 func (n *node) storageApply(m *pb.Message) error {
-	for _, e := range m.GetEntries() {
+	if n.selfRemoval.apply != nil {
+		// This process must leave at its committed removal. Later apply
+		// work cannot pass that prefix; it is neither applied nor acked,
+		// and needs no additional holding queue.
+		return nil
+	}
+	return n.storageApplyReady(m, 0)
+}
+
+func (n *node) storageApplyReady(m *pb.Message, from int) error {
+	for i, e := range m.GetEntries()[from:] {
 		idx := e.GetIndex()
 		switch e.GetType() {
 		case pb.EntryConfChange:
 			var cc pb.ConfChange
 			if err := proto.Unmarshal(e.GetData(), &cc); err != nil {
 				return fmt.Errorf("apply a membership change: %w", err)
+			}
+			if n.deferSelfRemoval(m, from+i, &cc) {
+				// End the already-applied prefix's ordinary ownership turn
+				// before waiting for I/O. No borrowed live event survives it.
+				n.flushEvents()
+				n.st.endApply()
+				n.serveReads()
+				return nil
 			}
 			if err := n.applyConfChange(&cc, idx); err != nil {
 				return err

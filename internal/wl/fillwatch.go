@@ -100,12 +100,18 @@ func (n *node) startWatchFill(wi int32, x *watcher, c *client, s *stream, b *syn
 	}
 	hdr := sizeBytesField(1, n.hdrSize()) + sizeVarintField(2, uint64(x.id))
 	body, events := hdr, 0
+	// Size fragment boundaries during selection, not with a second history
+	// walk. Copying these scalars rolls back a revision that is too large.
+	fragments := watchFillSize{header: hdr, part: hdr + 2}
 	to := x.syncRev
 	for j < len(st.changes) && (events == 0 || b.left()) {
 		r := st.changes[j].rev
 		bytes, count := 0, 0
+		beforeFragments := fragments
 		err := n.eachRevEvent(st, x, j, 0, func(_ int, ev bigEv) bool {
-			bytes += sizeBytesField(11, ev.size)
+			add := sizeBytesField(11, ev.size)
+			bytes += add
+			fragments.add(add)
 			count++
 			return true
 		})
@@ -113,14 +119,13 @@ func (n *node) startWatchFill(wi int32, x *watcher, c *client, s *stream, b *syn
 			return false, err
 		}
 		if hdr+bytes > replyRoom {
+			fragments = beforeFragments
 			if events == 0 {
 				n.startBigWatch(wi, x, c, s, j)
 				return false, nil
 			}
 			break
 		}
-		// Fragmented multi-event batches retain their existing event
-		// boundaries. The message walker below will size each fragment.
 		body += bytes
 		events += count
 		next := revStart(st, r+1)
@@ -138,15 +143,19 @@ func (n *node) startWatchFill(wi int32, x *watcher, c *client, s *stream, b *syn
 		return to > st.rev, nil
 	}
 	fragmented := x.fragment && body >= maxRequestBytes && events > 1
-	wire, err := n.watchFillWire(st, x, x.syncRev, to, st.rev, n.term, fragmented)
-	if err != nil {
-		return false, err
+	wire := 5 + body
+	if fragmented {
+		wire = fragments.wire()
 	}
 	q := n.newWatchFill(wi, x, c, s, wire, to)
 	if q == nil {
 		return false, nil
 	}
 	q.watch.fragmented = fragmented
+	if !fragmented {
+		// The first message can reuse selection's exact count and size.
+		q.watch.messageEvents, q.watch.payloadBytes = events, body
+	}
 	return false, nil
 }
 
@@ -206,7 +215,11 @@ func (n *node) nextFillWatch(q *replyFill) (bool, error) {
 		}
 		w.rev = q.st.changes[j].rev
 		found := false
+		var putSlot uint32
 		err := n.eachRevEvent(q.st, x, j, w.offset, func(off int, ev bigEv) bool {
+			// Consume the selection's history hint in this same turn;
+			// never retain a physical slot across a yield or mutation.
+			putSlot, ev.putSlot = ev.putSlot, 0
 			w.offset, w.ev = off, ev
 			found = true
 			return false
@@ -223,7 +236,7 @@ func (n *node) nextFillWatch(q *replyFill) (bool, error) {
 			return false, nil
 		}
 		ev := w.ev
-		if !q.raw && w.messageEvents == 0 {
+		if !q.raw && (w.messages == 0 || w.messageEvents == 0) {
 			if err := n.beginFillWatchMessage(q, x); err != nil {
 				return false, err
 			}
@@ -234,9 +247,15 @@ func (n *node) nextFillWatch(q *replyFill) (bool, error) {
 		}
 		q.outerPos, q.outerSize = 0, len(p)
 		var ks ckptState
-		if ev.ch.del {
+		switch {
+		case ev.ch.del:
 			ks.mod = ev.ch.rev
-		} else {
+		case putSlot != 0:
+			// eachRevEvent just resolved this immutable metadata. No
+			// mutation occurs between its callback and this use.
+			e := &q.st.hist[putSlot]
+			ks = ckptState{create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}
+		default:
 			var ok bool
 			ks, ok = q.st.putStateAt(ev.ch.key, ev.ch.rev)
 			if !ok {
@@ -369,25 +388,30 @@ func (n *node) beginFillWatchMessage(q *replyFill, x *watcher) error {
 		part += 2
 	}
 	more := false
-	err := n.walkFillEvents(q.st, x, w.rev, w.to, w.offset, func(ev bigEv) bool {
-		add := sizeBytesField(11, ev.size)
-		if w.fragmented && count > 0 && part+add >= maxRequestBytes {
-			more = true
-			return false
+	cached := !w.fragmented && w.messages == 0 && w.messageEvents > 0
+	if cached {
+		part, count = w.payloadBytes, w.messageEvents
+	} else {
+		err := n.walkFillEvents(q.st, x, w.rev, w.to, w.offset, func(ev bigEv) bool {
+			add := sizeBytesField(11, ev.size)
+			if w.fragmented && count > 0 && part+add >= maxRequestBytes {
+				more = true
+				return false
+			}
+			part += add
+			count++
+			return true
+		})
+		if err != nil {
+			return err
 		}
-		part += add
-		count++
-		return true
-	})
-	if err != nil {
-		return err
-	}
-	if w.fragmented && !more {
-		part -= 2
+		if w.fragmented && !more {
+			part -= 2
+		}
+		w.payloadBytes += part
 	}
 	w.messageEvents = count
 	w.messages++
-	w.payloadBytes += part
 	q.prefix(part)
 	q.length(n.hdrSizeTerm(q.header, q.headerTerm))
 	q.varint(1, n.clusterID)

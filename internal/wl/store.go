@@ -1328,9 +1328,17 @@ func (st *store) putAt(id uint32, rev int64) ([]byte, error) {
 // key id at revision rev, also where the same revision deleted the key
 // after it.
 func (st *store) putStateAt(id uint32, rev int64) (ckptState, bool) {
+	s, _, ok := st.putStateAtSlot(id, rev)
+	return s, ok
+}
+
+// putStateAtSlot also names the history slot it just resolved. That hint is
+// valid only within this metadata turn, before any store mutation; it is not
+// a retained source or a continuation cursor. Zero means the current key.
+func (st *store) putStateAtSlot(id uint32, rev int64) (ckptState, uint32, bool) {
 	k := &st.keys[id]
 	if k.mod == rev && k.create != 0 {
-		return ckptState{create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}, true
+		return ckptState{create: k.create, mod: k.mod, ver: k.ver, lease: k.lease, voff: k.voff, vlen: k.vlen, vsum: k.vsum}, 0, true
 	}
 	for h := k.hist; h != 0; h = st.hist[h].prev {
 		e := &st.hist[h]
@@ -1340,9 +1348,9 @@ func (st *store) putStateAt(id uint32, rev int64) (ckptState, bool) {
 		if e.mod < rev {
 			break
 		}
-		return ckptState{create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}, true
+		return ckptState{create: e.create, mod: e.mod, ver: e.ver, lease: e.lease, voff: e.voff, vlen: e.vlen, vsum: e.vsum}, h, true
 	}
-	return ckptState{}, false
+	return ckptState{}, 0, false
 }
 
 // state returns the mod revision, create revision, version and lease of

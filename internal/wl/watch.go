@@ -272,7 +272,9 @@ func (w *watches) link(x *watcher, i int32, e event) {
 
 func (n *node) watchRequest(c *client, s *stream, msg []byte) error {
 	if !s.watch {
-		s.watch = true
+		// The watch's initial headers open this response just as
+		// openStream does. Later P-staged batches must not send them again.
+		s.watch, s.streaming = true, true
 		b := c.frame(9 + len(respHeaders))
 		putFrameHeader(b, len(respHeaders), frHeaders, flEndHeaders, s.id)
 		copy(b[9:], respHeaders)

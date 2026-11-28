@@ -310,7 +310,7 @@ func (n *node) invalidateFills(st *store) {
 }
 
 func (n *node) fillsReady() bool {
-	if n.cursorFetch && n.fillCreditWake {
+	if n.cursorFetch && n.fillCreditWake && n.hasFillCreditWaiters() {
 		return true
 	}
 	if n.fillActive != nil || n.legacyRunning != nil {

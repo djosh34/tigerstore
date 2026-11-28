@@ -72,9 +72,10 @@ type bigWatch struct {
 
 // bigEv is one event of a bigWatch: its change and its Event's size.
 type bigEv struct {
-	ch   change
-	prev bool // it carries the value before
-	size int  // the Event message's size
+	ch      change
+	putSlot uint32 // metadata-turn-only hint, in existing padding
+	prev    bool   // it carries the value before
+	size    int    // the Event message's size
 }
 
 // revSize is the size of a WatchResponse of watcher x with its events of
@@ -122,7 +123,8 @@ func (n *node) eachUnmutatedRevEvent(st *store, x *watcher, j, from int, f func(
 		if ch.del {
 			ev.size = 2 + sizeBytesField(2, sizeBytesField(1, klen)+sizeVarintField(3, uint64(rev)))
 		} else {
-			s, ok := st.putStateAt(ch.key, rev)
+			s, slot, ok := st.putStateAtSlot(ch.key, rev)
+			ev.putSlot = slot
 			if !ok && rev <= st.compactRev {
 				// A put its own Txn deleted at the compacted revision,
 				// which trimming dropped: etcd keeps only the deletion

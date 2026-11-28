@@ -15,6 +15,9 @@ func (n *node) updateFillCredits() {
 		return
 	}
 	n.fillCreditWake = false
+	if !n.hasFillCreditWaiters() {
+		return
+	}
 	n.legacyWaitP = false
 	n.roomShort = false
 	n.roomFreed = true
@@ -24,6 +27,12 @@ func (n *node) updateFillCredits() {
 	for _, b := range n.bigWatches {
 		b.waitP = false
 	}
+}
+
+// Ordinary resident replies can return a covered loan with no fill waiter.
+// That must not create an extra empty epoll turn or wake unrelated ranges.
+func (n *node) hasFillCreditWaiters() bool {
+	return n.legacyWaitP || len(n.fills) > 0 || len(n.bigs) > 0 || len(n.bigWatches) > 0 || len(n.roomWait) > 0 || len(n.heldReplies) > 0
 }
 
 func (n *node) newRawFill(c *client, h handle, st *store, left int) *replyFill {
