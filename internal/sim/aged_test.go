@@ -325,6 +325,41 @@ func runForks(t *testing.T, seed uint64, base Config, img *image, forks, only in
 	return total
 }
 
+// agedBulkConfig is TestAgedBulk's aging of seed: agingConfig's draws,
+// then 500 objects and 160 MB of bulk values under a 137 MiB budget, on
+// disks sized for the bulk. Its quota is wl's default (#926): the quota
+// agingConfig draws for its own object count, up from #846, can be below
+// the bulk and refuse its load with NOSPACE.
+func agedBulkConfig(seed uint64) Config {
+	aging := agingConfig(seed)
+	aging.Quota = 0
+	aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
+	aging.MemoryBytes, aging.BulkBytes = 137<<20, 160_000_000
+	aging.Faults.DiskBudget = 2 * aging.BulkBytes
+	aging.Faults.DiskCapacity = int(2 * aging.Faults.DiskBudget)
+	return aging
+}
+
+// TestAgedBulkConfig checks that every image TestAgedBulk can age keeps
+// wl's default quota (#926), over seeds both with and without GrowDisk.
+func TestAgedBulkConfig(t *testing.T) {
+	var growDisk, fixedDisk bool
+	for seed := uint64(1); seed <= 100; seed++ {
+		aging := agedBulkConfig(seed)
+		if aging.Quota != 0 {
+			t.Errorf("seed %d: quota %d, want wl's default quota (0)", seed, aging.Quota)
+		}
+		if aging.Faults.GrowDisk {
+			growDisk = true
+		} else {
+			fixedDisk = true
+		}
+	}
+	if !growDisk || !fixedDisk {
+		t.Fatal("seed range must cover both GrowDisk and non-GrowDisk images")
+	}
+}
+
 // TestAgedBulk measures an image bulk-loaded past its memory budget
 // (#775): 160 MB of values under a budget of 137 MiB, the least three wl
 // voters that bootstrap their cluster keep (#760), then one fork of it,
@@ -341,11 +376,7 @@ func TestAgedBulk(t *testing.T) {
 		before = memAvailable(t)
 	}
 	simrun.ImageSeeds(t, 1, 0, 1, func(t *testing.T, seed uint64) Stats {
-		aging := agingConfig(seed)
-		aging.Nodes, aging.Objects, aging.Duration = 3, 500, 2*60*Second
-		aging.MemoryBytes, aging.BulkBytes = 137<<20, 160_000_000
-		aging.Faults.DiskBudget = 2 * aging.BulkBytes
-		aging.Faults.DiskCapacity = int(2 * aging.Faults.DiskBudget)
+		aging := agedBulkConfig(seed)
 		return agedForks(t, seed, aging, 1, func(aging Config, seed uint64) Config {
 			cfg := forkConfig(aging, seed)
 			cfg.Duration = 2 * 60 * Second
