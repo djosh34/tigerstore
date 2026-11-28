@@ -106,7 +106,7 @@ func holdLoop(t *testing.T, l *loop) (release func()) {
 // pledgesApart checks, on follower l's loop while NOSPACE is up in its
 // view and its own ring has room, that a put and then a delete go in
 // batches apart, each with the ring room of its own write pledged
-// (alarmApart before the pledge, #827's re-check): the leader drops the
+// (batchApart before the pledge, #827's re-check): the leader drops the
 // put's batch, and the room given back with it must not be the delete's,
 // which is still owed.
 func pledgesApart(t *testing.T, l *loop) {

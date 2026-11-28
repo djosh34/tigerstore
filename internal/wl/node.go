@@ -131,10 +131,12 @@ type node struct {
 	batchOwn    []handle
 	// batchAlarm is the error the alarms up gave the open batch's writes
 	// as they came, nil if they allow them: a batch never holds writes of
-	// both (alarmApart). batchFlags are its ops' alarmFlags, by batchOwn,
-	// taken while an alarm is up, else 0.
-	batchAlarm error
-	batchFlags []uint8
+	// both (batchApart). batchFlags are its ops' alarmFlags, by batchOwn,
+	// taken while an alarm is up, else 0. batchCaller is whether its last
+	// op is a caller op, whose write comes next, in the same batch.
+	batchAlarm  error
+	batchFlags  []uint8
+	batchCaller bool
 
 	// Linearizable reads wait for a ReadIndex: reads not yet asked about,
 	// and the batches that wait for their index or the apply.
@@ -461,6 +463,10 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.reject(c, s, errLearner)
 		return nil
 	}
+	if rawWrite(s.kind) && raftRequestBytes(len(msg))+len(msg)+c.identityOf(s) > n.requestLimit() {
+		n.reject(c, s, invalid(msgTooLarge))
+		return nil
+	}
 	if sideKind(s.kind) {
 		n.sideRequest(c, s, msg)
 		return nil
@@ -499,7 +505,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		}
 		n.queueRead(mkHandle(c, s.id), s.kind, msg)
 	case kTxn:
-		if err := checkRequest(kTxn, msg, c.identityOf(s)); err != nil {
+		if err := checkRequest(kTxn, msg, c.identityOf(s), n.requestLimit()); err != nil {
 			n.reject(c, s, err)
 			return nil
 		}
@@ -510,14 +516,14 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		if n.ringRefuses(c, s, msg) {
 			return nil
 		}
-		n.alarmApart(kTxn, msg)
+		n.batchApart(kTxn, msg, n.writeBytes(c, s, msg))
 		n.addCaller(c, s)
 		n.addTxn(mkHandle(c, s.id), s, msg)
 	case kPut, kDel, kCompact, kLeaseGrant, kLeaseRevoke:
 		if s.kind == kLeaseGrant {
 			msg = n.withLeaseID(msg)
 		}
-		if err := checkRequest(s.kind, msg, c.identityOf(s)); err != nil {
+		if err := checkRequest(s.kind, msg, c.identityOf(s), n.requestLimit()); err != nil {
 			n.reject(c, s, err)
 			return nil
 		}
@@ -531,7 +537,7 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		if n.ringRefuses(c, s, msg) {
 			return nil
 		}
-		n.alarmApart(s.kind, msg)
+		n.batchApart(s.kind, msg, n.writeBytes(c, s, msg))
 		n.addCaller(c, s)
 		n.addOp(mkHandle(c, s.id), s.kind, msg)
 	case kLeaseKeepAlive:
@@ -570,6 +576,20 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.replyEmpty(c, s)
 	}
 	return nil
+}
+
+// rawWrite reports whether a request of kind goes to the log as its
+// message came, with no checkRequest: so request refuses one past
+// requestLimit as too large before it reaches a batch, as etcd refuses
+// one past --max-request-bytes; it never makes an entry larger than the
+// ring holds (#946's review). Auth requests are refused so in
+// proposeAuth.
+func rawWrite(kind uint8) bool {
+	switch kind {
+	case kAlarm, kDowngrade, kLeaseKeepAlive, kMemberAdd, kMemberRemove, kMemberUpdate, kMemberPromote:
+		return true
+	}
+	return false
 }
 
 // reject answers a request that its check rejected.

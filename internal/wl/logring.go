@@ -563,7 +563,7 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 		// The write's batch first, which its pledge goes with: charged to
 		// the batch before, its room was given back with that batch's,
 		// dropped by the leader, while it was still owed (#827's re-check).
-		n.alarmApart(s.kind, msg)
+		n.batchApart(s.kind, msg, n.writeBytes(c, s, msg))
 		n.ringPledged += need
 		n.batchPledge += need
 		w.wanted = 0
@@ -583,17 +583,22 @@ func (n *node) ringRefuses(c *client, s *stream, msg []byte) bool {
 	return true
 }
 
-// alarmApart keeps a write that the alarms up forbid out of a batch of
-// writes they allow, and the other way round: the open batch is proposed
-// first. A leader whose ring is short drops a follower's batch whole if
-// it puts (leaderDrops), so a delete, a compaction or the alarm's disarm
-// in a batch with a put was refused with it, as busy, and a cluster whose
-// clients keep putting through a follower freed no space for good (#827's
-// review). A node that refused such puts itself before the log kept them
-// apart, at the cost of #825. Called before the write's ops are added.
-func (n *node) alarmApart(kind uint8, msg []byte) {
+// batchApart proposes the open batch first, so that a write of kind,
+// whose ops add k bytes, goes into a new one, in two cases. A write that
+// the alarms up forbid is kept out of a batch of writes they allow, and
+// the other way round: a leader whose ring is short drops a follower's
+// batch whole if it puts (leaderDrops), so a delete, a compaction or the
+// alarm's disarm in a batch with a put was refused with it, as busy, and a
+// cluster whose clients keep putting through a follower freed no space
+// for good (#827's review). A node that refused such puts itself before
+// the log kept them apart, at the cost of #825. And a batch grows to
+// requestLimit at most, past which the write goes into the next: one
+// entry of a turn's writes, uncapped, could pass what the ring holds and
+// what a peer's message is sized for (#816). Called before the write's
+// ops are added.
+func (n *node) batchApart(kind uint8, msg []byte, k int) {
 	err := n.alarmRefusal(kind, msg)
-	if n.batch != nil && (err != nil) != (n.batchAlarm != nil) {
+	if n.batch != nil && ((err != nil) != (n.batchAlarm != nil) || len(n.batch)+k > n.requestLimit()) {
 		n.proposeBatch(n.now)
 	}
 	if n.batch == nil {
@@ -614,6 +619,28 @@ func (n *node) alarmRefusal(kind uint8, msg []byte) error {
 		return nil
 	}
 	return n.alarmGate(kind, msg)
+}
+
+// requestLimit is the largest request this node takes, and the most a
+// batch grows to (batchApart): etcd's maxRequestBytes, or half the log's
+// ring when that is less, as on the simulator's and the tests' small
+// rings. So the largest entry, a batch, or one request with its framing,
+// fits the ring once a cut gave back the rest of it, and a request larger
+// is refused at once as too large, as etcd refuses one past its
+// --max-request-bytes. Before, it was refused as busy for good, and
+// before #814 its append waited for room for good (#797). A ring of real
+// segments, of at least 512 MiB, takes etcd's limit.
+func (n *node) requestLimit() int {
+	if w := n.wal; w != nil && w.ring != nil {
+		return int(min(maxRequestBytes, w.ring.segs*w.ring.segSize/2))
+	}
+	return maxRequestBytes
+}
+
+// writeBytes is what a client's write of stream s adds to the batch: its
+// op, and its caller op while auth is on.
+func (n *node) writeBytes(c *client, s *stream, msg []byte) int {
+	return opHdr + len(msg) + int(n.callerBytes(c, s))
 }
 
 // callerBytes is what the caller op addCaller adds to the batch for the

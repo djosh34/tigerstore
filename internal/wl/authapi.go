@@ -3,6 +3,7 @@ package wl
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"math"
 	"math/big"
 	"time"
 
@@ -159,11 +160,22 @@ func (n *node) authRequest(c *client, s *stream, msg []byte) error {
 	return n.proposeAuth(h, r)
 }
 
-// proposeAuth puts an auth request into the turn's batch.
+// proposeAuth puts an auth request into the turn's batch, or refuses one
+// past requestLimit as too large, as etcd refuses a request whose
+// InternalRaftRequest passes --max-request-bytes: etcd's carries its ID
+// in the header too, counted at its longest (#946's review).
 func (n *node) proposeAuth(h handle, r *etcdpb.InternalRaftRequest) error {
 	b, err := proto.Marshal(r)
 	if err != nil {
 		return err
+	}
+	hdr := r.Header
+	r.Header = &etcdpb.RequestHeader{ID: math.MaxUint64, Username: hdr.GetUsername(), AuthRevision: hdr.GetAuthRevision()}
+	size := proto.Size(r)
+	r.Header = hdr
+	if size > n.requestLimit() {
+		n.replyErrorH(h, codeInvalidArgument, msgTooLarge)
+		return nil
 	}
 	n.addOp(h, kAuthOp, b)
 	return nil

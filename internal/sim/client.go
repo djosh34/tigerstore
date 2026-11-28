@@ -367,6 +367,7 @@ func ambiguous(err error) bool {
 		errors.Is(err, rpctypes.ErrGRPCCompacted),
 		errors.Is(err, rpctypes.ErrGRPCDuplicateKey),
 		errors.Is(err, rpctypes.ErrGRPCNoSpace),
+		errors.Is(err, rpctypes.ErrGRPCRequestTooLarge),
 		errors.Is(err, rpctypes.ErrGRPCEmptyKey):
 		return false
 	}

@@ -6,9 +6,11 @@ import (
 	"time"
 )
 
-// The turn's writes go into one batch, which Raft replicates as one
-// entry. The batch is built in the proposal ring, where the log, the
-// peers and the apply read it; when the ring has no room, on the heap.
+// The turn's writes go into a batch, which Raft replicates as one entry,
+// of requestLimit bytes at most, or one request alone: a turn that takes
+// in more proposes more than one (batchApart, #816). The batch is built in
+// the proposal ring, where the log, the peers and the apply read it; when
+// the ring has no room, on the heap.
 
 // growBatch makes room in the open batch for n more bytes.
 func (n *node) growBatch(k int) {
@@ -33,11 +35,12 @@ func (n *node) growBatch(k int) {
 }
 
 // addOp appends a write to this turn's batch. A caller op goes with the
-// write after it, whose batch its caller chose before it (alarmApart).
+// write after it, whose batch its caller chose before it (batchApart).
 func (n *node) addOp(h handle, kind uint8, msg []byte) {
-	if kind != kCaller {
-		n.alarmApart(kind, msg)
+	if kind != kCaller && !n.batchCaller {
+		n.batchApart(kind, msg, opHdr+len(msg))
 	}
+	n.batchCaller = kind == kCaller
 	if n.batch == nil {
 		n.batchInRing = true
 		n.growBatch(batchHdr + opHdr + len(msg))

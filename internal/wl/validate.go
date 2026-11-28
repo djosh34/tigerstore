@@ -39,9 +39,10 @@ func identityBytes(cn string) int {
 
 // checkRequest checks a write or a Txn of kind before it is proposed. As
 // etcd's server, it limits the size of the request as etcd would
-// replicate it, with identity, what the client's name adds.
-func checkRequest(kind uint8, msg []byte, identity int) error {
-	if raftRequestBytes(len(msg))+len(msg)+identity > maxRequestBytes {
+// replicate it, with identity, what the client's name adds, to limit
+// (node.requestLimit).
+func checkRequest(kind uint8, msg []byte, identity, limit int) error {
+	if raftRequestBytes(len(msg))+len(msg)+identity > limit {
 		return invalid(msgTooLarge)
 	}
 	switch kind {

@@ -691,7 +691,7 @@ func aFullLogRingRaisesNOSPACEThroughAFollower(t *testing.T, followerRing int64)
 	}
 	// A put and a delete through the follower in one turn: the leader,
 	// whose ring is short, drops a batch that puts whole, so the delete
-	// must not be in the put's batch (alarmApart, #827's review). The
+	// must not be in the put's batch (batchApart, #827's review). The
 	// follower's loop is held while both come; testAdmit shows whether it
 	// took them in one turn, and a try that did not tests nothing.
 	if followerRing > 0 {
@@ -766,5 +766,42 @@ func waitStrays(t testing.TB) {
 			t.Errorf("%d goroutines of stopped nodes still run 30 s after the test", strays.Load())
 			return
 		}
+	}
+}
+
+// TestARingTakesRequestsOfHalfItsSize is #797's limit on the fewest
+// segments a ring holds, eight of 16 KiB, as the simulator's: a node takes
+// requests of half its ring at most (requestLimit), so puts of 60 KiB are
+// each taken, through the leader and through a follower, as cuts give the
+// ring back, and a put past half the ring is refused at once as too large,
+// as etcd refuses a request past its limit, never as busy for good. So is
+// an auth request past it, a RoleAdd, which goes to the log as an auth op
+// with no checkRequest (#946's review), and the cluster takes puts after.
+func TestARingTakesRequestsOfHalfItsSize(t *testing.T) {
+	was := segSize
+	segSize = 16 << 10
+	t.Cleanup(func() { waitStrays(t); segSize = was })
+	tc := newTestClusterWith(t, func(tc *testCluster) { tc.logRing = ringMinSegs * segSize })
+	for i := range 3 {
+		c := tc.clientOf(t, tc.endpoints[i])
+		for k := range 3 {
+			took := takenWithin(t, c, fmt.Sprintf("/half/%d", k), strings.Repeat("v", 60<<10), fmt.Sprintf("a put of 60 KiB through node %d", i+1))
+			t.Logf("a put of 60 KiB through node %d taken in %v", i+1, took.Round(time.Millisecond))
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		start := time.Now()
+		_, err := c.Put(ctx, "/half/big", strings.Repeat("v", 65<<10))
+		cancel()
+		if !errors.Is(err, rpctypes.ErrRequestTooLarge) || time.Since(start) > time.Second {
+			t.Fatalf("a put of 65 KiB through node %d, past half the ring of 128 KiB: %v after %v; want it refused at once as too large", i+1, err, time.Since(start))
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		start = time.Now()
+		_, err = c.RoleAdd(ctx, strings.Repeat("r", 65<<10))
+		cancel()
+		if !errors.Is(err, rpctypes.ErrRequestTooLarge) || time.Since(start) > time.Second {
+			t.Fatalf("a RoleAdd of 65 KiB through node %d, past half the ring of 128 KiB: %v after %v; want it refused at once as too large", i+1, err, time.Since(start))
+		}
+		takenWithin(t, c, "/half/after", "v", fmt.Sprintf("a put through node %d after the refusals", i+1))
 	}
 }
