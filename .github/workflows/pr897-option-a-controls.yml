@@ -2,6 +2,13 @@ name: PR897 option A pre-correction profiles and main controls
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      profile_cases:
+        type: string
+        default: '["watch","txn","k8s"]'
+      run_main:
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -12,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workload: [watch, txn, k8s]
+        workload: ${{ fromJSON(inputs.profile_cases || '["watch","txn","k8s"]') }}
     env:
       ETCD_UNSAFE_LOG_RING_BYTES: '536870912'
       FETCH_MEASURE_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -53,6 +60,7 @@ jobs:
           path: ${{ runner.temp }}/leader-profile
           retention-days: 30
   main-scenario:
+    if: inputs.run_main
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     env:
@@ -85,6 +93,7 @@ jobs:
             ${{ runner.temp }}/sim-out
           retention-days: 30
   main-watch20:
+    if: inputs.run_main
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:

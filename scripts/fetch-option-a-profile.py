@@ -82,8 +82,15 @@ def run(case_name, out):
                                     ('cum', ['-top', '-cum', '-nodefraction=0']),
                                     ('functions', ['-list=' + FUNCTIONS])]:
                     with (out / f'{side}-{name}.txt').open('w') as log:
-                        subprocess.run(['go', 'tool', 'pprof', *flags, str(bins / side), str(profile)],
-                                       stdout=log, stderr=subprocess.STDOUT, check=True)
+                        listing = subprocess.run(['go', 'tool', 'pprof', *flags, str(bins / side), str(profile)],
+                                                 stdout=log, stderr=subprocess.STDOUT)
+                    if listing.returncode:
+                        # A fetch-free baseline can have no samples in this optional
+                        # source-list regex. Preserve that evidence; still profile B.
+                        text = (out / f'{side}-{name}.txt').read_text()
+                        if name != 'functions' or not text.startswith('no matches found for regexp:'):
+                            listing.check_returncode()
+                        row['function_listing'] = 'no matching sampled functions'
             save()
         if all('profile_sha256' in row for row in manifest['sides'].values()):
             manifest['status'] = 'DIAGNOSTIC_COMPLETE_NOT_GATE'

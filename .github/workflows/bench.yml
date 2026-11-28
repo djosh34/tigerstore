@@ -90,6 +90,13 @@ on:
         description: PR897 pre-correction leader profiles and fixed main CI controls, diagnostic only
         type: boolean
         default: false
+      fetch_option_a_cells:
+        description: Diagnostic profile matrix only, never gate cells
+        default: '["watch","txn","k8s"]'
+      fetch_option_a_main:
+        description: Include fixed main controls with option A diagnostics
+        type: boolean
+        default: true
       fetch_cache:
         description: PR897 cgroup-confirmed past-RAM/refused/evicted distinct-request reuse and tails
         type: boolean
@@ -128,6 +135,9 @@ jobs:
   option-a-controls:
     if: inputs.fetch_option_a_controls
     uses: ./.github/workflows/pr897-option-a-controls.yml
+    with:
+      profile_cases: ${{ inputs.fetch_option_a_cells }}
+      run_main: ${{ inputs.fetch_option_a_main }}
   cache-reuse:
     if: inputs.fetch_cache
     name: cache-${{ matrix.cache }}-${{ matrix.cohort }}-rtt${{ matrix.rtt }}
