@@ -42,6 +42,7 @@ def prepare(checkout,out,side,root):
  (dest/'tracked.diff').write_bytes(subprocess.check_output(['git','diff','--binary'],cwd=checkout))
 
 def adapt(probe,side,cache,budget):
+ if probe.get('case') not in COHORTS:raise ValueError('missing/unknown native lowercase case')
  if probe.get('error') or len(probe['Results'])!=probe['Clients'] or any(x.get('error') for x in probe['Results']):raise ValueError('incomplete/incorrect request cohort')
  if not 0<=probe['ClientCores']<=.8:raise ValueError('reuse generator-limited; cannot qualify')
  snaps=[probe[n] for n in ('OriginBefore','OriginAfter','ReuseBefore','ReuseAfter')]
@@ -55,7 +56,7 @@ def adapt(probe,side,cache,budget):
  if cache=='past-ram-560m' and snaps[0]['live_bytes']<=640<<20:raise ValueError('population does not exceed member RAM')
  before,origin,reuse,after=snaps
  if side=='baseline':
-  keys=('a','b') if probe['Case']=='overlapping-list' else ('a',)
+  keys=('a','b') if probe['case']=='overlapping-list' else ('a',)
   if origin['jobs']<=before['jobs'] or origin['values']<=before['values']:raise ValueError('no main off-loop origin fetch')
   if probe['ElapsedCacheMS']>=1000:raise ValueError('reuse not within main one-second cache lifetime')
   for key in keys:
@@ -64,7 +65,7 @@ def adapt(probe,side,cache,budget):
    if len({(x[f'{key}_at_sec'],x[f'{key}_at_nsec']) for x in (origin,reuse,after)})!=1:raise ValueError('main cache was replaced/refetched during reuse')
    age=probe['FinishedUnixNano']-(int(origin[f'{key}_at_sec'])*1000000000+int(origin[f'{key}_at_nsec']))
    if not 0<=age<1000000000:raise ValueError('absolute cache timestamp is outside one-second reuse')
-  if probe['Case']=='overlapping-prev-kv' and not probe['WatchValidated']:raise ValueError('prev_kv catchup not validated')
+  if probe['case']=='overlapping-prev-kv' and not probe['WatchValidated']:raise ValueError('prev_kv catchup not validated')
  else:
   if any(x['cache_entries']!=0 for x in snaps):raise ValueError('candidate unexpectedly retained fetched cache')
  q=probe['Latency']

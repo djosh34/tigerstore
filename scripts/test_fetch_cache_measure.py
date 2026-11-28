@@ -9,9 +9,14 @@ def probe(side='baseline'):
  for k in ('a','b'):b.update({f'{k}_off_lo':4096,f'{k}_mod':12,f'{k}_size':65536,f'{k}_sum':777})
  a=copy.deepcopy(b);a.update(jobs=1,values=1)
  if side=='baseline':a.update(a_cached=1,a_at_sec=123,a_at_nsec=456,cache_entries=1)
- return dict(Case='get-get',Size=65536,Clients=10,Delay=100,Results=[{'request_id':i+1,'latency_ms':2,'busy_retries':0} for i in range(10)],ClientCores=.4,OriginBefore=b,OriginAfter=a,ReuseBefore=copy.deepcopy(a),ReuseAfter=copy.deepcopy(a),OriginRetries=0,ElapsedCacheMS=102,FinishedUnixNano=123102000456,DeviceReadBefore={'1':0},DeviceReadAfter={'1':4096},Throughput=5000,WallMS=2,Latency={'p95':2,'p99':2,'max':2},Refusals={'total':0,'max_per_range':0})
+ return dict(case='get-get',Size=65536,Clients=10,Delay=100,Results=[{'request_id':i+1,'latency_ms':2,'busy_retries':0} for i in range(10)],ClientCores=.4,OriginBefore=b,OriginAfter=a,ReuseBefore=copy.deepcopy(a),ReuseAfter=copy.deepcopy(a),OriginRetries=0,ElapsedCacheMS=102,FinishedUnixNano=123102000456,DeviceReadBefore={'1':0},DeviceReadAfter={'1':4096},Throughput=5000,WallMS=2,Latency={'p95':2,'p99':2,'max':2},Refusals={'total':0,'max_per_range':0})
 
 class CacheMeasure(unittest.TestCase):
+ def test_native_lowercase_case_is_required_not_the_old_synthetic_schema(self):
+  p=probe();p['Case']=p.pop('case')
+  with self.assertRaisesRegex(ValueError,'native lowercase case'):m.adapt(p,'baseline','past-ram-560m',560<<20)
+  p=probe();p['case']='unknown'
+  with self.assertRaisesRegex(ValueError,'native lowercase case'):m.adapt(p,'baseline','past-ram-560m',560<<20)
  def test_distinct_request_reuse_requires_fetch_and_same_cache_generation(self):
   r=m.adapt(probe(),'baseline','past-ram-560m',560<<20);self.assertEqual(r['distinct_request_reuses'],10);self.assertEqual(r['origin_fulfillment'],1)
  def test_origin_or_same_consumer_is_never_relabelled_as_reuse(self):
@@ -33,7 +38,7 @@ class CacheMeasure(unittest.TestCase):
   p=probe('candidate');m.adapt(p,'candidate','past-ram-560m',560<<20);p['ReuseAfter']['cache_entries']=1
   with self.assertRaises(ValueError):m.adapt(p,'candidate','past-ram-560m',560<<20)
  def test_prev_kv_catchup_is_checked(self):
-  p=probe();p['Case']='overlapping-prev-kv';p['WatchValidated']=False
+  p=probe();p['case']='overlapping-prev-kv';p['WatchValidated']=False
   with self.assertRaises(ValueError):m.adapt(p,'baseline','past-ram-560m',560<<20)
  def test_failed_rpc_not_qualifying(self):
   p=probe();p['Results'][2]['error']='wrong value'
