@@ -894,6 +894,18 @@ func (n *node) progressIfSynced(c *client, s *stream) {
 			return
 		}
 	}
+	if c.slow() {
+		// Its client takes nothing now: the progress waits, one for any
+		// number asked, and goes out once it does. etcd drops a progress
+		// notification its watcher's channel has no room for; held, each
+		// one asked for took the client's memory past its share with its
+		// windows shut (#912).
+		if !s.progressWaits {
+			s.progressWaits = true
+			n.w.progressWait = append(n.w.progressWait, mkHandle(c, s.id))
+		}
+		return
+	}
 	s.progressDue = false
 	n.writeProgress(c, s, -1)
 }
@@ -940,7 +952,9 @@ func (n *node) notifyProgress() {
 			x.sent = false
 			continue
 		}
-		if c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c != nil {
+		if c, s := n.clientOf(mkHandleRaw(x.sock, x.gen, x.sid)); c != nil && !c.slow() {
+			// One its client takes nothing for is dropped, as etcd drops
+			// one its watcher's channel has no room for.
 			n.writeProgress(c, s, x.id)
 		}
 	}

@@ -146,7 +146,7 @@ type stream struct {
 	failAt int64
 	// progressDue: a progress request of the watch stream waits for its
 	// watches to catch up; progressWaits, also for one from a revision
-	// still to come (watches.progressWait).
+	// still to come, or for its client to take it (watches.progressWait).
 	progressDue, progressWaits bool
 	// token is the call's auth token, from its token header. A side
 	// call's (byCaller) is for the client of caller's certificate name.
@@ -453,7 +453,7 @@ func (c *client) dropAll() {
 	if c.slots != nil {
 		c.grow(-slotBytes)
 	}
-	c.in, c.pt, c.out, c.slots = nil, nil, nil, nil
+	c.in, c.pt, c.out, c.slots, c.flow.held = nil, nil, nil, nil, nil
 	c.partial, c.flow.bytes = 0, 0
 }
 

@@ -205,7 +205,7 @@ func TestAClientThatHoldsTooMuchIsRefused(t *testing.T) {
 	c, s := flowClient(t)
 	c.node.connOut = 128 << 10
 	sendMsg(c, s, 100000)
-	held := int64(100005 - defaultWindow)
+	held := int64(100005 - defaultWindow + heldBytes)
 	if c.flow.bytes != held {
 		t.Fatalf("%d bytes counted held, want %d", c.flow.bytes, held)
 	}
@@ -335,5 +335,46 @@ func TestSideCallRequestsCountInTheClientsShare(t *testing.T) {
 	n.takeSideReq(mkHandle(c, 1))
 	if c.partial != held-int64(len(msg)) {
 		t.Fatalf("a call's request taken left %d bytes counted, want %d", c.partial, held-int64(len(msg)))
+	}
+}
+
+// A watch stream's progress requests, with the client's windows shut,
+// keep what the client holds within the client pool, turn after turn
+// (#912): once the client holds past its share, a progress waits, one for
+// any number asked, and goes out once the client reads. Main held every
+// one, 22 bytes and an entry of 56 in held's backing array, which no
+// counter saw: one input turn's 250,000 requests at 83 MiB held 5.9 MB of
+// the client pool's 5.4 MB, and 16 MB more of backing array.
+func TestWatchProgressWithTheWindowsShutStaysWithinTheClientPool(t *testing.T) {
+	c, s, _, _ := replyRoomClient(t)
+	n := c.node
+	n.sizes = sizeFor(83 << 20)
+	n.connOut = n.sizes.connOut(1)
+	n.clients = 1
+	s.kind = kWatch
+	progress := []byte{0x1a, 0x00}
+	for turn := range 4 {
+		// A turn's worth of input: 250,000 requests of 7 bytes.
+		for range 250_000 {
+			if err := n.request(c, s, progress); err != nil {
+				t.Fatal(err)
+			}
+		}
+		used := n.cpool + n.cout + idleConn
+		t.Logf("turn %d: held %d bytes in %d entries (backing %d); the client holds %d of %d", turn, c.flow.bytes, len(c.flow.held), cap(c.flow.held)*heldBytes, used, n.sizes.clientPool)
+		if used > n.sizes.clientPool || c.flow.bytes < int64(cap(c.flow.held)*heldBytes) {
+			t.Fatalf("turn %d: the client holds %d bytes of the client pool's %d; %d held, of them %d of backing array", turn, used, n.sizes.clientPool, c.flow.bytes, cap(c.flow.held)*heldBytes)
+		}
+	}
+	if !s.progressDue {
+		t.Fatal("the progress asked for while the client held too much is not due")
+	}
+	// The client reads: what was held goes out, then the progress due.
+	c.windowUpdate(0, 1<<30)
+	c.windowUpdate(s.id, 1<<30)
+	c.out, c.ow = c.out[:0], 0
+	n.retryProgress()
+	if s.progressDue || len(c.flow.held) != 0 || c.flow.bytes != 0 || len(c.out) == 0 {
+		t.Fatalf("after the client read: progress due %v, %d entries and %d bytes held, %d bytes sent", s.progressDue, len(c.flow.held), c.flow.bytes, len(c.out))
 	}
 }

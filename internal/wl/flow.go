@@ -1,6 +1,9 @@
 package wl
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"unsafe"
+)
 
 // HTTP/2 flow control of what the server sends (RFC 9113, 6.9). A gRPC
 // message that both its stream's window and the connection's take goes
@@ -26,7 +29,34 @@ type flow struct {
 	streams map[uint32]int64 // the windows of streams that hold something
 	counts  map[uint32]int   // how many held entries each such stream has
 	held    []held
-	bytes   int64 // the data and trailers held
+	// bytes is the data and trailers held, and the backing array of held
+	// (setHeld): a watch stream's small messages, held by the hundred
+	// thousand, took more in the array than in their bytes (#912).
+	bytes int64
+}
+
+// heldBytes is what one entry takes in held's backing array.
+const heldBytes = int(unsafe.Sizeof(held{}))
+
+// setHeld makes h the client's held queue, and counts the change of its
+// backing array in what the client holds.
+func (c *client) setHeld(h []held) {
+	d := (cap(h) - cap(c.flow.held)) * heldBytes
+	c.flow.held = h
+	c.flow.bytes += int64(d)
+	c.growOut(d)
+}
+
+// trimHeld keeps the first k entries of the held queue, and lets go of
+// its backing array once it is empty.
+func (c *client) trimHeld(k int) {
+	f := &c.flow
+	clear(f.held[k:])
+	if k == 0 {
+		c.setHeld(nil)
+		return
+	}
+	f.held = f.held[:k]
 }
 
 func newFlow() flow { return flow{conn: defaultWindow, initial: defaultWindow} }
@@ -54,7 +84,7 @@ func (c *client) hold(s *stream, data, trailer []byte) {
 		}
 		f.streams[s.id] = s.win
 	}
-	f.held = append(f.held, held{sid: s.id, data: data, trailer: trailer})
+	c.setHeld(append(f.held, held{sid: s.id, data: data, trailer: trailer}))
 	f.bytes += int64(len(data) + len(trailer))
 	c.growOut(len(data) + len(trailer))
 	f.counts[s.id]++
@@ -195,8 +225,7 @@ func (c *client) drain() {
 			delete(f.counts, h.sid)
 		}
 	}
-	clear(f.held[k:])
-	f.held = f.held[:k]
+	c.trimHeld(k)
 }
 
 // isBig reports whether a watch response is written into stream sid in
@@ -241,8 +270,7 @@ func (c *client) dropHeld(sid uint32) {
 		f.bytes -= int64(len(h.data) + len(h.trailer))
 		c.growOut(-len(h.data) - len(h.trailer))
 	}
-	clear(f.held[k:])
-	f.held = f.held[:k]
+	c.trimHeld(k)
 	delete(f.streams, sid)
 	delete(f.counts, sid)
 	if s := c.get(sid); s != nil {
