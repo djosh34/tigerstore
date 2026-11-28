@@ -21,21 +21,50 @@ import (
 type ringSeen struct {
 	off, segs, free int64
 	files           int64
+	settled         bool
+	state           string
 }
 
-func seeRing(t *testing.T, l *loop, dir string) ringSeen {
-	t.Helper()
+// observeRing bounds both a predicate's observation and its diagnostic by
+// ctx and, at most, 5 s: a stopped loop silently drops posted callbacks.
+// The buffered reply also lets a late callback finish after cancellation.
+func observeRing(ctx context.Context, l *loop) (ringSeen, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return ringSeen{}, err
+	}
 	got := make(chan ringSeen, 1)
 	l.post(func() error {
-		w := l.n.wal
-		r := ringSeen{off: w.off}
+		n := l.n
+		w := n.wal
+		r := ringSeen{off: w.off, settled: n.ckpt == nil && !n.ringDue(), state: fmt.Sprintf("node %d: no log ring", n.id)}
 		if w.ring != nil {
 			r.segs, r.free = w.ring.segs, w.ringFree()
+			snap := uint64(0)
+			if n.storage.snap != nil {
+				snap = n.storage.snap.GetMetadata().GetIndex()
+			}
+			r.state = fmt.Sprintf("node %d: %d segments free, short %v, low %v, due %v, checkpoint running %v, applied %d, newest checkpoint at %d from %d cut %d, log %d to %d",
+				n.id, r.free, w.ringShort(), w.ringLow(), n.ringDue(), n.ckpt != nil, n.applied, snap, n.ckptFrom, n.ckptCut, w.rbase*segSize, w.off)
 		}
 		got <- r
 		return nil
 	})
-	r := <-got
+	select {
+	case r := <-got:
+		return r, nil
+	case <-ctx.Done():
+		return ringSeen{}, ctx.Err()
+	}
+}
+
+func seeRing(t *testing.T, l *loop, dir string) ringSeen {
+	t.Helper()
+	r, err := observeRing(context.Background(), l)
+	if err != nil {
+		t.Fatalf("the loop did not report its ring: %v", err)
+	}
 	r.files = countRingFiles(t, dir)
 	// A running node's maker renames spares to segments meanwhile, and a
 	// directory read during a rename may miss the file: read again, for a
@@ -159,10 +188,15 @@ func TestALogRingWrapsUnderLoadWithCompaction(t *testing.T) {
 // are refused and reads go on, and every ring keeps its files; once the
 // cut may go on and the alarm is disarmed, puts are taken again.
 func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
+	t.Run("cut released before disarm", func(t *testing.T) { aFullLogRingRaisesNOSPACE(t, false) })
+	t.Run("cut released after disarm", func(t *testing.T) { aFullLogRingRaisesNOSPACE(t, true) })
+}
+
+func aFullLogRingRaisesNOSPACE(t *testing.T, lateCut bool) {
 	was := segSize
 	segSize = 64 << 10
 	ringHoldCut.Store(true)
-	t.Cleanup(func() { segSize = was; ringHoldCut.Store(false) })
+	t.Cleanup(func() { waitStrays(t); segSize = was; ringHoldCut.Store(false) })
 	const segs = 8
 	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.logRing = segs * segSize })
@@ -195,10 +229,14 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 		t.Fatalf("after %d puts and %d refused as busy: %v; the rings: %s", puts, busy, err, strings.Join(states, "; "))
 	}
 	t.Logf("%d puts of about 1 KiB filled a ring of %d segments of %d bytes; %d were refused while a checkpoint could free it", puts, segs, segSize, busy)
+	var noSpaceMember uint64
 	for {
 		alarms, err := c.AlarmList(ctx)
-		if err == nil && slices.ContainsFunc(alarms.Alarms, func(a *pb.AlarmMember) bool { return a.Alarm == pb.AlarmType_NOSPACE }) {
-			break
+		if err == nil {
+			if i := slices.IndexFunc(alarms.Alarms, func(a *pb.AlarmMember) bool { return a.Alarm == pb.AlarmType_NOSPACE }); i >= 0 {
+				noSpaceMember = alarms.Alarms[i].MemberID
+				break
+			}
 		}
 		if ctx.Err() != nil {
 			t.Fatalf("alarms after the full ring: %v %v", alarms, err)
@@ -216,17 +254,80 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 			t.Fatalf("node %d: the full ring holds %d files, formatted with %d", i+1, n, segs)
 		}
 	}
-	// The cut may go on: the next entry applied lets the tail go.
-	ringHoldCut.Store(false)
-	alarms, err := c.AlarmList(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, a := range alarms.Alarms {
-		if _, err := c.AlarmDisarm(ctx, &clientv3.AlarmMember{MemberID: a.MemberID, Alarm: a.Alarm}); err != nil {
+	disarm := func() {
+		alarms, err := c.AlarmList(ctx)
+		if err != nil {
 			t.Fatal(err)
 		}
+		for _, a := range alarms.Alarms {
+			if _, err := c.AlarmDisarm(ctx, &clientv3.AlarmMember{MemberID: a.MemberID, Alarm: a.Alarm}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
+	if lateCut {
+		// Exercise a related recovery window, not #920's CI schedule:
+		// the disarm has applied and the NOSPACE member's checkpoints have
+		// ended, but its tail is still held. A disarm clears an alarm, not
+		// the ring's shortage. Releasing the hook below does not itself
+		// call cutLog; without an allowed write to drive an apply, a put
+		// to that member raises NOSPACE again.
+		disarm()
+		for {
+			// The filling client's member may be a follower whose own ring
+			// is not short: the leader refused its forwarded put instead.
+			r, err := observeRing(ctx, loopOf(noSpaceMember))
+			if err != nil {
+				t.Fatalf("NOSPACE member %d: the loop did not report checkpoints with the cut held: %v", noSpaceMember, err)
+			}
+			if r.settled {
+				if r.free >= ringReserve(r.segs) {
+					t.Fatalf("NOSPACE member %d: the held ring is not short; the recovery window was not exercised: %s", noSpaceMember, r.state)
+				}
+				break
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("checkpoints with the cut held: %s", r.state)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	// Allow the cut, then drive an apply through every member with a
+	// delete of a missing key, which NOSPACE permits. Besides calling
+	// cutLog, each apply orders any earlier alarm proposal from that
+	// member before the alarm list below. Wait for actual ring room, not
+	// just the hook's release, before disarming: a still-short ring may
+	// legitimately refuse puts with NOSPACE and raise its alarm again.
+	ringHoldCut.Store(false)
+	for i, ep := range tc.endpoints {
+		ci := tc.rawClient(t, ep)
+		for {
+			_, err := ci.Delete(ctx, "/full/missing")
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, rpctypes.ErrTooManyRequests) || ctx.Err() != nil {
+				t.Fatalf("node %d: an allowed delete to drive the cut: %v", i+1, err)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	for i := range 3 {
+		for {
+			r, err := observeRing(ctx, loopOf(tc.ids[i]))
+			if err != nil {
+				t.Fatalf("node %d: the loop did not report room after the released cut: %v", tc.ids[i], err)
+			}
+			if r.free >= ringReserve(segs) {
+				break
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("the released cut did not free the ring: %s", r.state)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	disarm()
 	for {
 		_, err := c.Put(ctx, "/full/k", "after")
 		if err == nil {
@@ -245,19 +346,36 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 }
 
 // ringState describes a node's ring and checkpoints, for a failure.
-func ringState(l *loop) string {
-	got := make(chan string, 1)
-	l.post(func() error {
-		n := l.n
-		snap := uint64(0)
-		if n.storage.snap != nil {
-			snap = n.storage.snap.GetMetadata().GetIndex()
-		}
-		got <- fmt.Sprintf("node %d: %d segments free, short %v, low %v, due %v, checkpoint running %v, applied %d, newest checkpoint at %d from %d cut %d, log %d to %d",
-			n.id, n.wal.ringFree(), n.wal.ringShort(), n.wal.ringLow(), n.ringDue(), n.ckpt != nil, n.applied, snap, n.ckptFrom, n.ckptCut, n.wal.rbase*segSize, n.wal.off)
-		return nil
-	})
-	return <-got
+func ringState(l *loop) string { return ringStateContext(context.Background(), l) }
+
+func ringStateContext(ctx context.Context, l *loop) string {
+	r, err := observeRing(ctx, l)
+	if err != nil {
+		return fmt.Sprintf("the loop did not report its ring: %v", err)
+	}
+	return r.state
+}
+
+func TestRingObservationHonorsItsContext(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("already canceled %v", canceled), func(t *testing.T) {
+			// No node or goroutine is needed: post drops callbacks after stop.
+			l := &loop{stopped: true}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			want := context.DeadlineExceeded
+			if canceled {
+				cancel()
+				want = context.Canceled
+			}
+			if _, err := observeRing(ctx, l); !errors.Is(err, want) {
+				t.Fatalf("observing a stopped loop: %v, want %v", err, want)
+			}
+			if got := ringStateContext(ctx, l); !strings.Contains(got, want.Error()) {
+				t.Fatalf("diagnosing a stopped loop: %s, want %v", got, want)
+			}
+		})
+	}
 }
 
 // walDir is node i's log directory.
