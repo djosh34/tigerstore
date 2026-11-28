@@ -738,7 +738,8 @@ func (h *wlHooks) Deliver(m *raftpb.Message) bool {
 	s := h.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return h.p.n.proc != h.p || !s.grayDrops(h.p.n, m)
+	n := h.p.n
+	return n.proc != h.p || !s.grayDrops(n, m) && (n.drop == nil || !n.drop(m))
 }
 
 // holdTurn holds p's loop, at the end of a turn, while the run failed,

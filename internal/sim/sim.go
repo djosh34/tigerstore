@@ -31,6 +31,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	raftpb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/history"
@@ -488,8 +489,10 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
-	// syncFor, set by a test, is how long each of its log syncs takes.
+	// syncFor, set by a test, is how long each of its log syncs takes,
+	// and drop drops each peer message to it that it returns true for.
 	syncFor int64
+	drop    func(m *raftpb.Message) bool
 	// reloads are the times a client saw the node fail its call to start
 	// again from its log, after a snapshot install or a failed fetch, as
 	// on a restart; the client tries again. fromLog are the times it did.

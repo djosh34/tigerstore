@@ -30,8 +30,14 @@ type selfRemoval struct {
 // testSelfRemovalApply observes only the fenced removal, immediately before apply.
 var testSelfRemovalApply atomic.Pointer[func(n *node)]
 
+// deferSelfRemoval fences the apply of our own removal, at entry offset of
+// m, as a leader applies it, or as a start replays it from the log: the
+// node may have led when it went down, the only one to know the commit,
+// and Raft still counts it among the voters until the apply. Stopped at
+// once, it left a survivor waiting for its vote (#924).
 func (n *node) deferSelfRemoval(m *pb.Message, offset int, cc *pb.ConfChange) bool {
-	if cc.GetType() != pb.ConfChangeRemoveNode || cc.GetNodeId() != n.id || !n.leading() || n.voters() < 2 || n.memberAt(n.id) < 0 {
+	replayed := m.Entries[offset].GetIndex() <= n.recoveredLast
+	if cc.GetType() != pb.ConfChangeRemoveNode || cc.GetNodeId() != n.id || !n.leading() && !replayed || n.voters() < 2 || n.memberAt(n.id) < 0 {
 		return false
 	}
 	if _, _, _, err := parseCCContext(cc.GetContext()); err != nil {
