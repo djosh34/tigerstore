@@ -15,6 +15,7 @@ import (
 type selfRemoval struct {
 	apply      *pb.Message
 	index, seq uint64
+	term       uint64
 	offset     int
 	asked      time.Time
 	ready      bool
@@ -34,7 +35,7 @@ func (n *node) deferSelfRemoval(m *pb.Message, offset int, cc *pb.ConfChange) bo
 	if _, _, _, err := parseCCContext(cc.GetContext()); err != nil {
 		return false // Preserve applyConfChange's ordinary corruption error.
 	}
-	n.selfRemoval = selfRemoval{apply: m, offset: offset, index: m.Entries[offset].GetIndex(), quorum: n.voters()/2 + 1}
+	n.selfRemoval = selfRemoval{apply: m, offset: offset, index: m.Entries[offset].GetIndex(), term: n.rn.BasicStatus().GetTerm(), quorum: n.voters()/2 + 1}
 	n.selfRemoval.notices = make(map[uint64]bool, n.voters())
 	for _, member := range n.members {
 		if !member.learner {
@@ -69,7 +70,13 @@ func (n *node) selfRemovalRead(seq, index uint64) bool {
 	if r.apply == nil || seq != r.seq {
 		return false
 	}
-	r.ready = r.ready || index >= r.index
+	// A forwarded read after losing leadership could be answered by the
+	// NEW configuration. Only this leader's original term can establish
+	// the old-configuration barrier; explicit old-voter notices remain
+	// valid even if it steps down while waiting.
+	if n.leading() && n.rn.BasicStatus().GetTerm() == r.term {
+		r.ready = r.ready || index >= r.index
+	}
 	return true
 }
 
