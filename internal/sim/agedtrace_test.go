@@ -17,8 +17,9 @@ import (
 // Background: a context that can be cancelled selects on its parent's
 // Done, and under gosim each select yields, so the schedule parts in the
 // formation run, before any stop (d534b56cfeda2d34, f5e3ba206bc8fab2).
-// Then a node's start waits for its last Run to return: one select more
-// at each start, and a start whose old process still runs waits.
+// Then a node's start waits for its last Run to return: a process's exit
+// closes a channel, which yields, every start after a node's first
+// selects on it, and one whose old process still runs waits.
 func TestLeaseFreeForkTrace(t *testing.T) {
 	simrun.ImageEach(t, []uint64{1}, 1, func(t *testing.T, seed uint64) Stats {
 		aging := agingConfig(seed)
