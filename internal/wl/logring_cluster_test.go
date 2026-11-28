@@ -159,10 +159,15 @@ func TestALogRingWrapsUnderLoadWithCompaction(t *testing.T) {
 // are refused and reads go on, and every ring keeps its files; once the
 // cut may go on and the alarm is disarmed, puts are taken again.
 func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
+	t.Run("cut released before disarm", func(t *testing.T) { aFullLogRingRaisesNOSPACE(t, false) })
+	t.Run("cut released after disarm", func(t *testing.T) { aFullLogRingRaisesNOSPACE(t, true) })
+}
+
+func aFullLogRingRaisesNOSPACE(t *testing.T, lateCut bool) {
 	was := segSize
 	segSize = 64 << 10
 	ringHoldCut.Store(true)
-	t.Cleanup(func() { segSize = was; ringHoldCut.Store(false) })
+	t.Cleanup(func() { waitStrays(t); segSize = was; ringHoldCut.Store(false) })
 	const segs = 8
 	loopOf := watchLoops(t)
 	tc := newTestClusterWith(t, func(tc *testCluster) { tc.logRing = segs * segSize })
@@ -216,17 +221,74 @@ func TestAFullLogRingRaisesNOSPACE(t *testing.T) {
 			t.Fatalf("node %d: the full ring holds %d files, formatted with %d", i+1, n, segs)
 		}
 	}
-	// The cut may go on: the next entry applied lets the tail go.
-	ringHoldCut.Store(false)
-	alarms, err := c.AlarmList(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, a := range alarms.Alarms {
-		if _, err := c.AlarmDisarm(ctx, &clientv3.AlarmMember{MemberID: a.MemberID, Alarm: a.Alarm}); err != nil {
+	disarm := func() {
+		alarms, err := c.AlarmList(ctx)
+		if err != nil {
 			t.Fatal(err)
 		}
+		for _, a := range alarms.Alarms {
+			if _, err := c.AlarmDisarm(ctx, &clientv3.AlarmMember{MemberID: a.MemberID, Alarm: a.Alarm}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
+	if lateCut {
+		// Make the recovery window deterministic: the disarm has applied
+		// and its checkpoints have ended, but the tail is still held. A
+		// disarm clears an alarm, not the ring's shortage. Releasing the
+		// hook below does not itself call cutLog; without an allowed write
+		// to drive an apply, the next put raises NOSPACE again (#920).
+		disarm()
+		for {
+			settled, short := false, false
+			l := loopOf(tc.ids[0])
+			if !onLoop(l, func() {
+				n := l.n
+				settled, short = n.ckpt == nil && !n.ringDue(), n.wal.ringShort()
+			}) {
+				t.Fatal("the loop stopped before the held cut was released")
+			}
+			if settled {
+				if !short {
+					t.Fatal("the held ring is not short; the recovery window was not exercised")
+				}
+				break
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("checkpoints with the cut held: %s", ringState(l))
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	// Allow the cut, then drive an apply through every member with a
+	// delete of a missing key, which NOSPACE permits. Besides calling
+	// cutLog, each apply orders any earlier alarm proposal from that
+	// member before the alarm list below. Wait for actual ring room, not
+	// just the hook's release, before disarming: a still-short ring may
+	// legitimately refuse puts with NOSPACE and raise its alarm again.
+	ringHoldCut.Store(false)
+	for i, ep := range tc.endpoints {
+		ci := tc.rawClient(t, ep)
+		for {
+			_, err := ci.Delete(ctx, "/full/missing")
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, rpctypes.ErrTooManyRequests) || ctx.Err() != nil {
+				t.Fatalf("node %d: an allowed delete to drive the cut: %v", i+1, err)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	for i := range 3 {
+		for seeRing(t, loopOf(tc.ids[i]), tc.walDir(i)).free < ringReserve(segs) {
+			if ctx.Err() != nil {
+				t.Fatalf("the released cut did not free the ring: %s", ringState(loopOf(tc.ids[i])))
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	disarm()
 	for {
 		_, err := c.Put(ctx, "/full/k", "after")
 		if err == nil {
