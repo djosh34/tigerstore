@@ -301,6 +301,65 @@ func TestRemovalNoticeBeforeOwnApply(t *testing.T) {
 	}
 }
 
+func TestSelfRemovalNoticeOrdering(t *testing.T) {
+	for _, early := range []bool{true, false} {
+		name := "after-local-apply"
+		if early {
+			name = "before-local-apply"
+		}
+		t.Run(name, func(t *testing.T) {
+			n := gateNode(t)
+			n.st, _ = newTestStore(t)
+			t.Cleanup(func() { _ = n.st.close() })
+			n.rn, n.lead = newTestRawNode(t), n.id
+			if early {
+				n.removalNotice(2)
+				if n.stopErr != nil || n.selfRemoval.ready || n.removed[n.id] {
+					t.Fatal("early notice stopped the leader before local apply")
+				}
+			}
+			if err := n.storageApply(removalApply(t, n.id)); err != nil {
+				t.Fatal(err)
+			}
+			if !early {
+				if n.selfRemoval.ready {
+					t.Fatal("local apply alone established an old quorum")
+				}
+				n.removalNotice(2)
+			}
+			// In the early ordering voter 2 cannot reconnect. No repeat
+			// notice is available: its retained evidence must suffice.
+			if err := n.resumeSelfRemoval(); err != nil || !n.removed[n.id] || n.selfRemoval.drainBy.IsZero() {
+				t.Fatalf("notice plus self did not release the three-voter barrier: %v", err)
+			}
+		})
+	}
+}
+
+func TestSelfRemovalEarlyNoticesNeedDistinctOldVoters(t *testing.T) {
+	n := gateNode(t)
+	n.st, _ = newTestStore(t)
+	t.Cleanup(func() { _ = n.st.close() })
+	n.rn, n.lead = newTestRawNode(t), n.id
+	n.members = append(n.members, member{id: 4}, member{id: 5, learner: true}, member{id: 6})
+	for _, id := range []uint64{2, 2, 5, 6, 99} {
+		n.removalNotice(id)
+	}
+	// Voter 6 left in a preceding configuration change. Its early notice
+	// is not evidence from the old configuration at our own removal.
+	n.members = n.members[:len(n.members)-1]
+	if err := n.storageApply(removalApply(t, n.id)); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.resumeSelfRemoval(); err != nil || n.removed[n.id] || n.selfRemoval.ready {
+		t.Fatalf("duplicate, learner, former voter or outsider made an early quorum: %v", err)
+	}
+	n.removalNotice(3)
+	if err := n.resumeSelfRemoval(); err != nil || !n.removed[n.id] {
+		t.Fatalf("third old voter did not release removal: %v", err)
+	}
+}
+
 func TestSelfRemovalKeepsParsedChange(t *testing.T) {
 	n := gateNode(t)
 	n.st, _ = newTestStore(t)

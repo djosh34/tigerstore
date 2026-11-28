@@ -20,7 +20,8 @@ type selfRemoval struct {
 	offset     int
 	asked      time.Time
 	ready      bool
-	// notices contains only old voters; false means not yet acknowledged.
+	// Before local apply, notices retains evidence from known members.
+	// At the barrier it is filtered to old voters; false means not yet acknowledged.
 	notices map[uint64]bool
 	quorum  int
 	drainBy time.Time
@@ -36,13 +37,15 @@ func (n *node) deferSelfRemoval(m *pb.Message, offset int, cc *pb.ConfChange) bo
 	if _, _, _, err := parseCCContext(cc.GetContext()); err != nil {
 		return false // Preserve applyConfChange's ordinary corruption error.
 	}
+	early := n.selfRemoval.notices
 	n.selfRemoval = selfRemoval{apply: m, change: cc, offset: offset, index: m.Entries[offset].GetIndex(), quorum: n.voters()/2 + 1}
 	n.selfRemoval.notices = make(map[uint64]bool, n.voters())
 	for _, member := range n.members {
 		if !member.learner {
-			n.selfRemoval.notices[member.id] = member.id == n.id
+			n.selfRemoval.notices[member.id] = member.id == n.id || early[member.id]
 		}
 	}
+	n.selfRemovalNotice(n.id)
 	n.askSelfRemovalRead()
 	return true
 }
@@ -96,6 +99,16 @@ func (n *node) removalNotice(id uint64) {
 func (n *node) selfRemovalNotice(id uint64) {
 	r := &n.selfRemoval
 	if r.apply == nil {
+		// A survivor can apply first while our local append is pending.
+		// Keep its evidence without stopping the leader. Membership can
+		// still change before local apply, so filter voters at the barrier,
+		// not here (a current learner could be promoted before removal).
+		if n.leading() && r.drainBy.IsZero() && n.memberAt(id) >= 0 {
+			if r.notices == nil {
+				r.notices = make(map[uint64]bool)
+			}
+			r.notices[id] = true
+		}
 		return
 	}
 	if _, voter := r.notices[id]; !voter {
