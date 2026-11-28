@@ -463,6 +463,10 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.reject(c, s, errLearner)
 		return nil
 	}
+	if rawWrite(s.kind) && raftRequestBytes(len(msg))+len(msg)+c.identityOf(s) > n.requestLimit() {
+		n.reject(c, s, invalid(msgTooLarge))
+		return nil
+	}
 	if sideKind(s.kind) {
 		n.sideRequest(c, s, msg)
 		return nil
@@ -572,6 +576,20 @@ func (n *node) request(c *client, s *stream, msg []byte) error {
 		n.replyEmpty(c, s)
 	}
 	return nil
+}
+
+// rawWrite reports whether a request of kind goes to the log as its
+// message came, with no checkRequest: so request refuses one past
+// requestLimit as too large before it reaches a batch, as etcd refuses
+// one past --max-request-bytes; it never makes an entry larger than the
+// ring holds (#946's review). Auth requests are refused so in
+// proposeAuth.
+func rawWrite(kind uint8) bool {
+	switch kind {
+	case kAlarm, kDowngrade, kLeaseKeepAlive, kMemberAdd, kMemberRemove, kMemberUpdate, kMemberPromote:
+		return true
+	}
+	return false
 }
 
 // reject answers a request that its check rejected.

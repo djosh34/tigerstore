@@ -774,7 +774,9 @@ func waitStrays(t testing.TB) {
 // requests of half its ring at most (requestLimit), so puts of 60 KiB are
 // each taken, through the leader and through a follower, as cuts give the
 // ring back, and a put past half the ring is refused at once as too large,
-// as etcd refuses a request past its limit, never as busy for good.
+// as etcd refuses a request past its limit, never as busy for good. So is
+// an auth request past it, a RoleAdd, which goes to the log as an auth op
+// with no checkRequest (#946's review), and the cluster takes puts after.
 func TestARingTakesRequestsOfHalfItsSize(t *testing.T) {
 	was := segSize
 	segSize = 16 << 10
@@ -793,5 +795,13 @@ func TestARingTakesRequestsOfHalfItsSize(t *testing.T) {
 		if !errors.Is(err, rpctypes.ErrRequestTooLarge) || time.Since(start) > time.Second {
 			t.Fatalf("a put of 65 KiB through node %d, past half the ring of 128 KiB: %v after %v; want it refused at once as too large", i+1, err, time.Since(start))
 		}
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		start = time.Now()
+		_, err = c.RoleAdd(ctx, strings.Repeat("r", 65<<10))
+		cancel()
+		if !errors.Is(err, rpctypes.ErrRequestTooLarge) || time.Since(start) > time.Second {
+			t.Fatalf("a RoleAdd of 65 KiB through node %d, past half the ring of 128 KiB: %v after %v; want it refused at once as too large", i+1, err, time.Since(start))
+		}
+		takenWithin(t, c, "/half/after", "v", fmt.Sprintf("a put through node %d after the refusals", i+1))
 	}
 }
