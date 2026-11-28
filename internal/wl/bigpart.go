@@ -15,20 +15,30 @@ import (
 // worth of it. The value's sum is checked as its parts go, in order
 // (partSum), as readValue checks a value read whole.
 
-// partSum is the sum of the bytes of the value at off sent so far, at of
-// them.
+// partSum is the sum of the bytes sent so far, at of them, of the value
+// key id was put with at revision mod. A value is known by its key and
+// revision, not its place: a checkpoint may move it between parts, and
+// the sum goes on over the bytes sent, from either copy.
 type partSum struct {
-	off int64
+	id  uint32
+	mod int64
 	at  int
 	sum uint32
 }
+
+// errPartOrder is a part of a value whose bytes before it went out
+// unsummed: never, as every part of a value is summed in order.
+var errPartOrder = errors.New("a part of a value came out of order")
 
 // valuePart is bytes a to b of key id's value of state s, unchecked: from
 // its record in the slab if resident, else as readValue reads a value.
 func (st *store) valuePart(id uint32, s *ckptState, a, b int) ([]byte, error) {
 	if k := &st.keys[id]; k.rec != 0 && k.voff == s.voff && k.vlen == s.vlen {
+		// The resident record is the key's live one, which may be a put
+		// since with the same value (ignore_value) and wider revisions:
+		// the value lies where the record's own fields end.
 		rec := st.slab.bytes(k.rec, int(k.rlen))
-		at := kvSize(int(k.klen), int(s.vlen), s.create, s.mod, s.ver, s.lease) - sizeVarintField(6, uint64(s.lease)) - int(s.vlen)
+		at := kvSize(int(k.klen), int(k.vlen), k.create, k.mod, k.ver, k.lease) - sizeVarintField(6, uint64(k.lease)) - int(k.vlen)
 		return rec[at+a : at+b], nil
 	}
 	if f, ok := st.fetched[s.voff]; ok && len(f.val) == int(s.vlen) {
@@ -45,20 +55,14 @@ func (st *store) valuePart(id uint32, s *ckptState, a, b int) ([]byte, error) {
 }
 
 // readPart reads bytes a to b of key id's value of state s for a part, and
-// sums them on from those before (ps). The last part of a value that does
-// not match its sum fails, and stops the node as readValue does.
+// sums them on from those sent before (ps). The last part of a value whose
+// bytes sent do not match its sum fails, and stops the node as readValue
+// does.
 func (st *store) readPart(id uint32, s *ckptState, a, b int, ps *partSum) ([]byte, error) {
-	if ps.off != s.voff || ps.at != a {
-		// Another value's sum, or a part this value's sum missed: sum its
-		// bytes before a first.
-		*ps = partSum{off: s.voff}
-		if a > 0 {
-			p, err := st.valuePart(id, s, 0, a)
-			if err != nil {
-				return nil, err
-			}
-			ps.sum, ps.at = crc32.Update(0, castagnoli, p), a
-		}
+	if a == 0 {
+		*ps = partSum{id: id, mod: s.mod}
+	} else if ps.id != id || ps.mod != s.mod || ps.at != a {
+		return nil, errPartOrder
 	}
 	p, err := st.valuePart(id, s, a, b)
 	if err != nil {
