@@ -34,8 +34,12 @@ func (s *copyShell) prepareClientSnap(h handle, src file) {
 	s.l.prepareClientSnap(h, src)
 }
 
-func copyLoop(n *node) *loop {
-	return &loop{n: n, hoFD: -1, ctx: context.Background(), logger: log.New(io.Discard, "", 0)}
+// copyLoop is a loop of n for its copies, which the test waits for at its
+// end.
+func copyLoop(t *testing.T, n *node) *loop {
+	l := &loop{n: n, hoFD: -1, ctx: context.Background(), logger: log.New(io.Discard, "", 0)}
+	t.Cleanup(l.goes.Wait)
+	return l
 }
 
 func snapshotClient(t *testing.T, n *node) (*client, *stream, handle) {
@@ -53,7 +57,7 @@ func copyRingNode(t *testing.T) *node {
 	t.Helper()
 	was := segSize
 	segSize = 16 << 10
-	t.Cleanup(func() { waitStrays(t); segSize = was })
+	t.Cleanup(func() { segSize = was })
 	n, _ := ckptNode(t)
 	w, err := openWALRing(sysEnv{}, t.TempDir(), 256<<10, 8*segSize, 0, 0, nil)
 	if err != nil {
@@ -114,7 +118,7 @@ func liveCopy(t *testing.T, n *node) file {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = src.Close() })
-	if err := selfContained(src, n.wal, &bytes.Buffer{}); err != nil {
+	if err := selfContained(t.Context(), src, n.wal, &bytes.Buffer{}); err != nil {
 		t.Fatalf("copy before the cut: %v", err)
 	}
 	return src
@@ -168,9 +172,9 @@ func TestAClientSnapshotRetriesACopyWhoseLogWasCut(t *testing.T) {
 	n := copyRingNode(t)
 	c, _, h := snapshotClient(t, n)
 	src := retiredCopy(t, n)
-	l := copyLoop(n)
+	l := copyLoop(t, n)
 	l.prepareClientSnap(h, src)
-	waitStrays(t)
+	l.goes.Wait()
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +185,7 @@ func TestAClientSnapshotRetriesACopyWhoseLogWasCut(t *testing.T) {
 	if err := n.maybeCkpt(); err != nil {
 		t.Fatal(err)
 	}
-	waitStrays(t)
+	l.goes.Wait()
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
 	}
@@ -304,11 +308,11 @@ func TestSnapshotCopiesDistinguishSharedDamageFromACut(t *testing.T) {
 					src = held
 				}
 				ml.b[0] ^= 1
-				copyErr := selfContained(src, ml, &bytes.Buffer{})
+				copyErr := selfContained(t.Context(), src, ml, &bytes.Buffer{})
 				if !errors.Is(copyErr, ErrBadValue) || n.wal.rbase != 0 || n.ckptCut != 0 {
 					t.Fatalf("not shared WAL damage without a cut: %v", copyErr)
 				}
-				l := copyLoop(n)
+				l := copyLoop(t, n)
 				if peer {
 					// sendSelfContained reads the same durableLog as the
 					// client. A memLog is installed through a WAL descriptor
@@ -320,7 +324,7 @@ func TestSnapshotCopiesDistinguishSharedDamageFromACut(t *testing.T) {
 					installCopyBytes(t, n, ml.b)
 					l.prepareClientSnap(h, src)
 				}
-				waitStrays(t)
+				l.goes.Wait()
 				if err := l.runPosts(); !errors.Is(err, ErrBadValue) {
 					t.Fatalf("shared damage was hidden: %v", err)
 				}
@@ -333,7 +337,7 @@ func TestSnapshotCopiesDistinguishSharedDamageFromACut(t *testing.T) {
 	t.Run("retired segment is a cut, not damage", func(t *testing.T) {
 		n := copyRingNode(t)
 		src := retiredCopy(t, n)
-		err := selfContained(src, n.wal, &bytes.Buffer{})
+		err := selfContained(t.Context(), src, n.wal, &bytes.Buffer{})
 		if err == nil || !strings.Contains(err.Error(), "the log was cut") || errors.Is(err, ErrBadValue) {
 			t.Fatalf("a retired segment was not distinguished from shared damage: %v", err)
 		}
@@ -359,7 +363,7 @@ func installCopyBytes(t *testing.T, n *node, b []byte) {
 func TestASnapshotCutRetryHasALimit(t *testing.T) {
 	n := copyRingNode(t)
 	c, s, h := snapshotClient(t, n)
-	l := copyLoop(n)
+	l := copyLoop(t, n)
 	sh := &heldCopyShell{l: l}
 	n.shell = sh
 	n.snapshotRequest(c, s)
@@ -378,7 +382,7 @@ func TestASnapshotCutRetryHasALimit(t *testing.T) {
 		}
 		retireCopy(t, n)
 		sh.release(t)
-		waitStrays(t)
+		l.goes.Wait()
 		if err := l.runPosts(); err != nil {
 			t.Fatal(err)
 		}
@@ -400,9 +404,9 @@ func TestASnapshotCutRetryEndsWithItsClient(t *testing.T) {
 			n := copyRingNode(t)
 			c, s, h := snapshotClient(t, n)
 			src := retiredCopy(t, n)
-			l := copyLoop(n)
+			l := copyLoop(t, n)
 			l.prepareClientSnap(h, src)
-			waitStrays(t)
+			l.goes.Wait()
 			switch gone {
 			case "stream":
 				c.endStream(s)
@@ -421,7 +425,7 @@ func TestASnapshotCutRetryEndsWithItsClient(t *testing.T) {
 			// dropped too, without even starting another copy.
 			n.shell = &copyShell{l: l}
 			n.startClientSnaps([]handle{h}, n.ckptName)
-			waitStrays(t)
+			l.goes.Wait()
 			l.mu.Lock()
 			posts := len(l.posts)
 			l.mu.Unlock()
@@ -493,13 +497,13 @@ func TestAPeerSnapshotRetriesACopyWithARetiredSegment(t *testing.T) {
 		t.Fatal("Raft did not send its checkpoint")
 	}
 	retireCopy(t, n)
-	copyErr := selfContained(src, n.wal, &bytes.Buffer{})
+	copyErr := selfContained(t.Context(), src, n.wal, &bytes.Buffer{})
 	if copyErr == nil || !strings.Contains(copyErr.Error(), "the log was cut") || errors.Is(copyErr, ErrBadValue) {
 		t.Fatalf("the peer's retired segment was not classified as a cut: %v", copyErr)
 	}
-	l := copyLoop(n)
+	l := copyLoop(t, n)
 	l.sendSnapshot(old, src)
-	waitStrays(t)
+	l.goes.Wait()
 	if err := l.runPosts(); err != nil {
 		t.Fatalf("the cut copy stopped the node: %v", err)
 	}
@@ -517,7 +521,7 @@ func TestAPeerSnapshotRetriesACopyWithARetiredSegment(t *testing.T) {
 	}
 	defer func() { _ = f.Close() }()
 	var copied bytes.Buffer
-	if err := selfContained(f, n.wal, &copied); err != nil {
+	if err := selfContained(t.Context(), f, n.wal, &copied); err != nil {
 		t.Fatal(err)
 	}
 	// The follower accepts the metadata of the newly copied snapshot.

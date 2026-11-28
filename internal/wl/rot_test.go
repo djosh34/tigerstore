@@ -141,7 +141,7 @@ func TestAValueDamagedInTheLogIsNotSentToAFollower(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sent.Close() }()
-	wantBadValue(t, "the follower's checkpoint", selfContained(f, l, sent))
+	wantBadValue(t, "the follower's checkpoint", selfContained(t.Context(), f, l, sent))
 }
 
 // A start checks the values a checkpoint names in the log before where

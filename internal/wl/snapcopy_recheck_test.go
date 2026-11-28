@@ -49,11 +49,11 @@ func TestASnapshotCopyTreatsATruncatedLiveLogAsDamage(t *testing.T) {
 				if err := os.Truncate(segPath(n.wal.dir, 0), end); err != nil {
 					t.Fatal(err)
 				}
-				l := copyLoop(n)
+				l := copyLoop(t, n)
 				var err error
 				switch path {
 				case "copy":
-					err = selfContained(src, n.wal, io.Discard)
+					err = selfContained(t.Context(), src, n.wal, io.Discard)
 				case "client":
 					c, s, _ := snapshotClient(t, n)
 					n.shell = &copyShell{l: l}
@@ -61,11 +61,11 @@ func TestASnapshotCopyTreatsATruncatedLiveLogAsDamage(t *testing.T) {
 					if err := n.maybeCkpt(); err != nil {
 						t.Fatal(err)
 					}
-					waitStrays(t)
+					l.goes.Wait()
 					err = l.runPosts()
 				case "peer":
 					l.sendSnapshot(message, src)
-					waitStrays(t)
+					l.goes.Wait()
 					err = l.runPosts()
 				}
 				if err == nil || !snapshotDamage(err) || errors.Is(err, errLogCut) {
@@ -87,9 +87,9 @@ func TestASnapshotCopyTreatsATruncatedLiveLogAsDamage(t *testing.T) {
 		message := forceCopySnapshot(t, n)
 		// The copy is sound, but this fixture has no destination address.
 		// A failed transport setup must still report SnapshotFailure.
-		l := copyLoop(n)
+		l := copyLoop(t, n)
 		l.sendSnapshot(message, src)
-		waitStrays(t)
+		l.goes.Wait()
 		if err := l.runPosts(); err != nil {
 			t.Fatalf("an ordinary transport failure stopped the node: %v", err)
 		}
@@ -225,7 +225,7 @@ func TestAClientSnapshotCopyNeedsOnlyItsCheckpointSource(t *testing.T) {
 	n := copyRingNode(t)
 	_, _, h := snapshotClient(t, n)
 	src := liveCopy(t, n)
-	l := copyLoop(n)
+	l := copyLoop(t, n)
 	// Keep the contract assertions runnable against the old signatures
 	// too, so the regression fails before rather than needing a shim.
 	if _, ok := any(n.startClientSnaps).(func([]handle, string)); !ok {
@@ -238,7 +238,7 @@ func TestAClientSnapshotCopyNeedsOnlyItsCheckpointSource(t *testing.T) {
 	revision := n.st.rev
 	n.st.rev += 7
 	prepare(h, src)
-	waitStrays(t)
+	l.goes.Wait()
 	if err := l.runPosts(); err != nil {
 		t.Fatal(err)
 	}

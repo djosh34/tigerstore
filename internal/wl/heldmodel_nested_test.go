@@ -1,6 +1,7 @@
 package wl
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -101,7 +102,7 @@ func (m *heldModel) install(step int) {
 		m.fail("snapshot dest: %v", err)
 		return
 	}
-	err = selfContained(src, n.st.log.(durableLog), dst)
+	err = selfContained(context.Background(), src, n.st.log.(durableLog), dst)
 	_ = src.Close()
 	_ = dst.Close()
 	if err != nil {

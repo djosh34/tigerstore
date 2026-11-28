@@ -43,7 +43,7 @@ func TestTLS12RecordsBothWays(t *testing.T) {
 					got <- nil
 					return
 				}
-				h, err := handshake(sysEnv{}, nc, srvCfg, kindClient)
+				h, err := handshake(t.Context(), sysEnv{}, nc, srvCfg, kindClient)
 				if err != nil {
 					t.Error(err)
 				}

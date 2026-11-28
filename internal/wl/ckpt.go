@@ -3,6 +3,7 @@ package wl
 import (
 	"bufio"
 	"cmp"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -1427,12 +1428,16 @@ type ckptHeader struct {
 
 // selfContained writes to dst the checkpoint in src with every value in
 // it: a follower has neither this node's log nor its checkpoint before.
-// Values the file names in the log are read from log.
-func selfContained(src file, log durableLog, dst io.Writer) error {
+// Values the file names in the log are read from log. It stops at the
+// next value once ctx is done.
+func selfContained(ctx context.Context, src file, log durableLog, dst io.Writer) error {
 	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	return copyCkpt(src, func(p []byte, inFile bool, at int64) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if inFile {
 			_, err := src.ReadAt(p, at)
 			return err

@@ -273,7 +273,7 @@ func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc 
 		}
 	}
 	impl := m.impl(l.side)
-	go func() {
+	l.goes.Go(func() {
 		var reply []byte
 		var err error
 		if m.unary != nil {
@@ -288,7 +288,7 @@ func (l *loop) sideCall(h handle, m *sideMethod, req []byte) context.CancelFunc 
 			}})
 		}
 		l.post(func() error { l.n.sideEnd(h, m.unary != nil, reply, err); return nil })
-	}()
+	})
 	return cancel
 }
 

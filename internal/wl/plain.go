@@ -2,6 +2,7 @@ package wl
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"time"
 )
@@ -21,12 +22,14 @@ const plainTimeout = 10 * time.Second
 
 // plainHandoff reads the start of nc, a client of a listener without TLS:
 // a client that begins with the preface is handed to the loop with what
-// was read; any other is served by net/http, the bytes read first.
-func plainHandoff(sys sysEnv, nc net.Conn) (*handoff, error) {
+// was read; any other is served by net/http, the bytes read first. The
+// wait for the first bytes ends once ctx is done.
+func plainHandoff(ctx context.Context, sys sysEnv, nc net.Conn) (*handoff, error) {
 	if err := nc.SetReadDeadline(time.Now().Add(plainTimeout)); err != nil {
 		_ = nc.Close()
 		return nil, err
 	}
+	defer context.AfterFunc(ctx, func() { _ = nc.SetReadDeadline(time.Now()) })()
 	var b []byte
 	buf := make([]byte, len(h2Preface))
 	for len(b) < len(h2Preface) && bytes.HasPrefix([]byte(h2Preface), b) {
