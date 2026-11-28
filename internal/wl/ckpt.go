@@ -1428,8 +1428,8 @@ type ckptHeader struct {
 
 // selfContained writes to dst the checkpoint in src with every value in
 // it: a follower has neither this node's log nor its checkpoint before.
-// Values the file names in the log are read from log. It stops at the
-// next value once ctx is done.
+// Values the file names in the log are read from log. Once ctx is done
+// it reads no more of them, and fails at the copy's end.
 func selfContained(ctx context.Context, src file, log durableLog, dst io.Writer) error {
 	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return err

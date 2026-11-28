@@ -381,7 +381,9 @@ func addrs(lns []net.Listener) []string {
 func (l *loop) accept(ln net.Listener, cfg *tls.Config, kind uint8, logger *log.Logger) {
 	for {
 		nc, err := ln.Accept()
-		if errors.Is(err, net.ErrClosed) {
+		// A listener may fail otherwise once closed: the stop ends the
+		// accepts either way.
+		if errors.Is(err, net.ErrClosed) || err != nil && l.ctx.Err() != nil {
 			return
 		}
 		if err != nil {
@@ -450,8 +452,10 @@ func (l *loop) syncDials() {
 		l.stopDial(m.id)
 		d := &dialer{addr: addr, redial: make(chan struct{}, 1), rebeat: make(chan struct{}, 1), stop: make(chan struct{})}
 		l.dials[m.id] = d
-		l.goes.Go(func() { l.dial(m.id, d, false) })
-		l.goes.Go(func() { l.dial(m.id, d, true) })
+		// m points into the member list, which may change while they run.
+		id := m.id
+		l.goes.Go(func() { l.dial(id, d, false) })
+		l.goes.Go(func() { l.dial(id, d, true) })
 	}
 	for id := range l.dials {
 		if !keep[id] {
