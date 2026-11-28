@@ -29,6 +29,7 @@ type soleNode struct {
 	rejection soleRejection
 }
 type soleRun struct {
+	wrapper    string
 	err        string
 	publicErr  error
 	timeout    bool
@@ -147,8 +148,15 @@ func soleBoundary(r *revisionOrder, phase string, op int) soleNode {
 	return n
 }
 
+func newSoleRun(h *history.History) *soleRun {
+	return &soleRun{
+		wrapper:    fmt.Sprintf("witness check (%s) of %d operations: ", FromRevisions, len(h.Ops)),
+		rejections: map[soleRejection]bool{},
+	}
+}
+
 func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
-	out := &soleRun{rejections: map[soleRejection]bool{}}
+	out := newSoleRun(h)
 	var r *revisionOrder
 	grants := soleReferenceGrants(h)
 	activeFit := -1
@@ -156,6 +164,9 @@ func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 		o.testRevision = func(v *revisionOrder) {
 			r = v
 			r.testNoSoleGrant = old
+			// Isolate #905, including its exact 13/14-step reviewer pin.
+			// #914's separate oracle compares survival on/off on this corpus.
+			r.testNoSurvival = true
 			r.testRejection = func(rev int64, err error) {
 				out.rejections[soleRejection{rev, err.Error()}] = true
 				if trace {
@@ -245,6 +256,17 @@ func runSoleOracle(h *history.History, old, trace bool, budget int64) *soleRun {
 // A stopped reference cannot establish either rejection membership or
 // subtree exhaustion. Callers must not treat a pair of timeouts as proof.
 func soleVerdictCheck(old, got *soleRun) error {
+	if err := soleVerdictMembership(old, got); err != nil {
+		return err
+	}
+	return soleStepCheck(old, got)
+}
+
+// Check the actual public return, not an internal failure that a broken
+// return path could replace. The old history supplies the expected witness
+// wrapper; only its removal from the returned text is eligible for lookup
+// among the old dead calls. No construction-cost assumption is made here.
+func soleVerdictMembership(old, got *soleRun) error {
 	if old.oracleErr != nil {
 		return old.oracleErr
 	}
@@ -254,14 +276,23 @@ func soleVerdictCheck(old, got *soleRun) error {
 	if old.timeout || got.timeout || old.stopped || got.stopped {
 		return errors.New("stopped oracle is inconclusive")
 	}
-	if err := soleStepCheck(old, got); err != nil {
-		return err
+	for _, run := range []*soleRun{old, got} {
+		returned := "pass"
+		if run.publicErr != nil {
+			returned = run.publicErr.Error()
+		}
+		if run.err != returned {
+			return errors.New("oracle result differs from public return")
+		}
 	}
 	if (old.err == "pass") != (got.err == "pass") {
 		return fmt.Errorf("verdict differs: old %s new %s", old.err, got.err)
 	}
-	if old.err != got.err && (got.at > old.at || !old.rejections[soleRejection{got.at, got.failure}]) {
-		return fmt.Errorf("new explanation was not an old rejection at or below %d: new rev %d: %s", old.at, got.at, got.err)
+	if got.err != "pass" && (old.err != got.err || old.at != got.at) {
+		text, wrapped := strings.CutPrefix(got.err, old.wrapper)
+		if got.at > old.at || !wrapped || !old.rejections[soleRejection{got.at, text}] {
+			return fmt.Errorf("returned explanation was not an old rejection at or below %d with its witness wrapper: new rev %d: %s", old.at, got.at, got.err)
+		}
 	}
 	return nil
 }
